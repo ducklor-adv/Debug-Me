@@ -1,8 +1,62 @@
 
 import React, { useState } from 'react';
 import { Task } from '../types';
-import { Sparkles, Bookmark, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Edit3, Quote } from 'lucide-react';
+import { Sparkles, Bookmark, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Edit3, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain } from 'lucide-react';
 import { generateSmartSchedule } from '../services/geminiService';
+
+interface ScheduleBlock {
+  startHour: number;
+  startMin: number;
+  endHour: number;
+  endMin: number;
+  title: string;
+  subtitle?: string;
+  color: string;
+  icon: string;
+  isBreak?: boolean;
+}
+
+const SCHEDULE: ScheduleBlock[] = [
+  { startHour: 5, startMin: 0, endHour: 5, endMin: 20, title: 'กิจวัตรเช้า', subtitle: 'ล้างหน้า แปรงฟัน', color: 'bg-slate-100 border-slate-200 text-slate-600', icon: 'sun' },
+  { startHour: 5, startMin: 20, endHour: 5, endMin: 35, title: 'นั่งสมาธิ 15 นาที', subtitle: 'Habit', color: 'bg-violet-50 border-violet-200 text-violet-700', icon: 'brain' },
+  { startHour: 5, startMin: 35, endHour: 5, endMin: 50, title: 'รดน้ำ ดูแลต้นไม้', subtitle: 'Habit', color: 'bg-emerald-50 border-emerald-200 text-emerald-700', icon: 'sun' },
+  { startHour: 5, startMin: 50, endHour: 6, endMin: 15, title: 'อาหารเช้า', color: 'bg-amber-50 border-amber-200 text-amber-700', icon: 'coffee', isBreak: true },
+  { startHour: 6, startMin: 15, endHour: 8, endMin: 15, title: 'เขียนโค้ดโปรเจกต์ลูกค้า ก.', subtitle: 'Deep Work 2 ชม. — Habit', color: 'bg-blue-50 border-blue-300 text-blue-700', icon: 'code' },
+  { startHour: 8, startMin: 15, endHour: 8, endMin: 30, title: 'พัก', color: 'bg-slate-50 border-slate-200 text-slate-400', icon: 'coffee', isBreak: true },
+  { startHour: 8, startMin: 30, endHour: 10, endMin: 0, title: 'รวบรวมเอกสารคดีความ', subtitle: 'Legal — HIGH', color: 'bg-rose-50 border-rose-300 text-rose-700', icon: 'file' },
+  { startHour: 10, startMin: 0, endHour: 10, endMin: 15, title: 'พัก', color: 'bg-slate-50 border-slate-200 text-slate-400', icon: 'coffee', isBreak: true },
+  { startHour: 10, startMin: 15, endHour: 11, endMin: 30, title: 'จัดบ้านเก่า โซนห้องนั่งเล่น', subtitle: 'Home — Habit', color: 'bg-amber-50 border-amber-300 text-amber-700', icon: 'home' },
+  { startHour: 11, startMin: 30, endHour: 12, endMin: 30, title: 'อาหารกลางวัน + พักผ่อน', color: 'bg-amber-50 border-amber-200 text-amber-700', icon: 'coffee', isBreak: true },
+  { startHour: 12, startMin: 30, endHour: 14, endMin: 0, title: 'ซ่อมหลังคากระท่อมเล็ก', subtitle: 'Project — MEDIUM', color: 'bg-orange-50 border-orange-300 text-orange-700', icon: 'wrench' },
+  { startHour: 14, startMin: 0, endHour: 14, endMin: 15, title: 'พัก + ของว่าง', color: 'bg-slate-50 border-slate-200 text-slate-400', icon: 'coffee', isBreak: true },
+  { startHour: 14, startMin: 15, endHour: 15, endMin: 45, title: 'เขียนโค้ดต่อ / Debug / Review', subtitle: 'Work', color: 'bg-blue-50 border-blue-300 text-blue-700', icon: 'code' },
+  { startHour: 15, startMin: 45, endHour: 16, endMin: 0, title: 'พัก', color: 'bg-slate-50 border-slate-200 text-slate-400', icon: 'coffee', isBreak: true },
+  { startHour: 16, startMin: 0, endHour: 17, endMin: 0, title: 'งานเบา', subtitle: 'ตอบข้อความ วางแผนพรุ่งนี้', color: 'bg-slate-100 border-slate-200 text-slate-600', icon: 'file' },
+  { startHour: 17, startMin: 0, endHour: 18, endMin: 0, title: 'ออกกำลังกาย / เดินเล่น', subtitle: 'Personal', color: 'bg-green-50 border-green-300 text-green-700', icon: 'gym' },
+  { startHour: 18, startMin: 0, endHour: 19, endMin: 0, title: 'อาหารเย็น', color: 'bg-amber-50 border-amber-200 text-amber-700', icon: 'coffee', isBreak: true },
+  { startHour: 19, startMin: 0, endHour: 20, endMin: 30, title: 'เวลาส่วนตัว / พักผ่อน', color: 'bg-indigo-50 border-indigo-200 text-indigo-600', icon: 'moon' },
+  { startHour: 20, startMin: 30, endHour: 21, endMin: 30, title: 'อ่านหนังสือ / เรียนรู้สิ่งใหม่', subtitle: 'Personal', color: 'bg-purple-50 border-purple-200 text-purple-700', icon: 'book' },
+  { startHour: 21, startMin: 30, endHour: 22, endMin: 0, title: 'เตรียมตัวนอน', color: 'bg-slate-100 border-slate-200 text-slate-500', icon: 'moon' },
+];
+
+const ICON_MAP: Record<string, React.ReactNode> = {
+  sun: <Sun className="w-3.5 h-3.5" />,
+  moon: <Moon className="w-3.5 h-3.5" />,
+  coffee: <Coffee className="w-3.5 h-3.5" />,
+  code: <Code className="w-3.5 h-3.5" />,
+  file: <FileText className="w-3.5 h-3.5" />,
+  home: <Home className="w-3.5 h-3.5" />,
+  wrench: <Wrench className="w-3.5 h-3.5" />,
+  gym: <Dumbbell className="w-3.5 h-3.5" />,
+  book: <BookOpen className="w-3.5 h-3.5" />,
+  brain: <Brain className="w-3.5 h-3.5" />,
+};
+
+const formatTime = (h: number, m: number) =>
+  `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+
+const getDurationMin = (b: ScheduleBlock) =>
+  (b.endHour * 60 + b.endMin) - (b.startHour * 60 + b.startMin);
 
 interface DailyPlannerProps {
   tasks: Task[];
@@ -11,8 +65,29 @@ interface DailyPlannerProps {
 const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiSchedule, setAiSchedule] = useState<string | null>(null);
+  const [checkedBlocks, setCheckedBlocks] = useState<Set<number>>(new Set());
 
-  const hours = Array.from({ length: 17 }, (_, i) => i + 7); // 7:00 to 23:00
+  const today = new Date();
+  const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+  const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  const dateStr = `วัน${dayNames[today.getDay()]}ที่ ${today.getDate()} ${monthNames[today.getMonth()]} ${today.getFullYear() + 543}`;
+
+  const currentHour = today.getHours();
+  const currentMin = today.getMinutes();
+  const nowMinutes = currentHour * 60 + currentMin;
+
+  const toggleCheck = (idx: number) => {
+    setCheckedBlocks(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  const totalWork = SCHEDULE.filter(b => !b.isBreak).reduce((sum, b) => sum + getDurationMin(b), 0);
+  const doneWork = SCHEDULE.filter((b, i) => !b.isBreak && checkedBlocks.has(i)).reduce((sum, b) => sum + getDurationMin(b), 0);
+  const progressPct = totalWork > 0 ? Math.round((doneWork / totalWork) * 100) : 0;
 
   const handleMagicFill = async () => {
     setIsGenerating(true);
@@ -28,31 +103,46 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks }) => {
 
   return (
     <div className="max-w-5xl mx-auto pb-10 animate-fadeIn">
-      {/* Planner Header */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 px-2">
         <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
-          <div className="flex items-center gap-1 bg-white border border-stone-200 rounded-xl p-1 shadow-sm">
-            <button className="p-2 hover:bg-stone-50 rounded-lg"><ChevronLeft className="w-4 h-4 text-stone-500" /></button>
-            <span className="text-sm font-bold text-stone-700 px-3 min-w-[120px] text-center">Monday, Dec 4</span>
-            <button className="p-2 hover:bg-stone-50 rounded-lg"><ChevronRight className="w-4 h-4 text-stone-500" /></button>
+          <div className="flex items-center gap-1 bg-white border border-emerald-200 rounded-xl p-1 shadow-sm">
+            <button className="p-2 hover:bg-emerald-50 rounded-lg"><ChevronLeft className="w-4 h-4 text-emerald-500" /></button>
+            <span className="text-sm font-bold text-slate-700 px-3 min-w-[140px] text-center">{dateStr}</span>
+            <button className="p-2 hover:bg-emerald-50 rounded-lg"><ChevronRight className="w-4 h-4 text-emerald-500" /></button>
           </div>
-          <button className="p-2.5 bg-white border border-stone-200 rounded-xl text-stone-400 hover:text-indigo-600 shadow-sm transition-colors">
+          <button className="p-2.5 bg-white border border-emerald-200 rounded-xl text-emerald-400 hover:text-emerald-600 shadow-sm transition-colors">
             <CalendarIcon className="w-5 h-5" />
           </button>
         </div>
-        <button 
+        <button
           onClick={handleMagicFill}
           disabled={isGenerating}
-          className="flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3 bg-slate-900 text-white rounded-xl text-sm font-bold shadow-xl shadow-slate-200 hover:bg-slate-800 transition-all active:scale-95 disabled:opacity-50"
+          className="flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3 bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-xl shadow-emerald-200 hover:bg-emerald-800 transition-all active:scale-95 disabled:opacity-50"
         >
           {isGenerating ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Sparkles className="w-4 h-4 text-amber-300" />}
           AI Smart Plan
         </button>
       </div>
 
-      {/* The Notebook Container */}
+      {/* Progress Bar */}
+      <div className="mx-2 mb-6 bg-white rounded-2xl border border-emerald-100 p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">ความคืบหน้าวันนี้</span>
+          <span className="text-sm font-black text-emerald-600">{progressPct}%</span>
+        </div>
+        <div className="h-2.5 bg-emerald-100 rounded-full overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-emerald-400 to-green-500 rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }}></div>
+        </div>
+        <div className="flex justify-between mt-2 text-[10px] text-slate-400 font-bold">
+          <span>05:00 ตื่นนอน</span>
+          <span>22:00 เข้านอน</span>
+        </div>
+      </div>
+
+      {/* Notebook */}
       <div className="bg-stone-50 border border-stone-200 rounded-2xl md:rounded-3xl shadow-2xl overflow-hidden min-h-[600px] flex flex-col md:flex-row relative">
-        {/* Binder Spring Effect - Hidden on mobile, stacks sections instead */}
+        {/* Binder */}
         <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-10 -ml-5 bg-gradient-to-r from-stone-200 via-stone-50 to-stone-200 z-10 shadow-inner">
           <div className="h-full w-full flex flex-col justify-around py-8">
             {Array.from({ length: 24 }).map((_, i) => (
@@ -61,66 +151,111 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks }) => {
           </div>
         </div>
 
-        {/* Left Page: Timeline */}
-        <div className="flex-1 p-5 md:p-10 md:pr-14 bg-white relative">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-2xl font-serif italic text-stone-800">Schedule</h3>
-            <span className="text-[10px] uppercase tracking-[0.2em] text-stone-400 font-black">Daily Timeline</span>
+        {/* Left: Timeline */}
+        <div className="flex-1 p-5 md:p-8 md:pr-14 bg-white relative">
+          <div className="flex justify-between items-center mb-5">
+            <h3 className="text-xl font-bold text-slate-800">ตารางวันนี้</h3>
+            <span className="text-[10px] uppercase tracking-[0.15em] text-emerald-500 font-black">05:00 — 22:00</span>
           </div>
 
-          <div className="space-y-0 border-t border-stone-100">
-            {hours.map(hour => (
-              <div key={hour} className="group flex min-h-[50px] md:min-h-[60px] border-b border-stone-100 hover:bg-stone-50/50 transition-colors">
-                <div className="w-12 md:w-16 pt-3 text-[10px] font-black text-stone-400 text-right pr-4 tabular-nums">
-                  {hour.toString().padStart(2, '0')}:00
+          <div className="space-y-1.5">
+            {SCHEDULE.map((block, idx) => {
+              const blockStart = block.startHour * 60 + block.startMin;
+              const blockEnd = block.endHour * 60 + block.endMin;
+              const isNow = nowMinutes >= blockStart && nowMinutes < blockEnd;
+              const isPast = nowMinutes >= blockEnd;
+              const checked = checkedBlocks.has(idx);
+              const duration = getDurationMin(block);
+
+              return (
+                <div
+                  key={idx}
+                  onClick={() => !block.isBreak && toggleCheck(idx)}
+                  className={`flex items-stretch rounded-xl border transition-all ${block.isBreak ? 'cursor-default' : 'cursor-pointer active:scale-[0.98]'} ${isNow ? 'ring-2 ring-emerald-400 ring-offset-1' : ''} ${checked ? 'opacity-50' : ''} ${block.color}`}
+                >
+                  {/* Time */}
+                  <div className="w-[52px] md:w-16 shrink-0 py-2.5 px-1.5 md:px-3 flex flex-col items-center justify-center border-r border-current/10">
+                    <span className="text-[10px] font-black tabular-nums leading-tight">{formatTime(block.startHour, block.startMin)}</span>
+                    <span className="text-[8px] opacity-50 leading-tight">{formatTime(block.endHour, block.endMin)}</span>
+                  </div>
+
+                  {/* Content */}
+                  <div className={`flex-1 py-2.5 px-3 flex items-center gap-2.5 ${duration >= 60 ? 'min-h-[56px]' : 'min-h-[40px]'}`}>
+                    {!block.isBreak && (
+                      <div className={`w-4.5 h-4.5 rounded-md border-2 border-current/30 flex items-center justify-center shrink-0 ${checked ? 'bg-current/20' : ''}`}>
+                        {checked && <span className="text-[10px] font-black">✓</span>}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-sm font-bold leading-tight ${checked ? 'line-through' : ''}`}>{block.title}</div>
+                      {block.subtitle && <div className="text-[10px] opacity-60 font-medium mt-0.5">{block.subtitle}</div>}
+                    </div>
+                    <div className="shrink-0 opacity-50">{ICON_MAP[block.icon]}</div>
+                    {isNow && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></div>}
+                  </div>
                 </div>
-                <div className="flex-1 py-2 px-2 relative">
-                  <div className="absolute top-1/2 left-0 right-0 h-[1px] bg-stone-50 group-hover:bg-indigo-50/40"></div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        {/* Right Page: Notes & Tasks */}
-        <div className="flex-1 p-5 md:p-10 md:pl-14 bg-[#fefefc] border-t md:border-t-0 md:border-l border-stone-200">
+        {/* Right: Summary */}
+        <div className="flex-1 p-5 md:p-8 md:pl-14 bg-[#fefefc] border-t md:border-t-0 md:border-l border-stone-200">
           <div className="mb-8">
-            <h3 className="text-xl font-serif italic text-stone-800 mb-4">Daily Focus</h3>
-            <div className="p-5 bg-stone-100/40 rounded-2xl border border-dashed border-stone-300 min-h-[100px] flex items-center justify-center text-stone-500 text-sm italic text-center leading-relaxed px-8">
-              "Focus on being productive instead of busy."
-            </div>
-          </div>
-
-          <div className="mb-8">
-            <div className="flex justify-between items-center mb-4">
-              <h4 className="text-xs uppercase tracking-[0.2em] font-black text-stone-500">Essential Tasks</h4>
-              <Edit3 className="w-4 h-4 text-stone-300" />
-            </div>
-            <div className="space-y-3">
-              {tasks.filter(t => !t.completed).slice(0, 5).map(task => (
-                <div key={task.id} className="flex items-start gap-4 p-3 hover:bg-stone-50 rounded-xl transition-colors">
-                  <div className="w-5 h-5 rounded-lg border-2 border-stone-300 mt-0.5 flex-shrink-0"></div>
-                  <span className="text-sm font-semibold text-stone-700 leading-snug">{task.title}</span>
+            <h3 className="text-lg font-bold text-slate-800 mb-4">สรุปเวลา</h3>
+            <div className="space-y-2.5">
+              {[
+                { label: 'เขียนโค้ด', time: '3.5 ชม.', color: 'bg-blue-100 text-blue-600' },
+                { label: 'เอกสารคดีความ', time: '1.5 ชม.', color: 'bg-rose-100 text-rose-600' },
+                { label: 'จัดบ้าน', time: '1.25 ชม.', color: 'bg-amber-100 text-amber-600' },
+                { label: 'ซ่อมกระท่อม', time: '1.5 ชม.', color: 'bg-orange-100 text-orange-600' },
+                { label: 'สมาธิ + ต้นไม้', time: '30 นาที', color: 'bg-violet-100 text-violet-600' },
+                { label: 'ออกกำลังกาย', time: '1 ชม.', color: 'bg-green-100 text-green-600' },
+                { label: 'พักผ่อน + ส่วนตัว', time: '3.5 ชม.', color: 'bg-indigo-100 text-indigo-600' },
+              ].map((item, i) => (
+                <div key={i} className="flex items-center justify-between px-3 py-2.5 bg-white rounded-xl border border-stone-100">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-2.5 h-2.5 rounded-full ${item.color.split(' ')[0]}`}></div>
+                    <span className="text-sm font-medium text-slate-700">{item.label}</span>
+                  </div>
+                  <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${item.color}`}>{item.time}</span>
                 </div>
               ))}
-              {tasks.filter(t => !t.completed).length === 0 && (
-                <div className="text-center py-6">
-                  <p className="text-sm text-stone-400 italic">Clear workspace, clear mind.</p>
-                </div>
-              )}
             </div>
           </div>
 
-          {/* AI Result Area - Mobile Optimized */}
+          <div className="mb-8">
+            <h4 className="text-xs uppercase tracking-[0.15em] font-black text-slate-500 mb-4">หลักการจัดตาราง</h4>
+            <div className="space-y-3 text-sm text-slate-600">
+              <div className="flex items-start gap-2.5 p-3 bg-blue-50/50 rounded-xl">
+                <Sun className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                <span><strong>เช้า = สมอง</strong> โค้ด Deep Work ตอนสดใส</span>
+              </div>
+              <div className="flex items-start gap-2.5 p-3 bg-rose-50/50 rounded-xl">
+                <FileText className="w-4 h-4 text-rose-500 mt-0.5 shrink-0" />
+                <span><strong>สาย = เอกสาร</strong> ยังมีสมาธิจัดการเรื่องสำคัญ</span>
+              </div>
+              <div className="flex items-start gap-2.5 p-3 bg-amber-50/50 rounded-xl">
+                <Wrench className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                <span><strong>บ่าย = ร่างกาย</strong> จัดบ้าน ซ่อมหลังคา</span>
+              </div>
+              <div className="flex items-start gap-2.5 p-3 bg-indigo-50/50 rounded-xl">
+                <Moon className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
+                <span><strong>เย็น = ผ่อนคลาย</strong> ลดความเครียด</span>
+              </div>
+            </div>
+          </div>
+
+          {/* AI Result */}
           {aiSchedule && (
-            <div className="mt-8 p-5 bg-indigo-50/40 rounded-2xl border border-indigo-100 animate-slideUp shadow-sm">
-              <div className="flex items-center gap-2 mb-4 text-indigo-700">
-                <div className="w-6 h-6 bg-indigo-100 rounded-lg flex items-center justify-center">
+            <div className="mt-8 p-5 bg-emerald-50/40 rounded-2xl border border-emerald-100 animate-fadeIn shadow-sm">
+              <div className="flex items-center gap-2 mb-4 text-emerald-700">
+                <div className="w-6 h-6 bg-emerald-100 rounded-lg flex items-center justify-center">
                   <Sparkles className="w-3.5 h-3.5" />
                 </div>
                 <span className="text-xs font-black uppercase tracking-widest">AI Strategist</span>
               </div>
-              <div className="text-sm text-indigo-900/90 leading-loose whitespace-pre-wrap font-medium font-serif italic bg-white/50 p-4 rounded-xl border border-indigo-50">
+              <div className="text-sm text-emerald-900/90 leading-loose whitespace-pre-wrap font-medium bg-white/50 p-4 rounded-xl border border-emerald-50">
                 {aiSchedule}
               </div>
             </div>
@@ -128,14 +263,13 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks }) => {
 
           <div className="mt-12 pt-10 text-center opacity-30">
             <Bookmark className="w-6 h-6 text-stone-400 mx-auto" />
-            <p className="mt-4 font-serif italic text-xs text-stone-500">LifeFlow Edition</p>
+            <p className="mt-4 text-xs text-stone-500">Debug-Me LifeFlow</p>
           </div>
         </div>
       </div>
-      
-      {/* Bottom Label */}
+
       <div className="mt-6 text-center">
-        <p className="text-[9px] font-black text-stone-400 uppercase tracking-[0.4em] opacity-60">Stationery Series — Designed for Focus</p>
+        <p className="text-[9px] font-black text-stone-400 uppercase tracking-[0.4em] opacity-60">Daily Plan — Designed for Focus</p>
       </div>
     </div>
   );
