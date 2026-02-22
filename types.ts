@@ -5,6 +5,13 @@ export enum Priority {
   HIGH = 'High'
 }
 
+export interface TaskAttachment {
+  type: 'photo' | 'video' | 'audio' | 'phone' | 'contact' | 'gps';
+  label: string;
+  value: string;
+  preview?: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -13,6 +20,8 @@ export interface Task {
   completed: boolean;
   dueDate: string;
   category: string;
+  notes?: string;
+  attachments?: TaskAttachment[];
 }
 
 export interface Habit {
@@ -28,4 +37,33 @@ export interface TimeEntry {
   hours: number;
 }
 
-export type View = 'dashboard' | 'tasks' | 'habits' | 'focus' | 'analytics' | 'ai-coach' | 'planner';
+export type View = 'dashboard' | 'tasks' | 'focus' | 'analytics' | 'ai-coach' | 'planner';
+
+// ===== Task Group (category) =====
+export interface TaskGroup {
+  key: string;
+  label: string;
+  emoji: string;
+  color: string;   // key into GROUP_COLORS
+  icon: string;    // icon key for planner ('code','home', etc.)
+  size: number;    // circle size in TaskManager (px)
+}
+
+export const GROUP_COLORS: Record<string, {
+  bg: string; border: string; text: string;
+  badge: string; dot: string; ring: string; iconBg: string;
+  plannerBg: string; plannerText: string; plannerBorder: string;
+}> = {
+  orange: { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-600', badge: 'bg-orange-100 text-orange-700', dot: 'bg-orange-400', ring: 'ring-orange-300', iconBg: 'bg-orange-400', plannerBg: 'bg-orange-100', plannerText: 'text-orange-700', plannerBorder: 'border-orange-300' },
+  yellow: { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-600', badge: 'bg-yellow-100 text-yellow-700', dot: 'bg-yellow-400', ring: 'ring-yellow-300', iconBg: 'bg-yellow-400', plannerBg: 'bg-yellow-100', plannerText: 'text-yellow-700', plannerBorder: 'border-yellow-300' },
+  blue: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600', badge: 'bg-blue-100 text-blue-700', dot: 'bg-blue-400', ring: 'ring-blue-300', iconBg: 'bg-blue-400', plannerBg: 'bg-blue-100', plannerText: 'text-blue-700', plannerBorder: 'border-blue-300' },
+  green: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-600', badge: 'bg-green-100 text-green-700', dot: 'bg-green-400', ring: 'ring-green-300', iconBg: 'bg-green-400', plannerBg: 'bg-green-100', plannerText: 'text-green-700', plannerBorder: 'border-green-300' },
+  amber: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-600', badge: 'bg-amber-100 text-amber-700', dot: 'bg-amber-400', ring: 'ring-amber-300', iconBg: 'bg-amber-400', plannerBg: 'bg-amber-100', plannerText: 'text-amber-700', plannerBorder: 'border-amber-300' },
+  rose: { bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-600', badge: 'bg-rose-100 text-rose-700', dot: 'bg-rose-400', ring: 'ring-rose-300', iconBg: 'bg-rose-400', plannerBg: 'bg-rose-100', plannerText: 'text-rose-700', plannerBorder: 'border-rose-300' },
+  cyan: { bg: 'bg-cyan-50', border: 'border-cyan-200', text: 'text-cyan-600', badge: 'bg-cyan-100 text-cyan-700', dot: 'bg-cyan-400', ring: 'ring-cyan-300', iconBg: 'bg-cyan-400', plannerBg: 'bg-cyan-100', plannerText: 'text-cyan-700', plannerBorder: 'border-cyan-300' },
+  violet: { bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-600', badge: 'bg-violet-100 text-violet-700', dot: 'bg-violet-400', ring: 'ring-violet-300', iconBg: 'bg-violet-400', plannerBg: 'bg-violet-100', plannerText: 'text-violet-700', plannerBorder: 'border-violet-300' },
+  pink: { bg: 'bg-pink-50', border: 'border-pink-200', text: 'text-pink-600', badge: 'bg-pink-100 text-pink-700', dot: 'bg-pink-400', ring: 'ring-pink-300', iconBg: 'bg-pink-400', plannerBg: 'bg-pink-100', plannerText: 'text-pink-700', plannerBorder: 'border-pink-300' },
+  teal: { bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-600', badge: 'bg-teal-100 text-teal-700', dot: 'bg-teal-400', ring: 'ring-teal-300', iconBg: 'bg-teal-400', plannerBg: 'bg-teal-100', plannerText: 'text-teal-700', plannerBorder: 'border-teal-300' },
+  indigo: { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-600', badge: 'bg-indigo-100 text-indigo-700', dot: 'bg-indigo-400', ring: 'ring-indigo-300', iconBg: 'bg-indigo-400', plannerBg: 'bg-indigo-100', plannerText: 'text-indigo-700', plannerBorder: 'border-indigo-300' },
+  purple: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600', badge: 'bg-purple-100 text-purple-700', dot: 'bg-purple-400', ring: 'ring-purple-300', iconBg: 'bg-purple-400', plannerBg: 'bg-purple-100', plannerText: 'text-purple-700', plannerBorder: 'border-purple-300' },
+};

@@ -3,9 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from './firebase';
 import {
-  LayoutDashboard,
+  Activity,
   CheckSquare,
-  Flame,
   Timer,
   BarChart3,
   Sparkles,
@@ -14,57 +13,116 @@ import {
   BookOpen,
   Settings
 } from 'lucide-react';
-import { View, Task, Habit, Priority } from './types';
+import { View, Task, Priority, TaskGroup } from './types';
 import Dashboard from './components/Dashboard';
 import TaskManager from './components/TaskManager';
-import HabitTracker from './components/HabitTracker';
 import FocusTimer from './components/FocusTimer';
 import Analytics from './components/Analytics';
 import AICoach from './components/AICoach';
-import DailyPlanner from './components/DailyPlanner';
+import DailyPlanner, { SCHEDULE as DEFAULT_SCHEDULE, ScheduleBlock } from './components/DailyPlanner';
 import Login from './components/Login';
 
+const STORAGE_KEY = 'debugme-schedule-v2';
+const TASKS_KEY = 'debugme-tasks-v1';
+const GROUPS_KEY = 'debugme-groups-v1';
+const VIEW_KEY = 'debugme-view';
+
+const loadSchedule = (): ScheduleBlock[] => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return DEFAULT_SCHEDULE;
+};
+const saveSchedule = (s: ScheduleBlock[]) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+};
+
+const loadTasks = (fallback: Task[]): Task[] => {
+  try {
+    const raw = localStorage.getItem(TASKS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return fallback;
+};
+
+const loadGroups = (): TaskGroup[] => {
+  try {
+    const raw = localStorage.getItem(GROUPS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return DEFAULT_GROUPS;
+};
+
+const DEFAULT_GROUPS: TaskGroup[] = [
+  { key: 'งานหลัก', label: 'งานหลัก', emoji: '🔥', color: 'orange', icon: 'code', size: 92 },
+  { key: 'งานรอง', label: 'งานรอง', emoji: '🏠', color: 'yellow', icon: 'home', size: 66 },
+  { key: 'เฉพาะกิจ', label: 'กิจกรรมเฉพาะกิจ', emoji: '🔧', color: 'blue', icon: 'wrench', size: 62 },
+  { key: 'พักผ่อน', label: 'พักผ่อน', emoji: '☕', color: 'green', icon: 'coffee', size: 56 },
+  { key: 'พัฒนาตัวเอง', label: 'พัฒนาตัวเอง', emoji: '🧠', color: 'amber', icon: 'brain', size: 72 },
+  { key: 'งานด่วน', label: 'งานด่วน', emoji: '⚡', color: 'rose', icon: 'file', size: 82 },
+];
+
 const RADIAL_ITEMS: { view: View; icon: string; label: string; gradient: string }[] = [
-  { view: 'dashboard', icon: 'LayoutDashboard', label: 'Home', gradient: 'from-slate-600 to-slate-800' },
-  { view: 'planner', icon: 'BookOpen', label: 'Planner', gradient: 'from-violet-500 to-purple-600' },
   { view: 'tasks', icon: 'CheckSquare', label: 'Tasks', gradient: 'from-indigo-500 to-blue-600' },
-  { view: 'habits', icon: 'Flame', label: 'Habits', gradient: 'from-amber-400 to-orange-500' },
+  { view: 'planner', icon: 'BookOpen', label: 'Planner', gradient: 'from-violet-500 to-purple-600' },
+  { view: 'dashboard', icon: 'Activity', label: 'TODAY', gradient: 'from-orange-400 to-orange-600' },
   { view: 'focus', icon: 'Timer', label: 'Focus', gradient: 'from-emerald-400 to-teal-500' },
   { view: 'analytics', icon: 'BarChart3', label: 'Analytics', gradient: 'from-sky-400 to-cyan-500' },
 ];
 
 const ICON_MAP: Record<string, React.ReactNode> = {
-  LayoutDashboard: <LayoutDashboard className="w-5 h-5" />,
+  Activity: <Activity className="w-5 h-5 text-emerald-300" />,
   BookOpen: <BookOpen className="w-5 h-5" />,
   CheckSquare: <CheckSquare className="w-5 h-5" />,
-  Flame: <Flame className="w-5 h-5" />,
+
   Timer: <Timer className="w-5 h-5" />,
   BarChart3: <BarChart3 className="w-5 h-5" />,
 };
 
 const RADIUS = 110;
-const ANGLES = [165, 135, 105, 75, 45, 15];
+const ANGLES = [150, 120, 90, 60, 30];
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState<View>('dashboard');
+  const [activeView, setActiveView] = useState<View>(() => {
+    try {
+      const saved = localStorage.getItem(VIEW_KEY);
+      if (saved && ['dashboard','tasks','focus','analytics','ai-coach','planner'].includes(saved)) return saved as View;
+    } catch {}
+    return 'dashboard';
+  });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isGearMenuOpen, setIsGearMenuOpen] = useState(false);
-  const [tasks, setTasks] = useState<Task[]>([
-    { id: '1', title: 'จัดบ้านเก่า (โซนห้องนั่งเล่น)', description: 'คัดแยกของทิ้ง/บริจาค ถูพื้น เคลียร์พื้นที่ให้โล่งเพื่อลดความรก', priority: Priority.HIGH, completed: false, dueDate: new Date().toISOString().split('T')[0], category: 'Home' },
-    { id: '2', title: 'รวบรวมเอกสารคดีความ', description: 'เตรียมเอกสารเกี่ยวกับการเงินและหนี้สินทั้งหมดเพื่อปรึกษาทนาย เตรียมรับมือคดีล้มละลาย', priority: Priority.HIGH, completed: false, dueDate: new Date().toISOString().split('T')[0], category: 'Legal' },
-    { id: '3', title: 'ซ่อมหลังคากระท่อมเล็ก', description: 'ปรับปรุงกระท่อมเพื่อใช้เป็นห้องทำงานเขียนโปรแกรมที่สงบๆ', priority: Priority.MEDIUM, completed: false, dueDate: '2026-03-01', category: 'Project' },
-    { id: '4', title: 'เขียนโค้ดโปรเจกต์ลูกค้า ก.', description: 'ทำระบบ Backend ให้เสร็จตาม Milestone 1', priority: Priority.HIGH, completed: false, dueDate: '2026-02-25', category: 'Work' },
-    { id: '5', title: 'นั่งสมาธิ 15 นาที', description: 'กำหนดลมหายใจ ลดความกังวลเรื่องคดีความและงาน', priority: Priority.MEDIUM, completed: false, dueDate: new Date().toISOString().split('T')[0], category: 'Personal' }
-  ]);
-  const [habits, setHabits] = useState<Habit[]>([
-    { id: '1', name: 'นั่งสมาธิเคลียร์จิตใจ', streak: 0, completedToday: false, color: 'bg-indigo-500' },
-    { id: '2', name: 'จัดบ้านวันละ 1 โซนเล็กๆ', streak: 0, completedToday: false, color: 'bg-amber-500' },
-    { id: '3', name: 'รดน้ำ ดูแลต้นไม้', streak: 0, completedToday: false, color: 'bg-emerald-500' },
-    { id: '4', name: 'เขียนโค้ด (Deep Work) 2 ชม.', streak: 0, completedToday: false, color: 'bg-blue-500' },
-  ]);
+  const [schedule, setSchedule] = useState<ScheduleBlock[]>(loadSchedule);
+  const [taskGroups, setTaskGroups] = useState<TaskGroup[]>(loadGroups);
+  const updateSchedule = (s: ScheduleBlock[]) => {
+    setSchedule(s);
+    saveSchedule(s);
+  };
 
+  const todayStr = new Date().toISOString().split('T')[0];
+  const defaultTasks: Task[] = [
+    { id: '1', title: 'เขียนโค้ดโปรเจกต์ลูกค้า ก.', description: 'ทำระบบ Backend ให้เสร็จตาม Milestone 1 — Deep Work Session 1-5', priority: Priority.HIGH, completed: false, dueDate: '2026-02-25', category: 'งานหลัก' },
+    { id: '2', title: 'Review PR / Issue + เตรียม Workspace', description: 'เปิดเครื่อง อ่าน PR Issue วางแผนก่อนเริ่ม Deep Work', priority: Priority.MEDIUM, completed: false, dueDate: todayStr, category: 'งานหลัก' },
+    { id: '3', title: 'Commit / Push + วางแผนพรุ่งนี้', description: 'สรุปงานวันนี้ อัปเดต repo วางแผนงานวันถัดไป', priority: Priority.MEDIUM, completed: false, dueDate: todayStr, category: 'งานหลัก' },
+    { id: '4', title: 'รดน้ำ ดูแลต้นไม้', description: 'กิจวัตรเช้า ดูแลสวนรอบบ้าน', priority: Priority.LOW, completed: false, dueDate: todayStr, category: 'งานรอง' },
+    { id: '5', title: 'จัดบ้านเก่า (โซนห้องนั่งเล่น)', description: 'คัดแยกของทิ้ง/บริจาค ถูพื้น เคลียร์พื้นที่ให้โล่ง', priority: Priority.MEDIUM, completed: false, dueDate: todayStr, category: 'งานรอง' },
+    { id: '6', title: 'ซ่อมหลังคากระท่อมเล็ก', description: 'ปรับปรุงกระท่อมเพื่อใช้เป็นห้องทำงานเขียนโปรแกรมที่สงบๆ', priority: Priority.MEDIUM, completed: false, dueDate: '2026-03-01', category: 'เฉพาะกิจ' },
+    { id: '7', title: 'พักผ่อน / เวลาส่วนตัว', description: 'ดูซีรีส์ เล่นเกม หรือพักสายตาจากจอ', priority: Priority.LOW, completed: false, dueDate: todayStr, category: 'พักผ่อน' },
+    { id: '8', title: 'นั่งสมาธิ 15 นาที', description: 'กำหนดลมหายใจ ลดความกังวลเรื่องคดีความและงาน', priority: Priority.MEDIUM, completed: false, dueDate: todayStr, category: 'พัฒนาตัวเอง' },
+    { id: '9', title: 'ออกกำลังกาย / เดินเล่น', description: 'วิ่งเบาๆ หรือเดินรอบหมู่บ้าน 30-60 นาที', priority: Priority.MEDIUM, completed: false, dueDate: todayStr, category: 'พัฒนาตัวเอง' },
+    { id: '10', title: 'Side Project / เรียนรู้สิ่งใหม่', description: 'ลองเทคโนโลยีใหม่ หรือทำโปรเจกต์ส่วนตัว — Evening Session', priority: Priority.LOW, completed: false, dueDate: todayStr, category: 'พัฒนาตัวเอง' },
+    { id: '11', title: 'อ่านหนังสือก่อนนอน', description: 'อ่านหนังสือ 30 นาที ก่อนเข้านอน', priority: Priority.LOW, completed: false, dueDate: todayStr, category: 'พัฒนาตัวเอง' },
+    { id: '12', title: 'รวบรวมเอกสารคดีความ', description: 'เตรียมเอกสารเกี่ยวกับการเงินและหนี้สินทั้งหมดเพื่อปรึกษาทนาย', priority: Priority.HIGH, completed: false, dueDate: todayStr, category: 'งานด่วน' },
+  ];
+  const [tasks, setTasks] = useState<Task[]>(() => loadTasks(defaultTasks));
+
+  // Auto-save tasks, groups & view to localStorage
+  useEffect(() => { localStorage.setItem(TASKS_KEY, JSON.stringify(tasks)); }, [tasks]);
+  useEffect(() => { localStorage.setItem(GROUPS_KEY, JSON.stringify(taskGroups)); }, [taskGroups]);
+  useEffect(() => { localStorage.setItem(VIEW_KEY, activeView); }, [activeView]);
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   useEffect(() => {
@@ -93,14 +151,13 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (activeView) {
-      case 'dashboard': return <Dashboard tasks={tasks} habits={habits} />;
-      case 'planner': return <DailyPlanner tasks={tasks} />;
-      case 'tasks': return <TaskManager tasks={tasks} setTasks={setTasks} />;
-      case 'habits': return <HabitTracker habits={habits} setHabits={setHabits} />;
+      case 'dashboard': return <Dashboard tasks={tasks} schedule={schedule} />;
+      case 'planner': return <DailyPlanner tasks={tasks} schedule={schedule} onScheduleChange={updateSchedule} taskGroups={taskGroups} />;
+      case 'tasks': return <TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} />;
       case 'focus': return <FocusTimer />;
       case 'analytics': return <Analytics tasks={tasks} />;
       case 'ai-coach': return <AICoach tasks={tasks} />;
-      default: return <Dashboard tasks={tasks} habits={habits} />;
+      default: return <Dashboard tasks={tasks} schedule={schedule} />;
     }
   };
 
@@ -146,10 +203,9 @@ const App: React.FC = () => {
           </div>
 
           <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto scrollbar-hide">
-            <NavItem icon={<LayoutDashboard />} label="Dashboard" active={activeView === 'dashboard'} onClick={() => handleNavItemClick('dashboard')} />
-            <NavItem icon={<BookOpen />} label="Daily Planner" active={activeView === 'planner'} onClick={() => handleNavItemClick('planner')} />
             <NavItem icon={<CheckSquare />} label="Tasks" active={activeView === 'tasks'} onClick={() => handleNavItemClick('tasks')} />
-            <NavItem icon={<Flame />} label="Habits" active={activeView === 'habits'} onClick={() => handleNavItemClick('habits')} />
+            <NavItem icon={<BookOpen />} label="Daily Planner" active={activeView === 'planner'} onClick={() => handleNavItemClick('planner')} />
+            <NavItem icon={<Activity />} label="TODAY" active={activeView === 'dashboard'} onClick={() => handleNavItemClick('dashboard')} />
             <NavItem icon={<Timer />} label="Focus" active={activeView === 'focus'} onClick={() => handleNavItemClick('focus')} />
             <NavItem icon={<BarChart3 />} label="Analytics" active={activeView === 'analytics'} onClick={() => handleNavItemClick('analytics')} />
             <div className="pt-6 mt-6 border-t border-slate-100/60 px-2">
@@ -186,7 +242,7 @@ const App: React.FC = () => {
               <Menu className="w-5 h-5" />
             </button>
             <h2 className="text-lg font-bold text-white capitalize tracking-tight lg:text-2xl">
-              {activeView === 'planner' ? 'Daily Planner' : activeView === 'ai-coach' ? 'AI Coach' : activeView}
+              {activeView === 'dashboard' ? 'TODAY' : activeView === 'planner' ? 'Daily Planner' : activeView === 'ai-coach' ? 'AI Coach' : activeView}
             </h2>
           </header>
         )}
