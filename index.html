@@ -1,0 +1,36 @@
+
+<!DOCTYPE html>
+<html lang="th" style="height:100%;overflow:hidden">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#059669">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Debug-Me">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Debug-Me">
+    <meta name="msapplication-TileColor" content="#059669">
+
+    <title>Debug-Me</title>
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/logo.png">
+    <link rel="icon" type="image/png" href="/logo.png">
+
+    <!-- Font loaded via index.css -->
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-emerald-50 text-slate-900" style="height:100%;overflow:hidden;margin:0">
+    <div id="root" style="height:100%"></div>
+<script type="module" src="/index.tsx"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js');
+  }
+</script>
+</body>
+</html>

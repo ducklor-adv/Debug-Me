@@ -1,0 +1,7 @@
+{
+  "name": "LifeFlow AI - Ultimate Life Planner",
+  "description": "A comprehensive life management application featuring AI-powered task prioritization, habit tracking, focus timers, and deep productivity insights using Gemini.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
