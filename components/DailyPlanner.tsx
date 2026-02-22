@@ -20,22 +20,25 @@ const SCHEDULE: ScheduleBlock[] = [
   { startHour: 5, startMin: 0, endHour: 5, endMin: 20, title: 'กิจวัตรเช้า', subtitle: 'ล้างหน้า แปรงฟัน', color: 'bg-slate-100 border-slate-200 text-slate-600', icon: 'sun' },
   { startHour: 5, startMin: 20, endHour: 5, endMin: 35, title: 'นั่งสมาธิ 15 นาที', subtitle: 'Habit', color: 'bg-violet-50 border-violet-200 text-violet-700', icon: 'brain' },
   { startHour: 5, startMin: 35, endHour: 5, endMin: 50, title: 'รดน้ำ ดูแลต้นไม้', subtitle: 'Habit', color: 'bg-emerald-50 border-emerald-200 text-emerald-700', icon: 'sun' },
-  { startHour: 5, startMin: 50, endHour: 6, endMin: 15, title: 'อาหารเช้า', color: 'bg-amber-50 border-amber-200 text-amber-700', icon: 'coffee', isBreak: true },
-  { startHour: 6, startMin: 15, endHour: 8, endMin: 15, title: 'เขียนโค้ดโปรเจกต์ลูกค้า ก.', subtitle: 'Deep Work 2 ชม. — Habit', color: 'bg-blue-50 border-blue-300 text-blue-700', icon: 'code' },
-  { startHour: 8, startMin: 15, endHour: 8, endMin: 30, title: 'พัก', color: 'bg-slate-50 border-slate-200 text-slate-400', icon: 'coffee', isBreak: true },
-  { startHour: 8, startMin: 30, endHour: 10, endMin: 0, title: 'รวบรวมเอกสารคดีความ', subtitle: 'Legal — HIGH', color: 'bg-rose-50 border-rose-300 text-rose-700', icon: 'file' },
-  { startHour: 10, startMin: 0, endHour: 10, endMin: 15, title: 'พัก', color: 'bg-slate-50 border-slate-200 text-slate-400', icon: 'coffee', isBreak: true },
-  { startHour: 10, startMin: 15, endHour: 11, endMin: 30, title: 'จัดบ้านเก่า โซนห้องนั่งเล่น', subtitle: 'Home — Habit', color: 'bg-amber-50 border-amber-300 text-amber-700', icon: 'home' },
-  { startHour: 11, startMin: 30, endHour: 12, endMin: 30, title: 'อาหารกลางวัน + พักผ่อน', color: 'bg-amber-50 border-amber-200 text-amber-700', icon: 'coffee', isBreak: true },
-  { startHour: 12, startMin: 30, endHour: 14, endMin: 0, title: 'ซ่อมหลังคากระท่อมเล็ก', subtitle: 'Project — MEDIUM', color: 'bg-orange-50 border-orange-300 text-orange-700', icon: 'wrench' },
-  { startHour: 14, startMin: 0, endHour: 14, endMin: 15, title: 'พัก + ของว่าง', color: 'bg-slate-50 border-slate-200 text-slate-400', icon: 'coffee', isBreak: true },
-  { startHour: 14, startMin: 15, endHour: 15, endMin: 45, title: 'เขียนโค้ดต่อ / Debug / Review', subtitle: 'Work', color: 'bg-blue-50 border-blue-300 text-blue-700', icon: 'code' },
-  { startHour: 15, startMin: 45, endHour: 16, endMin: 0, title: 'พัก', color: 'bg-slate-50 border-slate-200 text-slate-400', icon: 'coffee', isBreak: true },
-  { startHour: 16, startMin: 0, endHour: 17, endMin: 0, title: 'งานเบา', subtitle: 'ตอบข้อความ วางแผนพรุ่งนี้', color: 'bg-slate-100 border-slate-200 text-slate-600', icon: 'file' },
-  { startHour: 17, startMin: 0, endHour: 18, endMin: 0, title: 'ออกกำลังกาย / เดินเล่น', subtitle: 'Personal', color: 'bg-green-50 border-green-300 text-green-700', icon: 'gym' },
+  { startHour: 5, startMin: 50, endHour: 6, endMin: 30, title: 'อาหารเช้า', color: 'bg-amber-50 border-amber-200 text-amber-700', icon: 'coffee', isBreak: true },
+  { startHour: 6, startMin: 30, endHour: 7, endMin: 30, title: 'ออกกำลังกาย / เดินเล่น', subtitle: 'Personal', color: 'bg-green-50 border-green-300 text-green-700', icon: 'gym' },
+  { startHour: 7, startMin: 30, endHour: 8, endMin: 0, title: 'อาบน้ำ เตรียมตัว', color: 'bg-slate-100 border-slate-200 text-slate-600', icon: 'sun' },
+  { startHour: 8, startMin: 0, endHour: 9, endMin: 0, title: 'เตรียม Workspace + Review Plan', subtitle: 'เปิดเครื่อง อ่าน PR / Issue', color: 'bg-slate-100 border-slate-200 text-slate-600', icon: 'file' },
+  { startHour: 9, startMin: 0, endHour: 10, endMin: 30, title: 'Coding — Deep Work Session 1', subtitle: 'โฟกัสสูง ไม่เปิดแชท', color: 'bg-blue-50 border-blue-300 text-blue-700', icon: 'code' },
+  { startHour: 10, startMin: 30, endHour: 10, endMin: 45, title: 'พัก', color: 'bg-slate-50 border-slate-200 text-slate-400', icon: 'coffee', isBreak: true },
+  { startHour: 10, startMin: 45, endHour: 12, endMin: 0, title: 'Coding — Deep Work Session 2', subtitle: 'ต่อจาก Session 1', color: 'bg-blue-50 border-blue-300 text-blue-700', icon: 'code' },
+  { startHour: 12, startMin: 0, endHour: 13, endMin: 0, title: 'อาหารกลางวัน + พักผ่อน', color: 'bg-amber-50 border-amber-200 text-amber-700', icon: 'coffee', isBreak: true },
+  { startHour: 13, startMin: 0, endHour: 14, endMin: 30, title: 'Coding — Session 3', subtitle: 'Implement / Build', color: 'bg-blue-50 border-blue-300 text-blue-700', icon: 'code' },
+  { startHour: 14, startMin: 30, endHour: 14, endMin: 45, title: 'พัก', color: 'bg-slate-50 border-slate-200 text-slate-400', icon: 'coffee', isBreak: true },
+  { startHour: 14, startMin: 45, endHour: 15, endMin: 45, title: 'Coding — Session 4', subtitle: 'Debug / Fix / Test', color: 'bg-blue-50 border-blue-300 text-blue-700', icon: 'code' },
+  { startHour: 15, startMin: 45, endHour: 16, endMin: 0, title: 'พัก + ของว่าง', color: 'bg-slate-50 border-slate-200 text-slate-400', icon: 'coffee', isBreak: true },
+  { startHour: 16, startMin: 0, endHour: 17, endMin: 0, title: 'Coding — Session 5', subtitle: 'Review / Deploy / Wrap up', color: 'bg-blue-50 border-blue-300 text-blue-700', icon: 'code' },
+  { startHour: 17, startMin: 0, endHour: 18, endMin: 0, title: 'พักผ่อน / เวลาส่วนตัว', color: 'bg-indigo-50 border-indigo-200 text-indigo-600', icon: 'moon' },
   { startHour: 18, startMin: 0, endHour: 19, endMin: 0, title: 'อาหารเย็น', color: 'bg-amber-50 border-amber-200 text-amber-700', icon: 'coffee', isBreak: true },
-  { startHour: 19, startMin: 0, endHour: 20, endMin: 30, title: 'เวลาส่วนตัว / พักผ่อน', color: 'bg-indigo-50 border-indigo-200 text-indigo-600', icon: 'moon' },
-  { startHour: 20, startMin: 30, endHour: 21, endMin: 30, title: 'อ่านหนังสือ / เรียนรู้สิ่งใหม่', subtitle: 'Personal', color: 'bg-purple-50 border-purple-200 text-purple-700', icon: 'book' },
+  { startHour: 19, startMin: 0, endHour: 20, endMin: 0, title: 'Coding — Evening Session 1', subtitle: 'Side Project / เรียนรู้สิ่งใหม่', color: 'bg-indigo-50 border-indigo-300 text-indigo-700', icon: 'code' },
+  { startHour: 20, startMin: 0, endHour: 20, endMin: 15, title: 'พัก', color: 'bg-slate-50 border-slate-200 text-slate-400', icon: 'coffee', isBreak: true },
+  { startHour: 20, startMin: 15, endHour: 21, endMin: 0, title: 'Coding — Evening Session 2', subtitle: 'Commit / Push / วางแผนพรุ่งนี้', color: 'bg-indigo-50 border-indigo-300 text-indigo-700', icon: 'code' },
+  { startHour: 21, startMin: 0, endHour: 21, endMin: 30, title: 'อ่านหนังสือ / พักผ่อน', color: 'bg-purple-50 border-purple-200 text-purple-700', icon: 'book' },
   { startHour: 21, startMin: 30, endHour: 22, endMin: 0, title: 'เตรียมตัวนอน', color: 'bg-slate-100 border-slate-200 text-slate-500', icon: 'moon' },
 ];
 
@@ -205,13 +208,13 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks }) => {
             <h3 className="text-lg font-bold text-slate-800 mb-4">สรุปเวลา</h3>
             <div className="space-y-2.5">
               {[
-                { label: 'เขียนโค้ด', time: '3.5 ชม.', color: 'bg-blue-100 text-blue-600' },
-                { label: 'เอกสารคดีความ', time: '1.5 ชม.', color: 'bg-rose-100 text-rose-600' },
-                { label: 'จัดบ้าน', time: '1.25 ชม.', color: 'bg-amber-100 text-amber-600' },
-                { label: 'ซ่อมกระท่อม', time: '1.5 ชม.', color: 'bg-orange-100 text-orange-600' },
+                { label: 'Coding (เช้า)', time: '3 ชม.', color: 'bg-blue-100 text-blue-600' },
+                { label: 'Coding (บ่าย)', time: '4 ชม.', color: 'bg-blue-100 text-blue-600' },
+                { label: 'Coding (ค่ำ)', time: '2 ชม.', color: 'bg-indigo-100 text-indigo-600' },
                 { label: 'สมาธิ + ต้นไม้', time: '30 นาที', color: 'bg-violet-100 text-violet-600' },
                 { label: 'ออกกำลังกาย', time: '1 ชม.', color: 'bg-green-100 text-green-600' },
-                { label: 'พักผ่อน + ส่วนตัว', time: '3.5 ชม.', color: 'bg-indigo-100 text-indigo-600' },
+                { label: 'เตรียมงาน + Review', time: '1 ชม.', color: 'bg-slate-200 text-slate-600' },
+                { label: 'พักผ่อน + ส่วนตัว', time: '2.5 ชม.', color: 'bg-indigo-100 text-indigo-600' },
               ].map((item, i) => (
                 <div key={i} className="flex items-center justify-between px-3 py-2.5 bg-white rounded-xl border border-stone-100">
                   <div className="flex items-center gap-2.5">
@@ -225,23 +228,23 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks }) => {
           </div>
 
           <div className="mb-8">
-            <h4 className="text-xs uppercase tracking-[0.15em] font-black text-slate-500 mb-4">หลักการจัดตาราง</h4>
+            <h4 className="text-xs uppercase tracking-[0.15em] font-black text-slate-500 mb-4">Coding Schedule</h4>
             <div className="space-y-3 text-sm text-slate-600">
               <div className="flex items-start gap-2.5 p-3 bg-blue-50/50 rounded-xl">
-                <Sun className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-                <span><strong>เช้า = สมอง</strong> โค้ด Deep Work ตอนสดใส</span>
+                <Code className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                <span><strong>09:00-12:00</strong> Deep Work — โฟกัสสูง 3 ชม.</span>
               </div>
-              <div className="flex items-start gap-2.5 p-3 bg-rose-50/50 rounded-xl">
-                <FileText className="w-4 h-4 text-rose-500 mt-0.5 shrink-0" />
-                <span><strong>สาย = เอกสาร</strong> ยังมีสมาธิจัดการเรื่องสำคัญ</span>
-              </div>
-              <div className="flex items-start gap-2.5 p-3 bg-amber-50/50 rounded-xl">
-                <Wrench className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-                <span><strong>บ่าย = ร่างกาย</strong> จัดบ้าน ซ่อมหลังคา</span>
+              <div className="flex items-start gap-2.5 p-3 bg-blue-50/50 rounded-xl">
+                <Code className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                <span><strong>13:00-17:00</strong> Build & Ship — หลัก 4 ชม.</span>
               </div>
               <div className="flex items-start gap-2.5 p-3 bg-indigo-50/50 rounded-xl">
                 <Moon className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
-                <span><strong>เย็น = ผ่อนคลาย</strong> ลดความเครียด</span>
+                <span><strong>19:00-21:00</strong> Evening — เรียนรู้ + Side Project</span>
+              </div>
+              <div className="mt-3 p-3 bg-emerald-50/50 rounded-xl text-center">
+                <span className="text-lg font-black text-emerald-600">9 ชม.</span>
+                <span className="text-xs text-slate-500 ml-2">Coding ต่อวัน</span>
               </div>
             </div>
           </div>
