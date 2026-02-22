@@ -1,6 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Task, Habit } from '../types';
-import { CheckCircle2, Circle, Trophy, Zap, Flame, CheckCircle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, ChevronRight } from 'lucide-react';
+import { CheckCircle2, Circle, Trophy, Zap, Flame, CheckCircle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, ChevronRight, Trash2, Square, Image } from 'lucide-react';
+
+interface Attachment {
+  type: 'photo' | 'video' | 'audio' | 'phone' | 'contact' | 'gps';
+  label: string;
+  value: string;
+  preview?: string;
+}
 
 interface DashboardProps {
   tasks: Task[];
@@ -10,6 +17,19 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ tasks, habits }) => {
   const [showDoneModal, setShowDoneModal] = useState(false);
   const [showEditView, setShowEditView] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const [showPhoneInput, setShowPhoneInput] = useState(false);
+  const [showContactInput, setShowContactInput] = useState(false);
+  const [phoneValue, setPhoneValue] = useState('');
+  const [contactValue, setContactValue] = useState('');
+  const [gpsLoading, setGpsLoading] = useState(false);
+
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   const completedTasksCount = tasks.filter(t => t.completed).length;
   const activeHabits = habits.filter(h => h.completedToday).length;
@@ -28,6 +48,109 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, habits }) => {
   const handleSaveDetails = () => {
     setShowDoneModal(false);
     setShowEditView(true);
+  };
+
+  const resetEditState = () => {
+    setShowEditView(false);
+    setNotes('');
+    setAttachments([]);
+    setShowPhoneInput(false);
+    setShowContactInput(false);
+    setPhoneValue('');
+    setContactValue('');
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, type: 'photo' | 'video') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setAttachments(prev => [...prev, {
+      type,
+      label: type === 'photo' ? `รูปภาพ: ${file.name}` : `วิดีโอ: ${file.name}`,
+      value: file.name,
+      preview: type === 'photo' ? url : undefined,
+    }]);
+    e.target.value = '';
+  };
+
+  const handleStartRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        const now = new Date();
+        const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+        setAttachments(prev => [...prev, {
+          type: 'audio',
+          label: `เสียงบันทึก ${timeStr}`,
+          value: url,
+        }]);
+        stream.getTracks().forEach(t => t.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch {
+      alert('ไม่สามารถเข้าถึงไมโครโฟนได้ กรุณาอนุญาตการใช้งาน');
+    }
+  };
+
+  const handleStopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    setIsRecording(false);
+  };
+
+  const handleAddPhone = () => {
+    if (phoneValue.trim()) {
+      setAttachments(prev => [...prev, { type: 'phone', label: `เบอร์โทร: ${phoneValue}`, value: phoneValue }]);
+      setPhoneValue('');
+      setShowPhoneInput(false);
+    }
+  };
+
+  const handleAddContact = () => {
+    if (contactValue.trim()) {
+      setAttachments(prev => [...prev, { type: 'contact', label: `ผู้ติดต่อ: ${contactValue}`, value: contactValue }]);
+      setContactValue('');
+      setShowContactInput(false);
+    }
+  };
+
+  const handleGetGPS = () => {
+    if (!navigator.geolocation) {
+      alert('เบราว์เซอร์ไม่รองรับ GPS');
+      return;
+    }
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setAttachments(prev => [...prev, {
+          type: 'gps',
+          label: `พิกัด: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+          value: `${latitude},${longitude}`,
+        }]);
+        setGpsLoading(false);
+      },
+      () => {
+        alert('ไม่สามารถดึงพิกัด GPS ได้ กรุณาอนุญาตการใช้งาน');
+        setGpsLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   };
 
   const priorityStyle = (p: string) => {
@@ -68,37 +191,90 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, habits }) => {
             <div className="p-6 overflow-y-auto flex-1 space-y-6">
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2 block">Notes / รายละเอียดเพิ่มเติม</label>
-                <textarea className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 h-28 resize-none shadow-inner" placeholder="พิมพ์รายละเอียดที่เจอมา..."></textarea>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 h-28 resize-none shadow-inner"
+                  placeholder="พิมพ์รายละเอียดที่เจอมา..."
+                />
               </div>
 
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-3 block">Quick Attachments / เครื่องมือด่วน</label>
+                <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFileSelect(e, 'photo')} />
+                <input ref={videoInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={(e) => handleFileSelect(e, 'video')} />
+
                 <div className="grid grid-cols-3 gap-3">
-                  <button className="flex flex-col items-center justify-center gap-2 py-4 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-200 text-slate-600 hover:text-emerald-600 rounded-xl border border-emerald-100 transition-all active:scale-95 shadow-sm">
+                  <button onClick={() => photoInputRef.current?.click()} className="flex flex-col items-center justify-center gap-2 py-4 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-200 text-slate-600 hover:text-emerald-600 rounded-xl border border-emerald-100 transition-all active:scale-95 shadow-sm">
                     <Camera className="w-6 h-6" /> <span className="text-[10px] font-bold">ถ่ายรูป</span>
                   </button>
-                  <button className="flex flex-col items-center justify-center gap-2 py-4 bg-slate-50 hover:bg-rose-50 hover:border-rose-200 text-slate-600 hover:text-rose-600 rounded-xl border border-emerald-100 transition-all active:scale-95 shadow-sm">
-                    <Mic className="w-6 h-6" /> <span className="text-[10px] font-bold">อัดเสียง</span>
+                  <button
+                    onClick={isRecording ? handleStopRecording : handleStartRecording}
+                    className={`flex flex-col items-center justify-center gap-2 py-4 rounded-xl border transition-all active:scale-95 shadow-sm ${isRecording ? 'bg-rose-100 border-rose-300 text-rose-600 animate-pulse' : 'bg-slate-50 hover:bg-rose-50 hover:border-rose-200 text-slate-600 hover:text-rose-600 border-emerald-100'}`}
+                  >
+                    {isRecording ? <Square className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                    <span className="text-[10px] font-bold">{isRecording ? 'หยุดอัด' : 'อัดเสียง'}</span>
                   </button>
-                  <button className="flex flex-col items-center justify-center gap-2 py-4 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-200 text-slate-600 hover:text-emerald-600 rounded-xl border border-emerald-100 transition-all active:scale-95 shadow-sm">
+                  <button onClick={() => videoInputRef.current?.click()} className="flex flex-col items-center justify-center gap-2 py-4 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-200 text-slate-600 hover:text-emerald-600 rounded-xl border border-emerald-100 transition-all active:scale-95 shadow-sm">
                     <Video className="w-6 h-6" /> <span className="text-[10px] font-bold">วิดีโอ</span>
                   </button>
-                  <button className="flex flex-col items-center justify-center gap-2 py-4 bg-slate-50 hover:bg-sky-50 hover:border-sky-200 text-slate-600 hover:text-sky-600 rounded-xl border border-emerald-100 transition-all active:scale-95 shadow-sm">
+                  <button onClick={() => setShowPhoneInput(!showPhoneInput)} className={`flex flex-col items-center justify-center gap-2 py-4 rounded-xl border transition-all active:scale-95 shadow-sm ${showPhoneInput ? 'bg-sky-50 border-sky-300 text-sky-600' : 'bg-slate-50 hover:bg-sky-50 hover:border-sky-200 text-slate-600 hover:text-sky-600 border-emerald-100'}`}>
                     <Phone className="w-6 h-6" /> <span className="text-[10px] font-bold">เบอร์โทร</span>
                   </button>
-                  <button className="flex flex-col items-center justify-center gap-2 py-4 bg-slate-50 hover:bg-violet-50 hover:border-violet-200 text-slate-600 hover:text-violet-600 rounded-xl border border-emerald-100 transition-all active:scale-95 shadow-sm">
+                  <button onClick={() => setShowContactInput(!showContactInput)} className={`flex flex-col items-center justify-center gap-2 py-4 rounded-xl border transition-all active:scale-95 shadow-sm ${showContactInput ? 'bg-violet-50 border-violet-300 text-violet-600' : 'bg-slate-50 hover:bg-violet-50 hover:border-violet-200 text-slate-600 hover:text-violet-600 border-emerald-100'}`}>
                     <UserIcon className="w-6 h-6" /> <span className="text-[10px] font-bold">ผู้ติดต่อ</span>
                   </button>
-                  <button className="flex flex-col items-center justify-center gap-2 py-4 bg-slate-50 hover:bg-amber-50 hover:border-amber-200 text-slate-600 hover:text-amber-600 rounded-xl border border-emerald-100 transition-all active:scale-95 shadow-sm">
-                    <MapPin className="w-6 h-6" /> <span className="text-[10px] font-bold">พิกัด GPS</span>
+                  <button onClick={handleGetGPS} disabled={gpsLoading} className={`flex flex-col items-center justify-center gap-2 py-4 bg-slate-50 hover:bg-amber-50 hover:border-amber-200 text-slate-600 hover:text-amber-600 rounded-xl border border-emerald-100 transition-all active:scale-95 shadow-sm ${gpsLoading ? 'opacity-50' : ''}`}>
+                    <MapPin className={`w-6 h-6 ${gpsLoading ? 'animate-pulse' : ''}`} /> <span className="text-[10px] font-bold">{gpsLoading ? 'กำลังหา...' : 'พิกัด GPS'}</span>
                   </button>
                 </div>
+
+                {showPhoneInput && (
+                  <div className="mt-3 flex gap-2">
+                    <input type="tel" value={phoneValue} onChange={(e) => setPhoneValue(e.target.value)} placeholder="0812345678" className="flex-1 bg-slate-50 border border-sky-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" onKeyDown={(e) => e.key === 'Enter' && handleAddPhone()} />
+                    <button onClick={handleAddPhone} className="px-4 py-2.5 bg-sky-500 text-white rounded-xl text-sm font-bold active:scale-95">เพิ่ม</button>
+                  </div>
+                )}
+
+                {showContactInput && (
+                  <div className="mt-3 flex gap-2">
+                    <input type="text" value={contactValue} onChange={(e) => setContactValue(e.target.value)} placeholder="ชื่อผู้ติดต่อ" className="flex-1 bg-slate-50 border border-violet-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" onKeyDown={(e) => e.key === 'Enter' && handleAddContact()} />
+                    <button onClick={handleAddContact} className="px-4 py-2.5 bg-violet-500 text-white rounded-xl text-sm font-bold active:scale-95">เพิ่ม</button>
+                  </div>
+                )}
               </div>
+
+              {attachments.length > 0 && (
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-3 block">ไฟล์แนบ ({attachments.length})</label>
+                  <div className="space-y-2">
+                    {attachments.map((att, i) => (
+                      <div key={i} className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${att.type === 'photo' ? 'bg-emerald-100 text-emerald-600' : att.type === 'audio' ? 'bg-rose-100 text-rose-600' : att.type === 'video' ? 'bg-emerald-100 text-emerald-600' : att.type === 'phone' ? 'bg-sky-100 text-sky-600' : att.type === 'contact' ? 'bg-violet-100 text-violet-600' : 'bg-amber-100 text-amber-600'}`}>
+                          {att.type === 'photo' && <Image className="w-4 h-4" />}
+                          {att.type === 'audio' && <Mic className="w-4 h-4" />}
+                          {att.type === 'video' && <Video className="w-4 h-4" />}
+                          {att.type === 'phone' && <Phone className="w-4 h-4" />}
+                          {att.type === 'contact' && <UserIcon className="w-4 h-4" />}
+                          {att.type === 'gps' && <MapPin className="w-4 h-4" />}
+                        </div>
+                        {att.preview && <img src={att.preview} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />}
+                        {att.type === 'audio' && <audio src={att.value} controls className="h-8 flex-1 min-w-0" />}
+                        <span className="text-sm text-slate-700 font-medium truncate flex-1">{att.label}</span>
+                        {att.type === 'gps' && <a href={`https://maps.google.com/?q=${att.value}`} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-600 font-bold shrink-0">แผนที่</a>}
+                        <button onClick={() => removeAttachment(i)} className="p-1.5 hover:bg-rose-50 rounded-lg text-slate-400 hover:text-rose-500 transition-colors shrink-0">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3 shrink-0">
-              <button onClick={() => setShowEditView(false)} className="px-5 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold text-sm rounded-xl transition-colors">ย้อนกลับ</button>
-              <button onClick={() => { setShowEditView(false); }} className="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-300 transition-colors">
+              <button onClick={resetEditState} className="px-5 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold text-sm rounded-xl transition-colors">ย้อนกลับ</button>
+              <button onClick={resetEditState} className="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-300 transition-colors">
                 บันทึกข้อมูล & สำเร็จ
               </button>
             </div>
