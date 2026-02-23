@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from './firebase';
 import {
   Activity,
@@ -11,83 +11,98 @@ import {
   Menu,
   X,
   BookOpen,
-  Settings,
   Download,
   Upload,
-  Sheet,
   Database,
-  ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  Cloud,
 } from 'lucide-react';
-import { View, Task, Priority, TaskGroup, DailyRecord } from './types';
-import { addDailyRecord, getRecordsByDate, getRecordCount } from './lib/dailyRecordDB';
-import { syncToGoogleSheets, storeGoogleToken, getStoredToken, getSheetUrl } from './lib/googleSheetsSync';
+import { View, Task, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates } from './types';
+import { subscribeAppData, saveAppData, addDailyRecordFS, getDailyRecordsByDate, getDailyRecordCount } from './lib/firestoreDB';
 import Dashboard from './components/Dashboard';
 import TaskManager from './components/TaskManager';
 import FocusTimer from './components/FocusTimer';
 import Analytics from './components/Analytics';
 import AICoach from './components/AICoach';
-import DailyPlanner, { SCHEDULE as DEFAULT_SCHEDULE, ScheduleBlock } from './components/DailyPlanner';
+import DailyPlanner from './components/DailyPlanner';
 import Login from './components/Login';
 
-// ===== localStorage keys =====
-const STORAGE_KEY = 'debugme-schedule-v2';
-const TASKS_KEY = 'debugme-tasks-v1';
-const GROUPS_KEY = 'debugme-groups-v1';
 const VIEW_KEY = 'debugme-view';
 
-const loadLocalSchedule = (): ScheduleBlock[] => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return DEFAULT_SCHEDULE;
-};
-
-const loadLocalTasks = (fallback: Task[]): Task[] => {
-  try {
-    const raw = localStorage.getItem(TASKS_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return fallback;
-};
-
-const loadLocalGroups = (): TaskGroup[] => {
-  try {
-    const raw = localStorage.getItem(GROUPS_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return DEFAULT_GROUPS;
-};
-
 const DEFAULT_GROUPS: TaskGroup[] = [
-  { key: 'งานหลัก', label: 'งานหลัก', emoji: '🔥', color: 'orange', icon: 'code', size: 92 },
-  { key: 'งานรอง', label: 'งานรอง', emoji: '🏠', color: 'yellow', icon: 'home', size: 66 },
-  { key: 'เฉพาะกิจ', label: 'กิจกรรมเฉพาะกิจ', emoji: '🔧', color: 'blue', icon: 'wrench', size: 62 },
-  { key: 'พักผ่อน', label: 'พักผ่อน', emoji: '☕', color: 'green', icon: 'coffee', size: 56 },
+  { key: 'กิจวัตร', label: 'กิจวัตร', emoji: '🌅', color: 'teal', icon: 'sun', size: 68 },
+  { key: 'งานหลัก', label: 'งานหลัก', emoji: '💼', color: 'orange', icon: 'code', size: 92 },
+  { key: 'งานบ้าน', label: 'งานบ้าน', emoji: '🏠', color: 'yellow', icon: 'home', size: 66 },
   { key: 'พัฒนาตัวเอง', label: 'พัฒนาตัวเอง', emoji: '🧠', color: 'amber', icon: 'brain', size: 72 },
+  { key: 'สุขภาพ', label: 'สุขภาพ', emoji: '💪', color: 'green', icon: 'heart', size: 62 },
+  { key: 'ครอบครัว', label: 'ครอบครัว', emoji: '👨‍👩‍👧', color: 'violet', icon: 'users', size: 62 },
   { key: 'งานด่วน', label: 'งานด่วน', emoji: '⚡', color: 'rose', icon: 'file', size: 82 },
-  { key: 'กิจวัตร', label: 'กิจวัตรประจำวัน', emoji: '🌅', color: 'teal', icon: 'sun', size: 68 },
+  { key: 'พักผ่อน', label: 'พักผ่อน', emoji: '☕', color: 'cyan', icon: 'coffee', size: 56 },
+  { key: 'ธุระส่วนตัว', label: 'ธุระส่วนตัว', emoji: '🔧', color: 'blue', icon: 'wrench', size: 62 },
+  // Legacy groups (kept for existing users' tasks)
+  { key: 'งานรอง', label: 'งานรอง', emoji: '🏠', color: 'yellow', icon: 'home', size: 66 },
+  { key: 'เฉพาะกิจ', label: 'เฉพาะกิจ', emoji: '🔧', color: 'blue', icon: 'wrench', size: 62 },
 ];
 
-const RADIAL_ITEMS: { view: View; icon: string; label: string; gradient: string }[] = [
-  { view: 'tasks', icon: 'CheckSquare', label: 'Tasks', gradient: 'from-indigo-500 to-blue-600' },
-  { view: 'planner', icon: 'BookOpen', label: 'Planner', gradient: 'from-violet-500 to-purple-600' },
-  { view: 'dashboard', icon: 'Activity', label: 'TODAY', gradient: 'from-orange-400 to-orange-600' },
-  { view: 'focus', icon: 'Timer', label: 'Focus', gradient: 'from-emerald-400 to-teal-500' },
-  { view: 'analytics', icon: 'BarChart3', label: 'Analytics', gradient: 'from-sky-400 to-cyan-500' },
+const DEFAULT_MILESTONES: Milestone[] = [
+  { id: 'ms-1', title: 'ตื่นนอน', emoji: '🌅', time: '05:00', icon: 'sun', color: 'bg-amber-50 border-amber-300 text-amber-700' },
+  { id: 'ms-2', title: 'กินข้าว (เช้า)', emoji: '🍚', time: '09:00', icon: 'coffee', color: 'bg-orange-50 border-orange-300 text-orange-700' },
+  { id: 'ms-3', title: 'กินข้าว (เที่ยง)', emoji: '🍚', time: '12:00', icon: 'coffee', color: 'bg-orange-50 border-orange-300 text-orange-700' },
+  { id: 'ms-4', title: 'กินข้าว (เย็น)', emoji: '🍚', time: '19:00', icon: 'coffee', color: 'bg-orange-50 border-orange-300 text-orange-700' },
+  { id: 'ms-5', title: 'นอน', emoji: '🌙', time: '22:00', icon: 'moon', color: 'bg-indigo-50 border-indigo-300 text-indigo-700' },
 ];
 
-const ICON_MAP: Record<string, React.ReactNode> = {
-  Activity: <Activity className="w-5 h-5 text-emerald-300" />,
-  BookOpen: <BookOpen className="w-5 h-5" />,
-  CheckSquare: <CheckSquare className="w-5 h-5" />,
-  Timer: <Timer className="w-5 h-5" />,
-  BarChart3: <BarChart3 className="w-5 h-5" />,
+const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
+  workday: [
+    { id: 'wd-1',  startTime: '05:00', endTime: '06:00', groupKey: 'กิจวัตร' },
+    { id: 'wd-2',  startTime: '06:00', endTime: '07:00', groupKey: 'สุขภาพ' },
+    { id: 'wd-3',  startTime: '07:00', endTime: '08:00', groupKey: 'กิจวัตร' },
+    { id: 'wd-4',  startTime: '08:00', endTime: '12:00', groupKey: 'งานหลัก' },
+    { id: 'wd-5',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },
+    { id: 'wd-6',  startTime: '13:00', endTime: '17:00', groupKey: 'งานหลัก' },
+    { id: 'wd-7',  startTime: '17:00', endTime: '18:00', groupKey: 'ธุระส่วนตัว' },
+    { id: 'wd-8',  startTime: '18:00', endTime: '19:00', groupKey: 'งานบ้าน' },
+    { id: 'wd-9',  startTime: '19:00', endTime: '20:00', groupKey: 'ครอบครัว' },
+    { id: 'wd-10', startTime: '20:00', endTime: '21:00', groupKey: 'พัฒนาตัวเอง' },
+    { id: 'wd-11', startTime: '21:00', endTime: '22:00', groupKey: 'พักผ่อน' },
+  ],
+  saturday: [
+    { id: 'sat-1',  startTime: '05:00', endTime: '06:30', groupKey: 'กิจวัตร' },
+    { id: 'sat-2',  startTime: '06:30', endTime: '07:30', groupKey: 'สุขภาพ' },
+    { id: 'sat-3',  startTime: '07:30', endTime: '08:30', groupKey: 'กิจวัตร' },
+    { id: 'sat-4',  startTime: '08:30', endTime: '10:30', groupKey: 'งานบ้าน' },
+    { id: 'sat-5',  startTime: '10:30', endTime: '12:00', groupKey: 'ธุระส่วนตัว' },
+    { id: 'sat-6',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },
+    { id: 'sat-7',  startTime: '13:00', endTime: '15:00', groupKey: 'พัฒนาตัวเอง' },
+    { id: 'sat-8',  startTime: '15:00', endTime: '17:00', groupKey: 'ครอบครัว' },
+    { id: 'sat-9',  startTime: '17:00', endTime: '18:00', groupKey: 'สุขภาพ' },
+    { id: 'sat-10', startTime: '18:00', endTime: '19:30', groupKey: 'พักผ่อน' },
+    { id: 'sat-11', startTime: '19:30', endTime: '21:00', groupKey: 'พักผ่อน' },
+    { id: 'sat-12', startTime: '21:00', endTime: '22:00', groupKey: 'กิจวัตร' },
+  ],
+  sunday: [
+    { id: 'sun-1',  startTime: '05:00', endTime: '07:00', groupKey: 'กิจวัตร' },
+    { id: 'sun-2',  startTime: '07:00', endTime: '08:00', groupKey: 'สุขภาพ' },
+    { id: 'sun-3',  startTime: '08:00', endTime: '09:00', groupKey: 'กิจวัตร' },
+    { id: 'sun-4',  startTime: '09:00', endTime: '11:00', groupKey: 'ครอบครัว' },
+    { id: 'sun-5',  startTime: '11:00', endTime: '12:00', groupKey: 'ธุระส่วนตัว' },
+    { id: 'sun-6',  startTime: '12:00', endTime: '13:30', groupKey: 'พักผ่อน' },
+    { id: 'sun-7',  startTime: '13:30', endTime: '15:00', groupKey: 'พักผ่อน' },
+    { id: 'sun-8',  startTime: '15:00', endTime: '17:00', groupKey: 'พัฒนาตัวเอง' },
+    { id: 'sun-9',  startTime: '17:00', endTime: '18:00', groupKey: 'ครอบครัว' },
+    { id: 'sun-10', startTime: '18:00', endTime: '19:00', groupKey: 'กิจวัตร' },
+    { id: 'sun-11', startTime: '19:00', endTime: '20:30', groupKey: 'พักผ่อน' },
+    { id: 'sun-12', startTime: '20:30', endTime: '22:00', groupKey: 'กิจวัตร' },
+  ],
 };
 
-const RADIUS = 110;
-const ANGLES = [150, 120, 90, 60, 30];
+const NAV_ITEMS: { view: View; icon: string; label: string }[] = [
+  { view: 'dashboard', icon: 'Activity', label: 'TODAY' },
+  { view: 'tasks', icon: 'CheckSquare', label: 'Tasks' },
+  { view: 'planner', icon: 'BookOpen', label: 'Planner' },
+  { view: 'focus', icon: 'Timer', label: 'Focus' },
+  { view: 'analytics', icon: 'BarChart3', label: 'Stats' },
+];
 
 // Merge any missing default groups into loaded groups
 const mergeDefaultGroups = (loaded: TaskGroup[]): TaskGroup[] => {
@@ -95,6 +110,27 @@ const mergeDefaultGroups = (loaded: TaskGroup[]): TaskGroup[] => {
   const missing = DEFAULT_GROUPS.filter(g => !existingKeys.has(g.key));
   return missing.length > 0 ? [...loaded, ...missing] : loaded;
 };
+
+// Merge any missing default tasks into loaded tasks (by id prefix 'd-')
+const mergeDefaultTasks = (loaded: Task[], defaults: Task[]): Task[] => {
+  const existingIds = new Set(loaded.map(t => t.id));
+  const missing = defaults.filter(t => !existingIds.has(t.id));
+  return missing.length > 0 ? [...loaded, ...missing] : loaded;
+};
+
+// Migrate old task format (dueDate) to new (startDate/endDate/startTime/endTime)
+function migrateTask(t: any): Task {
+  if (t.dueDate && !t.startDate) {
+    return {
+      ...t,
+      startDate: t.dueDate,
+      endDate: t.dueDate,
+      startTime: '09:00',
+      endTime: '10:00',
+    };
+  }
+  return t as Task;
+}
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -107,149 +143,206 @@ const App: React.FC = () => {
     return 'dashboard';
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isGearMenuOpen, setIsGearMenuOpen] = useState(false);
 
   // Daily records state
   const [todayRecords, setTodayRecords] = useState<DailyRecord[]>([]);
   const [totalRecordCount, setTotalRecordCount] = useState(0);
-  const [sheetsSyncStatus, setSheetsSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
-  const [sheetsSyncMsg, setSheetsSyncMsg] = useState('');
 
   const todayStr = new Date().toISOString().split('T')[0];
   const defaultTasks: Task[] = [
-    { id: '1', title: 'เขียนโค้ดโปรเจกต์ลูกค้า ก.', description: 'ทำระบบ Backend ให้เสร็จตาม Milestone 1 — Deep Work Session 1-5', priority: Priority.HIGH, completed: false, dueDate: '2026-02-25', category: 'งานหลัก' },
-    { id: '2', title: 'Review PR / Issue + เตรียม Workspace', description: 'เปิดเครื่อง อ่าน PR Issue วางแผนก่อนเริ่ม Deep Work', priority: Priority.MEDIUM, completed: false, dueDate: todayStr, category: 'งานหลัก' },
-    { id: '3', title: 'Commit / Push + วางแผนพรุ่งนี้', description: 'สรุปงานวันนี้ อัปเดต repo วางแผนงานวันถัดไป', priority: Priority.MEDIUM, completed: false, dueDate: todayStr, category: 'งานหลัก' },
-    { id: '4', title: 'รดน้ำ ดูแลต้นไม้', description: 'กิจวัตรเช้า ดูแลสวนรอบบ้าน', priority: Priority.LOW, completed: false, dueDate: todayStr, category: 'งานรอง' },
-    { id: '5', title: 'จัดบ้านเก่า (โซนห้องนั่งเล่น)', description: 'คัดแยกของทิ้ง/บริจาค ถูพื้น เคลียร์พื้นที่ให้โล่ง', priority: Priority.MEDIUM, completed: false, dueDate: todayStr, category: 'งานรอง' },
-    { id: '6', title: 'ซ่อมหลังคากระท่อมเล็ก', description: 'ปรับปรุงกระท่อมเพื่อใช้เป็นห้องทำงานเขียนโปรแกรมที่สงบๆ', priority: Priority.MEDIUM, completed: false, dueDate: '2026-03-01', category: 'เฉพาะกิจ' },
-    { id: '7', title: 'พักผ่อน / เวลาส่วนตัว', description: 'ดูซีรีส์ เล่นเกม หรือพักสายตาจากจอ', priority: Priority.LOW, completed: false, dueDate: todayStr, category: 'พักผ่อน' },
-    { id: '8', title: 'นั่งสมาธิ 15 นาที', description: 'กำหนดลมหายใจ ลดความกังวลเรื่องคดีความและงาน', priority: Priority.MEDIUM, completed: false, dueDate: todayStr, category: 'พัฒนาตัวเอง' },
-    { id: '9', title: 'ออกกำลังกาย / เดินเล่น', description: 'วิ่งเบาๆ หรือเดินรอบหมู่บ้าน 30-60 นาที', priority: Priority.MEDIUM, completed: false, dueDate: todayStr, category: 'พัฒนาตัวเอง' },
-    { id: '10', title: 'Side Project / เรียนรู้สิ่งใหม่', description: 'ลองเทคโนโลยีใหม่ หรือทำโปรเจกต์ส่วนตัว — Evening Session', priority: Priority.LOW, completed: false, dueDate: todayStr, category: 'พัฒนาตัวเอง' },
-    { id: '11', title: 'อ่านหนังสือก่อนนอน', description: 'อ่านหนังสือ 30 นาที ก่อนเข้านอน', priority: Priority.LOW, completed: false, dueDate: todayStr, category: 'พัฒนาตัวเอง' },
-    { id: '12', title: 'รวบรวมเอกสารคดีความ', description: 'เตรียมเอกสารเกี่ยวกับการเงินและหนี้สินทั้งหมดเพื่อปรึกษาทนาย', priority: Priority.HIGH, completed: false, dueDate: todayStr, category: 'งานด่วน' },
+    // 🌅 กิจวัตร
+    { id: 'd-1', title: 'ตื่นนอน อาบน้ำ แปรงฟัน', description: 'กิจวัตรเช้า เตรียมพร้อมเริ่มวัน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '05:00', endTime: '05:30', category: 'กิจวัตร', recurring: 'daily' },
+    { id: 'd-2', title: 'เตรียมอาหารเช้า / กินข้าว', description: 'ทำอาหารเช้าง่ายๆ กินให้อิ่มก่อนเริ่มงาน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '07:00', endTime: '07:30', category: 'กิจวัตร', recurring: 'daily' },
+    { id: 'd-3', title: 'อาบน้ำ เตรียมนอน', description: 'ผ่อนคลายก่อนเข้านอน ปิดหน้าจอ', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '21:30', endTime: '22:00', category: 'กิจวัตร', recurring: 'daily' },
+    // 💼 งานหลัก
+    { id: 'd-4', title: 'เช็คอีเมล / วางแผนงานวันนี้', description: 'อ่านอีเมล ดู task list จัดลำดับความสำคัญ', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '08:00', endTime: '08:30', category: 'งานหลัก', recurring: 'daily' },
+    { id: 'd-5', title: 'Deep Work — งานหลักช่วงเช้า', description: 'ทำงานที่ต้องใช้สมาธิสูง ปิดแจ้งเตือน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '08:30', endTime: '12:00', category: 'งานหลัก', recurring: 'daily' },
+    { id: 'd-6', title: 'Deep Work — งานหลักช่วงบ่าย', description: 'ทำงานต่อเนื่องจากช่วงเช้า หรือประชุม', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '13:00', endTime: '16:30', category: 'งานหลัก', recurring: 'daily' },
+    { id: 'd-7', title: 'สรุปงาน / วางแผนพรุ่งนี้', description: 'อัปเดตความคืบหน้า จดสิ่งที่ต้องทำต่อ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '16:30', endTime: '17:00', category: 'งานหลัก', recurring: 'daily' },
+    // 🏠 งานบ้าน
+    { id: 'd-8', title: 'ล้างจาน / เก็บครัว', description: 'ทำความสะอาดหลังทำอาหาร', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '18:00', endTime: '18:20', category: 'งานบ้าน', recurring: 'daily' },
+    { id: 'd-9', title: 'กวาดบ้าน / ถูพื้น', description: 'ทำความสะอาดพื้นที่ส่วนกลาง', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '18:20', endTime: '18:40', category: 'งานบ้าน', recurring: 'daily' },
+    { id: 'd-10', title: 'ซักผ้า / ตากผ้า / พับผ้า', description: 'จัดการเสื้อผ้า', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '18:40', endTime: '19:00', category: 'งานบ้าน', recurring: 'daily' },
+    // 🧠 พัฒนาตัวเอง
+    { id: 'd-11', title: 'อ่านหนังสือ / บทความ', description: 'อ่านหนังสือที่สนใจ หรือบทความเพิ่มความรู้', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '20:00', endTime: '20:30', category: 'พัฒนาตัวเอง', recurring: 'daily' },
+    { id: 'd-12', title: 'เรียนออนไลน์ / ฝึกทักษะใหม่', description: 'คอร์สออนไลน์ ดู tutorial หรือฝึกปฏิบัติ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '20:30', endTime: '21:00', category: 'พัฒนาตัวเอง', recurring: 'daily' },
+    { id: 'd-13', title: 'เขียนบันทึก / วางแผนเป้าหมาย', description: 'Journal สะท้อนตัวเอง ทบทวนเป้าหมาย', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '21:00', endTime: '21:15', category: 'พัฒนาตัวเอง', recurring: 'daily' },
+    // 💪 สุขภาพ
+    { id: 'd-14', title: 'ออกกำลังกาย / วิ่ง / เดินเร็ว', description: 'คาร์ดิโอ 30-45 นาที หรือเดินรอบหมู่บ้าน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '06:00', endTime: '06:40', category: 'สุขภาพ', recurring: 'daily' },
+    { id: 'd-15', title: 'ยืดเหยียด / โยคะ', description: 'ยืดกล้ามเนื้อ ผ่อนคลายร่างกาย', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '06:40', endTime: '07:00', category: 'สุขภาพ', recurring: 'daily' },
+    { id: 'd-16', title: 'นั่งสมาธิ / หายใจลึก', description: 'นั่งสมาธิ 10-15 นาที ฝึกจิตให้สงบ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '05:30', endTime: '05:45', category: 'สุขภาพ', recurring: 'daily' },
+    // 👨‍👩‍👧 ครอบครัว
+    { id: 'd-17', title: 'กินข้าวเย็นกับครอบครัว', description: 'นั่งกินข้าวด้วยกัน คุยเรื่องทั่วไป', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '19:00', endTime: '19:30', category: 'ครอบครัว', recurring: 'daily' },
+    { id: 'd-18', title: 'เวลาครอบครัว / พูดคุย', description: 'ใช้เวลาด้วยกัน ดูทีวี เล่นเกม หรือคุยกัน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '19:30', endTime: '20:00', category: 'ครอบครัว', recurring: 'daily' },
+    // ⚡ งานด่วน
+    { id: 'd-19', title: 'จ่ายบิล / ค่าน้ำค่าไฟ', description: 'ตรวจสอบและชำระค่าใช้จ่ายรายเดือน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: '2026-02-28', startTime: '17:00', endTime: '17:30', category: 'งานด่วน' },
+    { id: 'd-20', title: 'นัดหมอ / ตรวจสุขภาพ', description: 'นัดพบแพทย์ประจำปี หรือตามนัด', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: '2026-03-15', startTime: '09:00', endTime: '10:00', category: 'งานด่วน' },
+    // ☕ พักผ่อน
+    { id: 'd-21', title: 'พักเที่ยง / กินข้าวกลางวัน', description: 'กินข้าว พักสมอง เดินเล่นสั้นๆ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '12:00', endTime: '13:00', category: 'พักผ่อน', recurring: 'daily' },
+    { id: 'd-22', title: 'พักผ่อน / งานอดิเรก', description: 'ดูซีรีส์ เล่นเกม ฟังเพลง หรือพักสายตา', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '21:00', endTime: '21:30', category: 'พักผ่อน', recurring: 'daily' },
+    // 🔧 ธุระส่วนตัว
+    { id: 'd-23', title: 'ซื้อของใช้ / ของกิน', description: 'ไปตลาด ซื้อของที่จำเป็น', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '17:00', endTime: '17:45', category: 'ธุระส่วนตัว', recurring: 'daily' },
+    { id: 'd-24', title: 'จัดการเอกสาร / ธุระธนาคาร', description: 'เอกสารสำคัญ โอนเงิน หรือติดต่อหน่วยงาน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: '2026-02-28', startTime: '17:00', endTime: '18:00', category: 'ธุระส่วนตัว' },
   ];
 
-  // ===== ALL personal data lives LOCAL only =====
-  const [schedule, setSchedule] = useState<ScheduleBlock[]>(() => loadLocalSchedule());
-  const [tasks, setTasks] = useState<Task[]>(() => loadLocalTasks(defaultTasks));
-  const [taskGroups, setTaskGroups] = useState<TaskGroup[]>(() => mergeDefaultGroups(loadLocalGroups()));
-  const dataReadyRef = useRef(false);
+  // ===== Data state (synced via Firestore) =====
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskGroups, setTaskGroups] = useState<TaskGroup[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [scheduleTemplates, setScheduleTemplates] = useState<ScheduleTemplates>(DEFAULT_SCHEDULE_TEMPLATES);
+  const [firestoreLoading, setFirestoreLoading] = useState(true);
+  const firestoreReadyRef = useRef(false);
 
-  const updateSchedule = (s: ScheduleBlock[]) => setSchedule(s);
-
-  // Load today's daily records
+  // Load today's daily records from Firestore
   const loadTodayRecords = useCallback(async () => {
+    if (!user) return;
     try {
-      const records = await getRecordsByDate(todayStr);
+      const records = await getDailyRecordsByDate(user.uid, todayStr);
       setTodayRecords(records);
-      const count = await getRecordCount();
+      const count = await getDailyRecordCount(user.uid);
       setTotalRecordCount(count);
     } catch (err) {
       console.error('Failed to load daily records:', err);
     }
-  }, [todayStr]);
+  }, [todayStr, user]);
 
-  // Save a daily record (called from DailyPlanner when checking a block)
+  // Save a daily record to Firestore
   const handleSaveDailyRecord = useCallback(async (record: DailyRecord) => {
+    if (!user) return;
     try {
-      await addDailyRecord(record);
+      await addDailyRecordFS(user.uid, record);
       await loadTodayRecords();
     } catch (err) {
       console.error('Failed to save daily record:', err);
     }
-  }, [loadTodayRecords]);
+  }, [loadTodayRecords, user]);
 
-  // Sync ALL data to Google Sheets (records + tasks + schedule + groups)
-  const handleSyncToSheets = useCallback(async () => {
-    let token = getStoredToken();
-    if (!token) {
-      try {
-        const provider = new GoogleAuthProvider();
-        provider.addScope('https://www.googleapis.com/auth/spreadsheets');
-        const result = await signInWithPopup(auth, provider);
-        const credential = GoogleAuthProvider.credentialFromResult(result);
-        token = credential?.accessToken || null;
-        if (token) storeGoogleToken(token);
-      } catch {
-        setSheetsSyncStatus('error');
-        setSheetsSyncMsg('ไม่สามารถเชื่อมต่อ Google ได้');
-        return;
-      }
-    }
-    if (!token) {
-      setSheetsSyncStatus('error');
-      setSheetsSyncMsg('ไม่มี token สำหรับ Google Sheets');
+  // Dirty state: tracks unsaved local changes
+  const [isDirty, setIsDirty] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const isRemoteUpdateRef = useRef(false);
+
+  // Subscribe to Firestore real-time updates when user logs in
+  useEffect(() => {
+    if (!user) {
+      firestoreReadyRef.current = false;
+      setFirestoreLoading(true);
       return;
     }
 
-    setSheetsSyncStatus('syncing');
-    try {
-      const result = await syncToGoogleSheets(token, {
-        tasks,
-        schedule,
-        groups: taskGroups,
-      });
-      setSheetsSyncStatus('done');
-      setSheetsSyncMsg(result.synced > 0
-        ? `Sync สำเร็จ! ข้อมูลทั้งหมด → Google Sheets ของคุณ`
-        : 'ข้อมูลทั้งหมด sync แล้ว (ไม่มีอะไรใหม่)'
-      );
-      setTimeout(() => setSheetsSyncStatus('idle'), 4000);
-    } catch (err: any) {
-      if (err.message === 'TOKEN_EXPIRED') {
-        sessionStorage.removeItem('debugme-google-token');
-        setSheetsSyncStatus('error');
-        setSheetsSyncMsg('Token หมดอายุ — กดอีกครั้งเพื่อ login ใหม่');
-      } else {
-        setSheetsSyncStatus('error');
-        setSheetsSyncMsg('Sync ล้มเหลว: ' + (err.message || 'Unknown error'));
-      }
-      setTimeout(() => setSheetsSyncStatus('idle'), 5000);
-    }
-  }, [tasks, schedule, taskGroups]);
+    loadTodayRecords();
 
-  // Mark data ready after initial load, load daily records
-  useEffect(() => {
-    if (user) {
-      dataReadyRef.current = true;
-      loadTodayRecords();
-    } else {
-      dataReadyRef.current = false;
-    }
+    const unsubscribe = subscribeAppData(user.uid, (data) => {
+      firestoreReadyRef.current = true;
+      isRemoteUpdateRef.current = true;
+      if (data) {
+        // Migrate old tasks if needed
+        const migratedTasks = (data.tasks || []).map(migrateTask);
+        const needsMigration = (data.tasks || []).some((t: any) => t.dueDate && !t.startDate);
+
+        // Merge missing default tasks into existing user's tasks
+        const mergedTasks = mergeDefaultTasks(migratedTasks, defaultTasks);
+        setTasks(mergedTasks);
+        if (data.groups) setTaskGroups(mergeDefaultGroups(data.groups));
+        if (data.milestones) setMilestones(data.milestones);
+        else setMilestones(DEFAULT_MILESTONES);
+        // Schedule templates migration
+        if (data.scheduleTemplates) {
+          // Filter out malformed entries, replace with defaults if too few valid slots
+          const tpl = data.scheduleTemplates;
+          const validSlots = (arr: any[]) => (arr || []).filter((s: any) => s.startTime && s.endTime && s.groupKey);
+          const vWork = validSlots(tpl.workday);
+          const vSat = validSlots(tpl.saturday);
+          const vSun = validSlots(tpl.sunday);
+          const fixed: ScheduleTemplates = {
+            workday: vWork.length >= 3 ? vWork : DEFAULT_SCHEDULE_TEMPLATES.workday,
+            saturday: vSat.length >= 3 ? vSat : DEFAULT_SCHEDULE_TEMPLATES.saturday,
+            sunday: vSun.length >= 3 ? vSun : DEFAULT_SCHEDULE_TEMPLATES.sunday,
+          };
+          setScheduleTemplates(fixed);
+          // Save back if any template was replaced
+          if (vWork.length < 3 || vSat.length < 3 || vSun.length < 3) {
+            saveAppData(user.uid, { scheduleTemplates: fixed });
+          }
+        } else if (data.schedule && data.schedule.length > 0) {
+          // Migrate old single schedule → workday template
+          // Only use old schedule if entries have valid startTime
+          const validOldSchedule = data.schedule.filter((s: any) => s.startTime && s.endTime && s.groupKey);
+          const migrated: ScheduleTemplates = {
+            workday: validOldSchedule.length > 0 ? validOldSchedule : DEFAULT_SCHEDULE_TEMPLATES.workday,
+            saturday: DEFAULT_SCHEDULE_TEMPLATES.saturday,
+            sunday: DEFAULT_SCHEDULE_TEMPLATES.sunday,
+          };
+          setScheduleTemplates(migrated);
+          saveAppData(user.uid, { scheduleTemplates: migrated });
+        } else {
+          setScheduleTemplates(DEFAULT_SCHEDULE_TEMPLATES);
+        }
+
+        // Save back if migration or new default tasks were added
+        if (needsMigration || mergedTasks.length > migratedTasks.length) {
+          saveAppData(user.uid, { tasks: mergedTasks, milestones: data.milestones || DEFAULT_MILESTONES });
+        }
+      } else {
+        // First time user — use defaults and save to Firestore
+        setTasks(defaultTasks);
+        setTaskGroups(DEFAULT_GROUPS);
+        setMilestones(DEFAULT_MILESTONES);
+        setScheduleTemplates(DEFAULT_SCHEDULE_TEMPLATES);
+        saveAppData(user.uid, { tasks: defaultTasks, groups: DEFAULT_GROUPS, milestones: DEFAULT_MILESTONES, scheduleTemplates: DEFAULT_SCHEDULE_TEMPLATES });
+      }
+      setFirestoreLoading(false);
+      setTimeout(() => { isRemoteUpdateRef.current = false; }, 100);
+    });
+
+    return () => unsubscribe();
   }, [user, loadTodayRecords]);
 
-  // Auto-save to localStorage when data changes
+  // Auto-save: debounce 1.5s after any local change
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    if (!dataReadyRef.current) return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(schedule));
-    localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
-    localStorage.setItem(GROUPS_KEY, JSON.stringify(taskGroups));
-  }, [schedule, tasks, taskGroups]);
+    if (!firestoreReadyRef.current || isRemoteUpdateRef.current || !user) return;
+
+    // Clear previous timer
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+
+    setIsDirty(true);
+    setSaveStatus('idle');
+
+    saveTimerRef.current = setTimeout(async () => {
+      setSaveStatus('saving');
+      try {
+        isRemoteUpdateRef.current = true;
+        await saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates });
+        setIsDirty(false);
+        setSaveStatus('saved');
+        setTimeout(() => {
+          setSaveStatus('idle');
+          isRemoteUpdateRef.current = false;
+        }, 500);
+      } catch (err) {
+        console.error('[DebugMe] Auto-save failed:', err);
+        setSaveStatus('idle');
+        isRemoteUpdateRef.current = false;
+      }
+    }, 1500);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [tasks, taskGroups, milestones, scheduleTemplates, user]);
 
   useEffect(() => { localStorage.setItem(VIEW_KEY, activeView); }, [activeView]);
 
-  // Safety net: ensure localStorage is up-to-date before tab close
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (dataReadyRef.current) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(schedule));
-        localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
-        localStorage.setItem(GROUPS_KEY, JSON.stringify(taskGroups));
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  });
-
   const handleExportData = () => {
     const data = {
-      version: 1,
+      version: 3,
       exportedAt: new Date().toISOString(),
-      schedule,
       tasks,
       groups: taskGroups,
+      milestones,
+      scheduleTemplates,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -271,9 +364,10 @@ const App: React.FC = () => {
       reader.onload = (ev) => {
         try {
           const data = JSON.parse(ev.target?.result as string);
-          if (data.schedule) setSchedule(data.schedule);
-          if (data.tasks) setTasks(data.tasks);
+          if (data.tasks) setTasks(data.tasks.map(migrateTask));
           if (data.groups) setTaskGroups(data.groups);
+          if (data.milestones) setMilestones(data.milestones);
+          if (data.scheduleTemplates) setScheduleTemplates(data.scheduleTemplates);
           alert('นำเข้าข้อมูลสำเร็จ!');
         } catch {
           alert('ไฟล์ไม่ถูกต้อง');
@@ -301,20 +395,16 @@ const App: React.FC = () => {
     if (window.innerWidth < 1024) setIsSidebarOpen(false);
   };
 
-  const handleGearMenuNav = (view: View) => {
-    setActiveView(view);
-    setIsGearMenuOpen(false);
-  };
 
   const renderContent = () => {
     switch (activeView) {
-      case 'dashboard': return <Dashboard tasks={tasks} schedule={schedule} />;
-      case 'planner': return <DailyPlanner tasks={tasks} schedule={schedule} onScheduleChange={updateSchedule} taskGroups={taskGroups} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} />;
+      case 'dashboard': return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} />;
+      case 'planner': return <DailyPlanner tasks={tasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} />;
       case 'tasks': return <TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} />;
       case 'focus': return <FocusTimer />;
-      case 'analytics': return <Analytics tasks={tasks} />;
+      case 'analytics': return <Analytics tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} totalRecordCount={totalRecordCount} userId={user!.uid} />;
       case 'ai-coach': return <AICoach tasks={tasks} />;
-      default: return <Dashboard tasks={tasks} schedule={schedule} />;
+      default: return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} />;
     }
   };
 
@@ -328,6 +418,15 @@ const App: React.FC = () => {
 
   if (!user) {
     return <Login />;
+  }
+
+  if (firestoreLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-emerald-50 flex-col gap-3">
+        <div className="w-12 h-12 border-4 border-emerald-200 border-t-emerald-500 rounded-full animate-spin"></div>
+        <p className="text-emerald-600 font-medium">กำลังโหลดข้อมูล...</p>
+      </div>
+    );
   }
 
   return (
@@ -383,9 +482,21 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Privacy Badge */}
-              <div className="flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold rounded-lg text-emerald-600 bg-emerald-50 border border-emerald-100">
-                <ShieldCheck className="w-3 h-3" /> ข้อมูลเก็บในเครื่องคุณเท่านั้น
+              {/* Auto-save status */}
+              <div className={`w-full flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-xl border transition-all ${
+                saveStatus === 'saving'
+                  ? 'bg-blue-50 border-blue-200 text-blue-500'
+                  : saveStatus === 'saved'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                  : 'bg-slate-50 border-slate-200 text-slate-400'
+              }`}>
+                {saveStatus === 'saving' ? (
+                  <><span className="w-3 h-3 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin" /> กำลังบันทึก...</>
+                ) : saveStatus === 'saved' ? (
+                  <><Cloud className="w-3.5 h-3.5" /> บันทึกแล้ว</>
+                ) : (
+                  <><Cloud className="w-3.5 h-3.5" /> Auto-save</>
+                )}
               </div>
 
               <div className="flex gap-2">
@@ -397,40 +508,13 @@ const App: React.FC = () => {
                 </button>
               </div>
 
-              {/* Data & Sync to Google Sheets */}
-              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-2">
+              {/* Daily Records Counter */}
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
                 <div className="flex items-center gap-2">
                   <Database className="w-3.5 h-3.5 text-violet-500" />
                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Daily Records</span>
                   <span className="ml-auto text-xs font-black text-violet-600">{totalRecordCount}</span>
                 </div>
-                <button
-                  onClick={handleSyncToSheets}
-                  disabled={sheetsSyncStatus === 'syncing'}
-                  className={`w-full flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-xl transition-colors border ${
-                    sheetsSyncStatus === 'syncing'
-                      ? 'bg-amber-50 border-amber-200 text-amber-600'
-                      : sheetsSyncStatus === 'done'
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
-                      : sheetsSyncStatus === 'error'
-                      ? 'bg-rose-50 border-rose-200 text-rose-600'
-                      : 'bg-violet-50 border-violet-200 text-violet-600 hover:bg-violet-100'
-                  }`}
-                >
-                  <Sheet className={`w-3.5 h-3.5 ${sheetsSyncStatus === 'syncing' ? 'animate-spin' : ''}`} />
-                  {sheetsSyncStatus === 'syncing' ? 'Syncing...'
-                    : sheetsSyncStatus === 'done' ? 'Synced!'
-                    : sheetsSyncStatus === 'error' ? 'Error'
-                    : 'Sync to My Google Sheets'}
-                </button>
-                {sheetsSyncMsg && sheetsSyncStatus !== 'idle' && (
-                  <p className="text-[10px] font-bold text-slate-400 text-center">{sheetsSyncMsg}</p>
-                )}
-                {getSheetUrl() && (
-                  <a href={getSheetUrl()!} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1 text-[10px] font-bold text-violet-500 hover:text-violet-700">
-                    <ExternalLink className="w-3 h-3" /> เปิด Google Sheets
-                  </a>
-                )}
               </div>
               <button onClick={handleSignOut} className="w-full py-2.5 text-sm font-bold text-rose-500 hover:bg-rose-50 rounded-xl transition-colors shrink-0">
                 Sign Out
@@ -453,6 +537,7 @@ const App: React.FC = () => {
           </header>
         )}
 
+
         <div className={`flex-1 overflow-y-auto pb-24 lg:pb-6 scroll-smooth bg-emerald-50`}>
           {activeView === 'dashboard' ? (
             renderContent()
@@ -463,50 +548,30 @@ const App: React.FC = () => {
           )}
         </div>
 
-        {isGearMenuOpen && (
-          <div
-            className="fixed inset-0 z-[59] bg-black/50 backdrop-blur-sm lg:hidden"
-            onClick={() => setIsGearMenuOpen(false)}
-          />
-        )}
-
         {/* Mobile Bottom Nav */}
         <div className="fixed bottom-0 left-0 right-0 z-[60] lg:hidden">
-          <div className="bg-emerald-800/80 backdrop-blur-md safe-bottom">
-            <div className="flex items-center justify-center h-14 relative">
-              {RADIAL_ITEMS.map((item, i) => {
-                const rad = (ANGLES[i] * Math.PI) / 180;
-                const x = Math.cos(rad) * RADIUS;
-                const y = -Math.sin(rad) * RADIUS;
+          <div className="bg-white/90 backdrop-blur-md border-t border-slate-200 safe-bottom">
+            <div className="flex items-center justify-around h-14">
+              {NAV_ITEMS.map(item => {
+                const isActive = activeView === item.view;
+                const Icon = item.icon === 'Activity' ? Activity
+                  : item.icon === 'CheckSquare' ? CheckSquare
+                  : item.icon === 'BookOpen' ? BookOpen
+                  : item.icon === 'Timer' ? Timer
+                  : BarChart3;
                 return (
                   <button
                     key={item.view}
-                    onClick={() => handleGearMenuNav(item.view)}
-                    className={`absolute z-[91] flex flex-col items-center gap-1 transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${isGearMenuOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-0 pointer-events-none'}`}
-                    style={{
-                      left: `calc(50% + ${x}px)`,
-                      bottom: `calc(100% + 14px + ${-y}px)`,
-                      transform: 'translate(-50%, 50%)',
-                      transitionDelay: isGearMenuOpen ? `${i * 50}ms` : '0ms',
-                    }}
+                    onClick={() => setActiveView(item.view)}
+                    className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg transition-all ${
+                      isActive ? 'text-emerald-600' : 'text-slate-400'
+                    }`}
                   >
-                    <div
-                      className={`rounded-full bg-gradient-to-br ${item.gradient} text-white flex items-center justify-center shadow-xl active:scale-90 transition-transform ${activeView === item.view ? 'ring-2 ring-white ring-offset-2 ring-offset-black/20' : ''}`}
-                      style={{ width: 48, height: 48 }}
-                    >
-                      {ICON_MAP[item.icon]}
-                    </div>
-                    <span className="text-[10px] font-bold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] whitespace-nowrap">{item.label}</span>
+                    <Icon className={`w-5 h-5 ${isActive ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    <span className={`text-[10px] font-bold ${isActive ? 'text-emerald-600' : 'text-slate-400'}`}>{item.label}</span>
                   </button>
                 );
               })}
-
-              <button
-                onClick={() => setIsGearMenuOpen(!isGearMenuOpen)}
-                className={`absolute -top-7 left-1/2 -translate-x-1/2 z-[92] w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg shadow-emerald-900/30 ${isGearMenuOpen ? 'bg-white text-emerald-700 scale-110' : 'bg-white text-emerald-600'}`}
-              >
-                <Settings className={`w-6 h-6 transition-transform duration-500 ${isGearMenuOpen ? 'rotate-180' : ''}`} />
-              </button>
             </div>
           </div>
         </div>

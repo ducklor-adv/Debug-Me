@@ -1,848 +1,558 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Task, TaskGroup, GROUP_COLORS, DailyRecord } from '../types';
-import { Sparkles, Bookmark, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Edit3, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, X, Plus, Trash2, RefreshCw, Database } from 'lucide-react';
-import { generateSmartSchedule } from '../services/geminiService';
+import { Task, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType } from '../types';
+import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown } from 'lucide-react';
 
-export interface ScheduleBlock {
-  startHour: number;
-  startMin: number;
-  endHour: number;
-  endMin: number;
-  title: string;
-  subtitle?: string;
-  color: string;
-  icon: string;
-  isBreak?: boolean;
-  recurring?: 'daily';
+const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+const TAB_CONFIG: { key: DayType; label: string; emoji: string }[] = [
+  { key: 'workday',  label: 'จันทร์-ศุกร์',    emoji: '💼' },
+  { key: 'saturday', label: 'วันเสาร์',        emoji: '🌴' },
+  { key: 'sunday',   label: 'อาทิตย์/วันหยุด', emoji: '☀️' },
+];
+
+function getDurationMinutes(start: string, end: string): number {
+  const [sh, sm] = start.split(':').map(Number);
+  const [eh, em] = end.split(':').map(Number);
+  return (eh * 60 + em) - (sh * 60 + sm);
 }
 
-export const SCHEDULE: ScheduleBlock[] = [];
-
-const ICON_MAP: Record<string, React.ReactNode> = {
-  sun: <Sun className="w-3.5 h-3.5" />,
-  moon: <Moon className="w-3.5 h-3.5" />,
-  coffee: <Coffee className="w-3.5 h-3.5" />,
-  code: <Code className="w-3.5 h-3.5" />,
-  file: <FileText className="w-3.5 h-3.5" />,
-  home: <Home className="w-3.5 h-3.5" />,
-  wrench: <Wrench className="w-3.5 h-3.5" />,
-  gym: <Dumbbell className="w-3.5 h-3.5" />,
-  book: <BookOpen className="w-3.5 h-3.5" />,
-  brain: <Brain className="w-3.5 h-3.5" />,
-};
-
-const formatTime = (h: number, m: number) =>
-  `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-
-const getDurationMin = (b: ScheduleBlock) =>
-  (b.endHour * 60 + b.endMin) - (b.startHour * 60 + b.startMin);
-
-const getTimePeriod = (timeStr: string) => {
-  const h = parseInt(timeStr.split(':')[0], 10);
-  if (h < 6) return { label: 'ดึก/เช้ามืด', emoji: '🌙' };
-  if (h < 12) return { label: 'เช้า', emoji: '🌅' };
-  if (h < 13) return { label: 'เที่ยง', emoji: '☀️' };
-  if (h < 17) return { label: 'บ่าย', emoji: '🌤️' };
-  if (h < 20) return { label: 'เย็น', emoji: '🌇' };
-  return { label: 'ค่ำ/กลางคืน', emoji: '🌙' };
-};
-
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const MINUTES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
-
-const TimePicker: React.FC<{ value: string; onChange: (v: string) => void; label: string }> = ({ value, onChange, label }) => {
-  const [h, m] = value.split(':').map(Number);
-  const period = getTimePeriod(value);
-  return (
-    <div>
-      <label className="text-xs font-bold uppercase tracking-widest text-emerald-500 mb-1.5 block">{label}</label>
-      <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
-        <select
-          value={h}
-          onChange={e => onChange(formatTime(Number(e.target.value), m))}
-          className="bg-transparent text-lg font-black text-slate-800 focus:outline-none appearance-none text-center w-12 cursor-pointer"
-        >
-          {HOURS.map(hr => (
-            <option key={hr} value={hr}>{hr.toString().padStart(2, '0')}</option>
-          ))}
-        </select>
-        <span className="text-lg font-black text-slate-400">:</span>
-        <select
-          value={m}
-          onChange={e => onChange(formatTime(h, Number(e.target.value)))}
-          className="bg-transparent text-lg font-black text-slate-800 focus:outline-none appearance-none text-center w-12 cursor-pointer"
-        >
-          {MINUTES.map(mn => (
-            <option key={mn} value={mn}>{mn.toString().padStart(2, '0')}</option>
-          ))}
-        </select>
-        <span className="ml-2 text-xs font-bold text-slate-400">{period.emoji} {period.label}</span>
-      </div>
-    </div>
-  );
-};
-
-const ICON_OPTIONS = [
-  { key: 'code', label: 'Code' },
-  { key: 'coffee', label: 'Coffee' },
-  { key: 'sun', label: 'Sun' },
-  { key: 'moon', label: 'Moon' },
-  { key: 'gym', label: 'Gym' },
-  { key: 'book', label: 'Book' },
-  { key: 'brain', label: 'Brain' },
-  { key: 'file', label: 'File' },
-  { key: 'home', label: 'Home' },
-  { key: 'wrench', label: 'Wrench' },
-];
-
-const COLOR_BY_ICON: Record<string, string> = {
-  code: 'bg-blue-50 border-blue-300 text-blue-700',
-  coffee: 'bg-amber-50 border-amber-200 text-amber-700',
-  sun: 'bg-slate-100 border-slate-200 text-slate-600',
-  moon: 'bg-indigo-50 border-indigo-200 text-indigo-600',
-  gym: 'bg-green-50 border-green-300 text-green-700',
-  book: 'bg-purple-50 border-purple-200 text-purple-700',
-  brain: 'bg-violet-50 border-violet-200 text-violet-700',
-  file: 'bg-slate-100 border-slate-200 text-slate-600',
-  home: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-  wrench: 'bg-orange-50 border-orange-200 text-orange-700',
-};
-
-// Derive picker-style from a TaskGroup
-const getCatStyle = (g: TaskGroup) => {
-  const c = GROUP_COLORS[g.color] || GROUP_COLORS.orange;
-  return { key: g.key, label: g.label, icon: g.icon, emoji: g.emoji, bg: c.plannerBg, text: c.plannerText, border: c.plannerBorder };
-};
-
-// Special milestone markers (single-time, no duration)
-const MILESTONES = [
-  { key: 'ตื่นนอน', emoji: '🌅', icon: 'sun', defaultTime: '05:00', bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-300', color: 'bg-amber-50 border-amber-200 text-amber-700' },
-  { key: 'กินข้าว', emoji: '🍚', icon: 'coffee', defaultTime: '12:00', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-300', color: 'bg-emerald-50 border-emerald-200 text-emerald-700' },
-  { key: 'นอน', emoji: '🌙', icon: 'moon', defaultTime: '22:00', bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-300', color: 'bg-indigo-50 border-indigo-200 text-indigo-600' },
-];
+function formatDuration(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h > 0 && m > 0) return `${h}ชม. ${m}น.`;
+  if (h > 0) return `${h}ชม.`;
+  return `${m}น.`;
+}
 
 interface DailyPlannerProps {
   tasks: Task[];
-  schedule: ScheduleBlock[];
-  onScheduleChange: (s: ScheduleBlock[]) => void;
   taskGroups: TaskGroup[];
+  milestones: Milestone[];
+  scheduleTemplates: ScheduleTemplates;
+  setScheduleTemplates: React.Dispatch<React.SetStateAction<ScheduleTemplates>>;
   todayRecords?: DailyRecord[];
   onSaveDailyRecord?: (record: DailyRecord) => void;
 }
 
-const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks, schedule, onScheduleChange, taskGroups, todayRecords = [], onSaveDailyRecord }) => {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [aiSchedule, setAiSchedule] = useState<string | null>(null);
-  const [checkedBlocks, setCheckedBlocks] = useState<Set<number>>(new Set());
+/** Get tasks matching a slot's groupKey for a given date */
+function getTasksForSlot(tasks: Task[], date: string, groupKey: string): Task[] {
+  return getTasksForDate(tasks, date)
+    .filter(t => t.category === groupKey)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+}
 
-  // Restore checked state from today's records
+const DailyPlanner: React.FC<DailyPlannerProps> = ({
+  tasks, taskGroups, milestones, scheduleTemplates, setScheduleTemplates, todayRecords = [], onSaveDailyRecord,
+}) => {
+  // Date navigation
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const selectedDateStr = selectedDate.toISOString().split('T')[0];
+  const todayStr = new Date().toISOString().split('T')[0];
+  const isToday = selectedDateStr === todayStr;
+
+  const dateLabel = `${dayNames[selectedDate.getDay()]} ${selectedDate.getDate()} ${monthNames[selectedDate.getMonth()]} ${selectedDate.getFullYear() + 543}`;
+
+  const prevDay = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; });
+  const nextDay = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; });
+  const goToday = () => setSelectedDate(new Date());
+
+  // Day type detection & active tab
+  const autoDayType = getDayType(selectedDate);
+  const [activeTab, setActiveTab] = useState<DayType>(autoDayType);
+
+  // Auto-switch tab when date changes
   useEffect(() => {
-    if (todayRecords.length === 0) return;
-    const sorted = [...schedule].sort((a, b) => (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin));
-    const newChecked = new Set<number>();
-    sorted.forEach((block, idx) => {
-      const timeKey = `${formatTime(block.startHour, block.startMin)}-${formatTime(block.endHour, block.endMin)}`;
-      const hasRecord = todayRecords.some(r =>
-        r.taskTitle === block.title && r.timeStart === formatTime(block.startHour, block.startMin)
-      );
-      if (hasRecord) newChecked.add(idx);
-    });
-    if (newChecked.size > 0) setCheckedBlocks(newChecked);
-  }, [todayRecords, schedule]);
+    setActiveTab(getDayType(selectedDate));
+  }, [selectedDate]);
 
-  // Edit state
-  const [editIdx, setEditIdx] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState<ScheduleBlock | null>(null);
+  // Derive active schedule from template
+  const schedule = scheduleTemplates[activeTab] || [];
 
-  // Task Picker state (0=closed, 1=categories, 2=tasks, 3=time)
-  const [pickerStep, setPickerStep] = useState<number>(0);
-  const [pickerCat, setPickerCat] = useState('');
-  const [pickerTask, setPickerTask] = useState<Task | null>(null);
-  const [pickerStart, setPickerStart] = useState('08:00');
-  const [pickerEnd, setPickerEnd] = useState('09:00');
-  const [pickerMilestone, setPickerMilestone] = useState<string | null>(null); // 'ตื่นนอน' | 'นอน' | null
+  // Wrapper to update only the active tab's template
+  const setScheduleForTab = useCallback((updater: (prev: TimeSlot[]) => TimeSlot[]) => {
+    setScheduleTemplates(prev => ({
+      ...prev,
+      [activeTab]: updater(prev[activeTab] || []),
+    }));
+  }, [activeTab, setScheduleTemplates]);
 
-  // Derive taskCats from dynamic taskGroups
-  const taskCats = taskGroups.map(getCatStyle);
+  // Current time for "now" indicator
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
 
-  // Always sort schedule by start time for display
-  const sortedSchedule = [...schedule].sort((a, b) => (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin));
-
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-  const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
-  const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-  const dateStr = `วัน${dayNames[today.getDay()]}ที่ ${today.getDate()} ${monthNames[today.getMonth()]} ${today.getFullYear() + 543}`;
-
-  const currentHour = today.getHours();
-  const currentMin = today.getMinutes();
-  const nowMinutes = currentHour * 60 + currentMin;
-
-  const toggleCheck = useCallback((idx: number) => {
-    const block = sortedSchedule[idx];
-    if (!block) return;
-
-    setCheckedBlocks(prev => {
+  // Expanded slots
+  const [expandedSlots, setExpandedSlots] = useState<Set<string>>(new Set());
+  const toggleSlot = (id: string) => {
+    setExpandedSlots(prev => {
       const next = new Set(prev);
-      const wasChecked = next.has(idx);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
-      if (wasChecked) {
-        next.delete(idx);
+  // Check-off state
+  const [checkedTasks, setCheckedTasks] = useState<Set<string>>(new Set());
+
+  // Slot editor modal
+  const [editingSlot, setEditingSlot] = useState<TimeSlot | null>(null);
+  const [isAddingSlot, setIsAddingSlot] = useState(false);
+  const [slotForm, setSlotForm] = useState({ startTime: '09:00', endTime: '10:00', groupKey: '' });
+
+  // Sorted schedule (filter out malformed entries)
+  const sortedSchedule = [...schedule]
+    .filter(s => s.startTime && s.endTime && s.groupKey)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+  // All tasks for the day (for summary)
+  const dayTasks = getTasksForDate(tasks, selectedDateStr);
+
+  // Restore checked state from todayRecords
+  useEffect(() => {
+    if (!isToday || todayRecords.length === 0) return;
+    const checked = new Set<string>();
+    todayRecords.forEach(r => {
+      const matchTask = dayTasks.find(t => t.title === r.taskTitle && t.startTime === r.timeStart);
+      if (matchTask) checked.add(matchTask.id);
+    });
+    if (checked.size > 0) setCheckedTasks(checked);
+  }, [todayRecords]);
+
+  // Auto-expand current slot
+  useEffect(() => {
+    if (!isToday) return;
+    const currentSlot = sortedSchedule.find(s => {
+      const [sh, sm] = s.startTime.split(':').map(Number);
+      const [eh, em] = s.endTime.split(':').map(Number);
+      return nowMinutes >= sh * 60 + sm && nowMinutes < eh * 60 + em;
+    });
+    if (currentSlot) {
+      setExpandedSlots(prev => new Set(prev).add(currentSlot.id));
+    }
+  }, [isToday, activeTab]);
+
+  // Toggle check
+  const toggleCheck = useCallback((taskId: string) => {
+    if (!isToday) return;
+    setCheckedTasks(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
       } else {
-        next.add(idx);
-        // Create a daily record for this completion
+        next.add(taskId);
         if (onSaveDailyRecord) {
-          const record: DailyRecord = {
-            id: `${todayStr}-${block.title}-${formatTime(block.startHour, block.startMin)}`,
-            date: todayStr,
-            taskTitle: block.title,
-            category: block.icon,
-            completed: true,
-            completedAt: new Date().toISOString(),
-            timeStart: formatTime(block.startHour, block.startMin),
-            timeEnd: getDurationMin(block) > 0 ? formatTime(block.endHour, block.endMin) : undefined,
-          };
-          onSaveDailyRecord(record);
+          const task = dayTasks.find(t => t.id === taskId);
+          if (task) {
+            onSaveDailyRecord({
+              id: `${todayStr}-${task.id}`,
+              date: todayStr,
+              taskTitle: task.title,
+              category: task.category,
+              completed: true,
+              completedAt: new Date().toISOString(),
+              timeStart: task.startTime,
+              timeEnd: task.endTime,
+            });
+          }
         }
       }
       return next;
     });
-  }, [sortedSchedule, onSaveDailyRecord]);
+  }, [isToday, dayTasks, todayStr, onSaveDailyRecord]);
 
-  const totalWork = sortedSchedule.filter(b => !b.isBreak).reduce((sum, b) => sum + getDurationMin(b), 0);
-  const doneWork = sortedSchedule.filter((b, i) => !b.isBreak && checkedBlocks.has(i)).reduce((sum, b) => sum + getDurationMin(b), 0);
-  const progressPct = totalWork > 0 ? Math.round((doneWork / totalWork) * 100) : 0;
-
-  const handleMagicFill = async () => {
-    setIsGenerating(true);
-    try {
-      const result = await generateSmartSchedule(tasks);
-      setAiSchedule(result || null);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsGenerating(false);
-    }
+  // Slot CRUD
+  const openAddSlot = () => {
+    setSlotForm({ startTime: '09:00', endTime: '10:00', groupKey: taskGroups[0]?.key || '' });
+    setEditingSlot(null);
+    setIsAddingSlot(true);
   };
 
-  const openEdit = (idx: number) => {
-    setEditIdx(idx);
-    setEditForm({ ...sortedSchedule[idx] });
+  const openEditSlot = (slot: TimeSlot) => {
+    setSlotForm({ startTime: slot.startTime, endTime: slot.endTime, groupKey: slot.groupKey });
+    setEditingSlot(slot);
+    setIsAddingSlot(true);
   };
 
-  const openAddNew = () => {
-    const last = sortedSchedule[sortedSchedule.length - 1];
-    const newBlock: ScheduleBlock = {
-      startHour: last ? last.endHour : 8,
-      startMin: last ? last.endMin : 0,
-      endHour: last ? last.endHour + 1 : 9,
-      endMin: last ? last.endMin : 0,
-      title: '',
-      subtitle: '',
-      color: 'bg-blue-50 border-blue-300 text-blue-700',
-      icon: 'code',
-      isBreak: false,
-    };
-    setEditIdx(sortedSchedule.length); // new item marker
-    setEditForm(newBlock);
-  };
-
-  const saveEdit = () => {
-    if (!editForm || editIdx === null) return;
-    const finalBlock = { ...editForm, color: editForm.isBreak ? 'bg-slate-50 border-slate-200 text-slate-400' : (COLOR_BY_ICON[editForm.icon] || 'bg-blue-50 border-blue-300 text-blue-700') };
-    let updated: ScheduleBlock[];
-    if (editIdx >= sortedSchedule.length) {
-      updated = [...schedule, finalBlock];
+  const saveSlot = () => {
+    if (!slotForm.groupKey || !slotForm.startTime || !slotForm.endTime) return;
+    if (editingSlot) {
+      setScheduleForTab(prev => prev.map(s => s.id === editingSlot.id ? { ...s, ...slotForm } : s));
     } else {
-      // Find the original block in schedule by reference match
-      const origBlock = sortedSchedule[editIdx];
-      updated = schedule.map(b => b === origBlock ? finalBlock : b);
-    }
-    updated.sort((a, b) => (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin));
-    onScheduleChange(updated);
-    setEditIdx(null);
-    setEditForm(null);
-  };
-
-  const deleteBlock = () => {
-    if (editIdx === null || editIdx >= sortedSchedule.length) return;
-    const origBlock = sortedSchedule[editIdx];
-    if (origBlock.recurring === 'daily') {
-      if (!confirm('กิจกรรมนี้เป็นแบบทุกวัน (recurring) — ต้องการลบจริงหรือไม่?')) return;
-    }
-    const updated = schedule.filter(b => b !== origBlock);
-    onScheduleChange(updated);
-    setEditIdx(null);
-    setEditForm(null);
-  };
-
-  // Task Picker functions
-  const openTaskPicker = () => {
-    setPickerStep(1);
-    setPickerCat('');
-    setPickerTask(null);
-    setPickerMilestone(null);
-  };
-  const closeTaskPicker = () => { setPickerStep(0); setPickerMilestone(null); };
-
-  const selectPickerCat = (cat: string) => {
-    setPickerCat(cat);
-    setPickerStep(2);
-  };
-
-  const selectPickerTask = (task: Task) => {
-    setPickerTask(task);
-    const last = sortedSchedule[sortedSchedule.length - 1];
-    const sh = last ? last.endHour : 8;
-    const sm = last ? last.endMin : 0;
-    setPickerStart(formatTime(sh, sm));
-    setPickerEnd(formatTime(Math.min(sh + 1, 23), sm));
-    setPickerStep(3);
-  };
-
-  const selectMilestone = (key: string) => {
-    const ms = MILESTONES.find(m => m.key === key);
-    if (!ms) return;
-    setPickerMilestone(key);
-    setPickerTask(null);
-    setPickerStart(ms.defaultTime);
-    setPickerStep(3);
-  };
-
-  const confirmTaskPicker = () => {
-    const [sh, sm] = pickerStart.split(':').map(Number);
-
-    if (pickerMilestone) {
-      // Milestone — single time point (start = end)
-      const ms = MILESTONES.find(m => m.key === pickerMilestone);
-      if (!ms) return;
-      const newBlock: ScheduleBlock = {
-        startHour: sh, startMin: sm,
-        endHour: sh, endMin: sm,
-        title: `${ms.emoji} ${ms.key}`,
-        subtitle: undefined,
-        color: ms.color,
-        icon: ms.icon,
-        isBreak: false,
-        recurring: 'daily',
+      const newSlot: TimeSlot = {
+        id: `${activeTab}-${Date.now()}`,
+        startTime: slotForm.startTime,
+        endTime: slotForm.endTime,
+        groupKey: slotForm.groupKey,
       };
-      const updated = [...schedule, newBlock].sort((a, b) => (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin));
-      onScheduleChange(updated);
-      closeTaskPicker();
-      return;
+      setScheduleForTab(prev => [...prev, newSlot]);
     }
-
-    if (!pickerTask) return;
-    const [eh, em] = pickerEnd.split(':').map(Number);
-    const catInfo = taskCats.find(c => c.key === pickerTask.category);
-    const icon = catInfo?.icon || 'code';
-    const newBlock: ScheduleBlock = {
-      startHour: sh, startMin: sm,
-      endHour: eh, endMin: em,
-      title: pickerTask.title,
-      subtitle: pickerTask.description,
-      color: COLOR_BY_ICON[icon] || 'bg-blue-50 border-blue-300 text-blue-700',
-      icon,
-      isBreak: pickerTask.category === 'พักผ่อน',
-      recurring: pickerTask.recurring,
-    };
-    const updated = [...schedule, newBlock].sort((a, b) => (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin));
-    onScheduleChange(updated);
-    closeTaskPicker();
+    setIsAddingSlot(false);
+    setEditingSlot(null);
   };
 
-  const catTasks = tasks.filter(t => t.category === pickerCat);
+  const deleteSlot = (slotId: string) => {
+    setScheduleForTab(prev => prev.filter(s => s.id !== slotId));
+  };
+
+  // Summary: time per group from schedule slots
+  const groupMap = new Map<string, TaskGroup>(taskGroups.map(g => [g.key, g]));
+  const summaryMap = new Map<string, { totalMins: number; doneMins: number }>();
+
+  sortedSchedule.forEach(slot => {
+    const slotMins = Math.max(0, getDurationMinutes(slot.startTime, slot.endTime));
+    const prev = summaryMap.get(slot.groupKey) || { totalMins: 0, doneMins: 0 };
+    const slotTasks = getTasksForSlot(tasks, selectedDateStr, slot.groupKey);
+    const doneMins = slotTasks
+      .filter(t => checkedTasks.has(t.id))
+      .reduce((s, t) => s + Math.max(0, getDurationMinutes(t.startTime, t.endTime)), 0);
+    summaryMap.set(slot.groupKey, { totalMins: prev.totalMins + slotMins, doneMins: prev.doneMins + doneMins });
+  });
+
+  const slotSummary: { key: string; label: string; emoji: string; color: string; totalMins: number; doneMins: number }[] = [];
+  summaryMap.forEach((val, key) => {
+    const g = groupMap.get(key);
+    if (g) slotSummary.push({ key, label: g.label, emoji: g.emoji, color: g.color, ...val });
+  });
+
+  const totalAllMins = slotSummary.reduce((s, c) => s + c.totalMins, 0);
+  const doneAllMins = slotSummary.reduce((s, c) => s + c.doneMins, 0);
+  const progressPct = totalAllMins > 0 ? Math.round((doneAllMins / totalAllMins) * 100) : 0;
+
+  // Merge milestones between slots
+  const buildTimeline = () => {
+    const items: { type: 'slot' | 'milestone'; data: TimeSlot | Milestone }[] = [];
+    const usedMilestones = new Set<string>();
+
+    sortedSchedule.forEach((slot, i) => {
+      milestones.forEach(ms => {
+        if (usedMilestones.has(ms.id)) return;
+        if (ms.time < slot.startTime || (i === 0 && ms.time <= slot.startTime)) {
+          items.push({ type: 'milestone', data: ms });
+          usedMilestones.add(ms.id);
+        }
+      });
+      items.push({ type: 'slot', data: slot });
+
+      const nextSlot = sortedSchedule[i + 1];
+      milestones.forEach(ms => {
+        if (usedMilestones.has(ms.id)) return;
+        if (ms.time >= slot.endTime && (!nextSlot || ms.time < nextSlot.startTime)) {
+          items.push({ type: 'milestone', data: ms });
+          usedMilestones.add(ms.id);
+        }
+      });
+    });
+
+    milestones.forEach(ms => {
+      if (!usedMilestones.has(ms.id)) {
+        items.push({ type: 'milestone', data: ms });
+      }
+    });
+
+    return items;
+  };
+
+  const timeline = buildTimeline();
 
   return (
-    <div className="max-w-5xl mx-auto pb-10 animate-fadeIn">
-
-      {/* ===== Task Picker Popup ===== */}
-      {pickerStep > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl animate-fadeIn overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                <Plus className="w-5 h-5 text-emerald-500" />
-                {pickerStep === 1 && 'เลือกหมวดหมู่'}
-                {pickerStep === 2 && `เลือก Task — ${pickerCat}`}
-                {pickerStep === 3 && (pickerMilestone ? `กำหนดเวลา — ${pickerMilestone}` : 'กำหนดเวลา')}
-              </h3>
-              <button onClick={closeTaskPicker} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-5 max-h-[60vh] overflow-y-auto">
-              {/* Step 1: Category grid + Milestones */}
-              {pickerStep === 1 && (
-                <div className="space-y-4">
-                  {/* Milestone markers */}
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">จุดเริ่ม / จุดจบ</label>
-                    <div className="flex flex-wrap gap-3">
-                      {MILESTONES.map(ms => (
-                        <button
-                          key={ms.key}
-                          onClick={() => selectMilestone(ms.key)}
-                          className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl border-2 ${ms.border} ${ms.bg} hover:scale-105 transition-all`}
-                        >
-                          <span className="text-2xl">{ms.emoji}</span>
-                          <span className={`text-sm font-black ${ms.text}`}>{ms.key}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Task categories */}
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">หมวดหมู่ Task</label>
-                    <div className="grid grid-cols-2 gap-3">
-                      {taskCats.map(cat => {
-                        const count = tasks.filter(t => t.category === cat.key).length;
-                        return (
-                          <button
-                            key={cat.key}
-                            onClick={() => selectPickerCat(cat.key)}
-                            className={`flex flex-col items-center gap-2 p-5 rounded-2xl border-2 ${cat.border} ${cat.bg} hover:scale-105 transition-all`}
-                          >
-                            <span className="text-2xl">{cat.emoji}</span>
-                            <span className={`text-sm font-bold ${cat.text}`}>{cat.label}</span>
-                            <span className="text-[10px] font-bold text-slate-400">{count} tasks</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Step 2: Task list from selected category */}
-              {pickerStep === 2 && (
-                <div className="space-y-2">
-                  <button onClick={() => setPickerStep(1)} className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 font-bold mb-3 transition-colors">
-                    <ChevronLeft className="w-4 h-4" /> กลับเลือกหมวด
-                  </button>
-                  {catTasks.length === 0 ? (
-                    <div className="text-center py-8 text-slate-400">
-                      <p className="text-sm font-bold">ไม่มี Task ในหมวดนี้</p>
-                      <p className="text-xs mt-1">เพิ่ม Task ได้ที่หน้า Tasks</p>
-                    </div>
-                  ) : (
-                    catTasks.map(task => {
-                      const catInfo = taskCats.find(c => c.key === task.category);
-                      return (
-                        <button
-                          key={task.id}
-                          onClick={() => selectPickerTask(task)}
-                          className={`w-full text-left p-4 rounded-xl border-2 ${catInfo?.border || 'border-slate-200'} ${catInfo?.bg || 'bg-slate-50'} hover:scale-[1.02] transition-all`}
-                        >
-                          <div className={`text-sm font-bold ${catInfo?.text || 'text-slate-700'}`}>{task.title}</div>
-                          {task.description && <div className="text-xs text-slate-400 mt-1 line-clamp-1">{task.description}</div>}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-
-              {/* Step 3: Time picker */}
-              {pickerStep === 3 && (pickerTask || pickerMilestone) && (
-                <div className="space-y-5">
-                  <button onClick={() => { if (pickerMilestone) { setPickerMilestone(null); setPickerStep(1); } else { setPickerStep(2); } }} className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 font-bold mb-1 transition-colors">
-                    <ChevronLeft className="w-4 h-4" /> {pickerMilestone ? 'กลับเลือกประเภท' : 'กลับเลือก Task'}
-                  </button>
-
-                  {/* Preview — milestone or task */}
-                  {pickerMilestone ? (() => {
-                    const ms = MILESTONES.find(m => m.key === pickerMilestone);
-                    return ms ? (
-                      <div className={`p-4 rounded-xl border-2 ${ms.border} ${ms.bg} text-center`}>
-                        <span className="text-3xl block mb-1">{ms.emoji}</span>
-                        <span className={`text-base font-black ${ms.text}`}>{ms.key}</span>
-                        <div className="text-[10px] text-slate-400 font-bold mt-1">จุดเวลาเดียว — ไม่มีช่วงเวลา</div>
-                      </div>
-                    ) : null;
-                  })() : pickerTask && (
-                    <div className={`p-4 rounded-xl border-2 ${taskCats.find(c => c.key === pickerTask.category)?.border || 'border-slate-200'} ${taskCats.find(c => c.key === pickerTask.category)?.bg || 'bg-slate-50'}`}>
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{taskCats.find(c => c.key === pickerTask.category)?.emoji}</span>
-                        <div>
-                          <div className={`text-sm font-bold ${taskCats.find(c => c.key === pickerTask.category)?.text || 'text-slate-700'}`}>{pickerTask.title}</div>
-                          <div className="text-[10px] text-slate-400 font-bold">{pickerTask.category}</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Time inputs — single for milestone, start+end for task */}
-                  {pickerMilestone ? (
-                    <TimePicker label="เวลา" value={pickerStart} onChange={setPickerStart} />
-                  ) : (
-                    <>
-                      <div className="grid grid-cols-1 gap-3">
-                        <TimePicker label="เริ่ม" value={pickerStart} onChange={setPickerStart} />
-                        <TimePicker label="สิ้นสุด" value={pickerEnd} onChange={setPickerEnd} />
-                      </div>
-
-                      {/* Duration preview */}
-                      {(() => {
-                        const [sh, sm] = pickerStart.split(':').map(Number);
-                        const [eh, em] = pickerEnd.split(':').map(Number);
-                        const dur = (eh * 60 + em) - (sh * 60 + sm);
-                        return dur > 0 ? (
-                          <div className="text-center text-xs font-bold text-emerald-500 bg-emerald-50 rounded-lg py-2">
-                            ระยะเวลา: {dur >= 60 ? `${Math.floor(dur / 60)} ชม. ${dur % 60 > 0 ? `${dur % 60} น.` : ''}` : `${dur} น.`}
-                          </div>
-                        ) : null;
-                      })()}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Footer — only on step 3 */}
-            {pickerStep === 3 && (
-              <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex items-center gap-3 justify-end">
-                <button onClick={closeTaskPicker} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-sm rounded-xl transition-colors">ยกเลิก</button>
-                <button
-                  onClick={confirmTaskPicker}
-                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-200 transition-colors"
-                >
-                  เพิ่มลงตาราง
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ===== Edit Popup ===== */}
-      {editForm && editIdx !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl animate-fadeIn overflow-hidden">
-            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                <Edit3 className="w-5 h-5 text-emerald-500" />
-                {editIdx >= sortedSchedule.length ? 'เพิ่มกิจกรรมใหม่' : 'แก้ไขกิจกรรม'}
-              </h3>
-              <button onClick={() => { setEditIdx(null); setEditForm(null); }} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
-              {/* Title */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ชื่อกิจกรรม</label>
-                <input type="text" value={editForm.title} onChange={e => setEditForm({ ...editForm, title: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="เช่น Coding Session 1" />
-              </div>
-
-              {/* Subtitle */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">รายละเอียด (optional)</label>
-                <input type="text" value={editForm.subtitle || ''} onChange={e => setEditForm({ ...editForm, subtitle: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="รายละเอียดเพิ่มเติม..." />
-              </div>
-
-              {/* Time */}
-              <div className="space-y-3">
-                <TimePicker
-                  label="เริ่ม"
-                  value={formatTime(editForm.startHour, editForm.startMin)}
-                  onChange={v => { const [h,m] = v.split(':').map(Number); setEditForm({ ...editForm, startHour: h, startMin: m }); }}
-                />
-                <TimePicker
-                  label="สิ้นสุด"
-                  value={formatTime(editForm.endHour, editForm.endMin)}
-                  onChange={v => { const [h,m] = v.split(':').map(Number); setEditForm({ ...editForm, endHour: h, endMin: m }); }}
-                />
-              </div>
-
-              {/* Icon picker */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ไอคอน</label>
-                <div className="flex flex-wrap gap-2">
-                  {ICON_OPTIONS.map(opt => (
-                    <button key={opt.key} onClick={() => setEditForm({ ...editForm, icon: opt.key })} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-bold transition-all ${editForm.icon === opt.key ? 'bg-emerald-100 border-emerald-400 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}>
-                      {ICON_MAP[opt.key]} {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* isBreak toggle */}
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" checked={editForm.isBreak || false} onChange={e => setEditForm({ ...editForm, isBreak: e.target.checked })} className="w-5 h-5 rounded-lg border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                <span className="text-sm font-bold text-slate-700">เป็นช่วงพัก (Break)</span>
-              </label>
-
-              {/* Recurring toggle */}
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" checked={editForm.recurring === 'daily'} onChange={e => setEditForm({ ...editForm, recurring: e.target.checked ? 'daily' : undefined })} className="w-5 h-5 rounded-lg border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                <span className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
-                  <RefreshCw className="w-3.5 h-3.5 text-emerald-500" /> ทำซ้ำทุกวัน (Recurring Daily)
-                </span>
-              </label>
-            </div>
-
-            <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex items-center gap-3">
-              {editIdx < sortedSchedule.length && (
-                <button onClick={deleteBlock} className="p-2.5 bg-rose-50 hover:bg-rose-100 text-rose-500 rounded-xl transition-colors">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
-              <div className="flex-1" />
-              <button onClick={() => { setEditIdx(null); setEditForm(null); }} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-sm rounded-xl transition-colors">ยกเลิก</button>
-              <button onClick={saveEdit} disabled={!editForm.title.trim()} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-200 transition-colors disabled:opacity-40">บันทึก</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 px-2">
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
-          <div className="flex items-center gap-1 bg-white border border-emerald-200 rounded-xl p-1 shadow-sm">
-            <button className="p-2 hover:bg-emerald-50 rounded-lg"><ChevronLeft className="w-4 h-4 text-emerald-500" /></button>
-            <span className="text-sm font-bold text-slate-700 px-3 min-w-[140px] text-center">{dateStr}</span>
-            <button className="p-2 hover:bg-emerald-50 rounded-lg"><ChevronRight className="w-4 h-4 text-emerald-500" /></button>
-          </div>
-          <button className="p-2.5 bg-white border border-emerald-200 rounded-xl text-emerald-400 hover:text-emerald-600 shadow-sm transition-colors">
-            <CalendarIcon className="w-5 h-5" />
+    <div className="space-y-3">
+      {/* Date Navigation */}
+      <div className="bg-white rounded-xl border border-slate-200 p-3 flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <button onClick={prevDay} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button onClick={goToday} className={`text-xs font-bold px-3 py-1 rounded-full transition-all ${isToday ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-emerald-100'}`}>
+            วันนี้
+          </button>
+          <button onClick={nextDay} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors">
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
-        <button
-          onClick={handleMagicFill}
-          disabled={isGenerating}
-          className="flex items-center justify-center gap-2 w-full sm:w-auto px-6 py-3 bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-xl shadow-emerald-200 hover:bg-emerald-800 transition-all active:scale-95 disabled:opacity-50"
-        >
-          {isGenerating ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <Sparkles className="w-4 h-4 text-amber-300" />}
-          AI Smart Plan
-        </button>
+        <span className="text-sm font-bold text-slate-700">{dateLabel}</span>
       </div>
 
-      {/* Progress Bar */}
-      <div className="mx-2 mb-6 bg-white rounded-2xl border border-emerald-100 p-4 shadow-sm">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">ความคืบหน้าวันนี้</span>
-          <span className="text-sm font-black text-emerald-600">{progressPct}%</span>
-        </div>
-        <div className="h-2.5 bg-emerald-100 rounded-full overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-emerald-400 to-green-500 rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }}></div>
-        </div>
-        <div className="flex justify-between mt-2 text-[10px] text-slate-400 font-bold">
-          <span>05:00 ตื่นนอน</span>
-          {todayRecords.length > 0 && (
-            <span className="flex items-center gap-1 text-violet-500">
-              <Database className="w-3 h-3" /> {todayRecords.length} records วันนี้
-            </span>
-          )}
-          <span>22:00 เข้านอน</span>
-        </div>
+      {/* Schedule Template Tabs */}
+      <div className="bg-white rounded-xl border border-slate-200 p-1 flex gap-1">
+        {TAB_CONFIG.map(tab => {
+          const isActive = activeTab === tab.key;
+          const isAutoMatch = autoDayType === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all ${
+                isActive
+                  ? 'bg-emerald-500 text-white shadow-sm'
+                  : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'
+              }`}
+            >
+              <span>{tab.emoji}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
+              <span className="sm:hidden">{tab.key === 'workday' ? 'จ-ศ' : tab.key === 'saturday' ? 'ส.' : 'อา.'}</span>
+              {isAutoMatch && !isActive && (
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Notebook */}
-      <div className="bg-stone-50 border border-stone-200 rounded-2xl md:rounded-3xl shadow-2xl overflow-hidden min-h-[600px] flex flex-col md:flex-row relative">
-        {/* Binder */}
-        <div className="hidden md:block absolute left-1/2 top-0 bottom-0 w-10 -ml-5 bg-gradient-to-r from-stone-200 via-stone-50 to-stone-200 z-10 shadow-inner">
-          <div className="h-full w-full flex flex-col justify-around py-8">
-            {Array.from({ length: 24 }).map((_, i) => (
-              <div key={i} className="h-[2px] w-full bg-stone-300/40"></div>
-            ))}
+      {/* Progress (today only) */}
+      {isToday && dayTasks.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">ความคืบหน้าวันนี้</span>
+            <span className="text-xs font-black text-emerald-600">{progressPct}%</span>
+          </div>
+          <div className="h-2 bg-emerald-100 rounded-full overflow-hidden">
+            <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }} />
           </div>
         </div>
+      )}
 
-        {/* Left: Timeline */}
-        <div className="flex-1 p-5 md:p-8 md:pr-14 bg-white relative">
-          <div className="flex justify-between items-center mb-5">
-            <h3 className="text-xl font-bold text-slate-800">ตารางวันนี้</h3>
-            <span className="text-[10px] uppercase tracking-[0.15em] text-emerald-500 font-black">05:00 — 22:00</span>
-          </div>
-
-          <div className="space-y-1.5">
-            {sortedSchedule.map((block, idx) => {
-              const blockStart = block.startHour * 60 + block.startMin;
-              const blockEnd = block.endHour * 60 + block.endMin;
-              const isNow = nowMinutes >= blockStart && nowMinutes < blockEnd;
-              const checked = checkedBlocks.has(idx);
-              const duration = getDurationMin(block);
-
+      <div className="flex flex-col md:flex-row gap-4">
+        {/* Left: Slot Timeline */}
+        <div className="flex-[2] space-y-2">
+          {timeline.map((item) => {
+            if (item.type === 'milestone') {
+              const ms = item.data as Milestone;
               return (
-                <div
-                  key={idx}
-                  className={`flex items-stretch rounded-xl border transition-all ${isNow ? 'ring-2 ring-emerald-400 ring-offset-1' : ''} ${checked ? 'opacity-50' : ''} ${block.color}`}
-                >
-                  {/* Time */}
-                  <div className="w-[52px] md:w-16 shrink-0 py-2.5 px-1.5 md:px-3 flex flex-col items-center justify-center border-r border-current/10">
-                    <span className="text-[10px] font-black tabular-nums leading-tight">{formatTime(block.startHour, block.startMin)}</span>
-                    {getDurationMin(block) > 0 && <span className="text-[8px] opacity-50 leading-tight">{formatTime(block.endHour, block.endMin)}</span>}
-                  </div>
-
-                  {/* Content — tap to check */}
-                  <div
-                    onClick={() => !block.isBreak && toggleCheck(idx)}
-                    className={`flex-1 py-2.5 px-3 flex items-center gap-2.5 ${duration >= 60 ? 'min-h-[56px]' : 'min-h-[40px]'} ${block.isBreak ? 'cursor-default' : 'cursor-pointer'}`}
-                  >
-                    {!block.isBreak && (
-                      <div className={`w-4.5 h-4.5 rounded-md border-2 border-current/30 flex items-center justify-center shrink-0 ${checked ? 'bg-current/20' : ''}`}>
-                        {checked && <span className="text-[10px] font-black">✓</span>}
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className={`text-sm font-bold leading-tight ${checked ? 'line-through' : ''}`}>
-                        {block.title}
-                        {block.recurring === 'daily' && (
-                          <span className="ml-1.5 inline-flex items-center gap-0.5 text-[9px] font-black text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded-full align-middle">
-                            <RefreshCw className="w-2.5 h-2.5" /> ทุกวัน
-                          </span>
-                        )}
-                      </div>
-                      {block.subtitle && <div className="text-[10px] opacity-60 font-medium mt-0.5">{block.subtitle}</div>}
-                    </div>
-                    <div className="shrink-0 opacity-50">{ICON_MAP[block.icon]}</div>
-                    {isNow && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></div>}
-                  </div>
-
-                  {/* Edit button */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); openEdit(idx); }}
-                    className="px-2.5 shrink-0 flex items-center justify-center opacity-30 hover:opacity-80 transition-opacity"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
+                <div key={`ms-${ms.id}`} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold ${ms.color}`}>
+                  <span>{ms.emoji}</span>
+                  <span>{ms.time}</span>
+                  <span className="opacity-70">{ms.title}</span>
                 </div>
               );
-            })}
+            }
 
-            {/* Add new block — opens Task Picker */}
-            <button
-              onClick={openTaskPicker}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-emerald-200 text-emerald-400 hover:text-emerald-600 hover:border-emerald-400 transition-all text-sm font-bold"
-            >
-              <Plus className="w-4 h-4" /> เพิ่มกิจกรรม
-            </button>
-          </div>
+            const slot = item.data as TimeSlot;
+            const group = groupMap.get(slot.groupKey);
+            const colors = GROUP_COLORS[group?.color || 'orange'] || GROUP_COLORS.orange;
+            const slotTasks = getTasksForSlot(tasks, selectedDateStr, slot.groupKey);
+            const checkedCount = slotTasks.filter(t => checkedTasks.has(t.id)).length;
+            const slotDur = getDurationMinutes(slot.startTime, slot.endTime);
+            const isExpanded = expandedSlots.has(slot.id);
+
+            const [ssh, ssm] = slot.startTime.split(':').map(Number);
+            const [seh, sem] = slot.endTime.split(':').map(Number);
+            const slotStartMin = ssh * 60 + ssm;
+            const slotEndMin = seh * 60 + sem;
+            const isCurrentSlot = isToday && nowMinutes >= slotStartMin && nowMinutes < slotEndMin;
+
+            return (
+              <div
+                key={slot.id}
+                className={`bg-white rounded-xl border overflow-hidden transition-all ${
+                  isCurrentSlot ? 'ring-2 ring-emerald-400 ring-offset-1' : ''
+                } ${colors.plannerBorder}`}
+              >
+                {/* Slot Header */}
+                <div
+                  onClick={() => toggleSlot(slot.id)}
+                  className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none ${colors.plannerBg}`}
+                >
+                  <span className="text-xs font-black text-slate-500">{slot.startTime}–{slot.endTime}</span>
+                  <div className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
+                  <span className={`text-xs font-black ${colors.plannerText}`}>
+                    {group?.emoji} {group?.label || slot.groupKey}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-bold">
+                    {slotDur > 0 && formatDuration(slotDur)}
+                  </span>
+                  <div className="flex-1" />
+                  {slotTasks.length > 0 && (
+                    <span className={`text-[10px] font-black ${colors.plannerText} opacity-60`}>
+                      {checkedCount}/{slotTasks.length}
+                    </span>
+                  )}
+                  {isCurrentSlot && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openEditSlot(slot); }}
+                    className="p-1 rounded hover:bg-white/60 text-slate-400 hover:text-slate-600"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteSlot(slot.id); }}
+                    className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                </div>
+
+                {/* Expanded Task List */}
+                {isExpanded && (
+                  <div className="border-t px-3 py-2 space-y-1" style={{ borderColor: 'inherit' }}>
+                    {slotTasks.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic py-1">ไม่มี Task ในกลุ่มนี้</p>
+                    ) : (
+                      slotTasks.map(task => {
+                        const checked = checkedTasks.has(task.id);
+                        const dur = getDurationMinutes(task.startTime, task.endTime);
+                        const [tsh, tsm] = task.startTime.split(':').map(Number);
+                        const taskStart = tsh * 60 + tsm;
+                        const [teh, tem] = task.endTime.split(':').map(Number);
+                        const taskEnd = teh * 60 + tem;
+                        const isNow = isToday && nowMinutes >= taskStart && nowMinutes < taskEnd;
+
+                        return (
+                          <div
+                            key={task.id}
+                            onClick={() => toggleCheck(task.id)}
+                            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all hover:bg-slate-50 ${
+                              checked ? 'opacity-40' : ''
+                            } ${isNow ? 'bg-emerald-50' : ''}`}
+                          >
+                            <div className="shrink-0">
+                              {checked
+                                ? <CheckCircle2 className={`w-4 h-4 ${colors.plannerText}`} />
+                                : <Circle className={`w-4 h-4 ${colors.plannerText} opacity-30`} />
+                              }
+                            </div>
+                            <span className={`text-[13px] font-bold flex-1 min-w-0 truncate ${checked ? 'line-through text-slate-400' : 'text-slate-700'}`}>
+                              {task.title}
+                            </span>
+                            {task.recurring === 'daily' && (
+                              <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1 rounded shrink-0">ทุกวัน</span>
+                            )}
+                            <span className="text-[10px] font-bold text-blue-500 shrink-0">{task.startTime}–{task.endTime}</span>
+                            {dur > 0 && <span className="text-[9px] text-slate-400 font-bold shrink-0">{formatDuration(dur)}</span>}
+                            {isNow && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Add Slot Button */}
+          <button
+            onClick={openAddSlot}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-emerald-300 hover:text-emerald-500 hover:bg-emerald-50/50 transition-all text-xs font-bold"
+          >
+            <Plus className="w-4 h-4" /> เพิ่ม Slot
+          </button>
         </div>
 
         {/* Right: Summary */}
-        <div className="flex-1 p-5 md:p-8 md:pl-14 bg-[#fefefc] border-t md:border-t-0 md:border-l border-stone-200">
-          {sortedSchedule.length > 0 ? (
-            <>
-              <div className="mb-8">
-                <h3 className="text-lg font-bold text-slate-800 mb-4">สรุปเวลาตามหมวด</h3>
-                <div className="space-y-2.5">
-                  {(() => {
-                    // Map icon → group for category lookup
-                    const iconToGroup: Record<string, TaskGroup> = {};
-                    taskGroups.forEach(g => { iconToGroup[g.icon] = g; });
-
-                    const catMins: Record<string, { mins: number; emoji: string; color: string }> = {};
-                    let breakMins = 0;
-
-                    sortedSchedule.forEach(b => {
-                      const dur = getDurationMin(b);
-                      if (dur <= 0) return; // skip milestones (0 duration)
-                      if (b.isBreak) { breakMins += dur; return; }
-                      const group = iconToGroup[b.icon];
-                      const key = group ? group.key : 'อื่นๆ';
-                      if (!catMins[key]) {
-                        catMins[key] = { mins: 0, emoji: group?.emoji || '📋', color: group?.color || 'orange' };
-                      }
-                      catMins[key].mins += dur;
-                    });
-
-                    const totalWorkMins = Object.values(catMins).reduce((s, v) => s + v.mins, 0);
-
-                    return (
-                      <>
-                        {Object.entries(catMins).map(([key, { mins, emoji, color }]) => {
-                          const c = GROUP_COLORS[color] || GROUP_COLORS.orange;
-                          const pct = totalWorkMins > 0 ? Math.round((mins / totalWorkMins) * 100) : 0;
-                          return (
-                            <div key={key} className={`flex items-center gap-3 px-3 py-3 rounded-xl border ${c.border} ${c.bg}`}>
-                              <span className="text-lg">{emoji}</span>
-                              <div className="flex-1 min-w-0">
-                                <div className={`text-sm font-bold ${c.text}`}>{key}</div>
-                                <div className="h-1.5 bg-white/60 rounded-full mt-1 overflow-hidden">
-                                  <div className={`h-full rounded-full ${c.dot}`} style={{ width: `${pct}%` }}></div>
-                                </div>
-                              </div>
-                              <div className="text-right shrink-0">
-                                <div className="text-sm font-black text-slate-700">
-                                  {mins >= 60 ? `${Math.floor(mins / 60)} ชม. ${mins % 60 > 0 ? `${mins % 60} น.` : ''}` : `${mins} น.`}
-                                </div>
-                                <div className="text-[10px] font-bold text-slate-400">{pct}%</div>
-                              </div>
-                            </div>
-                          );
-                        })}
-
-                        {breakMins > 0 && (
-                          <div className="flex items-center gap-3 px-3 py-3 rounded-xl border border-slate-200 bg-slate-50">
-                            <span className="text-lg">☕</span>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-bold text-slate-500">พักผ่อน / Break</div>
-                            </div>
-                            <div className="text-sm font-black text-slate-500">
-                              {breakMins >= 60 ? `${Math.floor(breakMins / 60)} ชม. ${breakMins % 60 > 0 ? `${breakMins % 60} น.` : ''}` : `${breakMins} น.`}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="mt-3 p-3 bg-emerald-50/50 rounded-xl flex items-center justify-between">
-                          <div>
-                            <span className="text-lg font-black text-emerald-600">
-                              {totalWorkMins >= 60 ? `${Math.floor(totalWorkMins / 60)} ชม. ${totalWorkMins % 60 > 0 ? `${totalWorkMins % 60} น.` : ''}` : `${totalWorkMins} น.`}
-                            </span>
-                            <span className="text-xs text-slate-500 ml-2">ทำงานทั้งวัน</span>
-                          </div>
-                          {breakMins > 0 && (
-                            <span className="text-xs font-bold text-slate-400">
-                              พัก {breakMins >= 60 ? `${Math.floor(breakMins / 60)} ชม. ${breakMins % 60 > 0 ? `${breakMins % 60} น.` : ''}` : `${breakMins} น.`}
-                            </span>
-                          )}
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
+        <div className="flex-1 space-y-3">
+          {slotSummary.length > 0 ? (
+            <div className="bg-white rounded-xl border border-slate-200 p-3">
+              <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">สรุปเวลา</h4>
+              <div className="space-y-2">
+                {slotSummary.map(c => {
+                  const clr = GROUP_COLORS[c.color] || GROUP_COLORS.orange;
+                  const pct = totalAllMins > 0 ? Math.round((c.totalMins / totalAllMins) * 100) : 0;
+                  return (
+                    <div key={c.key}>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[11px] font-bold text-slate-600">{c.emoji} {c.label}</span>
+                        <span className="text-[10px] font-black text-slate-400">{formatDuration(c.totalMins)}</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${clr.iconBg}`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            </>
+              <div className="mt-3 pt-3 border-t border-slate-100 text-center">
+                <span className="text-sm font-black text-emerald-600">{formatDuration(totalAllMins)}</span>
+                <span className="text-[10px] text-slate-400 font-bold ml-1">ทั้งวัน</span>
+              </div>
+            </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <CalendarIcon className="w-12 h-12 text-stone-300 mb-4" />
-              <p className="text-base font-bold text-slate-500 mb-1">ยังไม่มีตารางวันนี้</p>
-              <p className="text-sm text-slate-400">เพิ่มกิจกรรมจากปุ่มด้านซ้าย</p>
+            <div className="bg-white rounded-xl border border-slate-200 p-6 text-center text-slate-400">
+              <p className="text-xs font-bold">ไม่มี Slot</p>
             </div>
           )}
-
-          {/* AI Result */}
-          {aiSchedule && (
-            <div className="mt-8 p-5 bg-emerald-50/40 rounded-2xl border border-emerald-100 animate-fadeIn shadow-sm">
-              <div className="flex items-center gap-2 mb-4 text-emerald-700">
-                <div className="w-6 h-6 bg-emerald-100 rounded-lg flex items-center justify-center">
-                  <Sparkles className="w-3.5 h-3.5" />
-                </div>
-                <span className="text-xs font-black uppercase tracking-widest">AI Strategist</span>
-              </div>
-              <div className="text-sm text-emerald-900/90 leading-loose whitespace-pre-wrap font-medium bg-white/50 p-4 rounded-xl border border-emerald-50">
-                {aiSchedule}
-              </div>
-            </div>
-          )}
-
-          <div className="mt-12 pt-10 text-center opacity-30">
-            <Bookmark className="w-6 h-6 text-stone-400 mx-auto" />
-            <p className="mt-4 text-xs text-stone-500">Debug-Me LifeFlow</p>
-          </div>
         </div>
       </div>
 
-      <div className="mt-6 text-center">
-        <p className="text-[9px] font-black text-stone-400 uppercase tracking-[0.4em] opacity-60">Daily Plan — Designed for Focus</p>
-      </div>
+      {/* Slot Editor Modal */}
+      {isAddingSlot && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setIsAddingSlot(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-[90vw] max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black text-slate-800">
+                {editingSlot ? 'แก้ไข Slot' : 'เพิ่ม Slot ใหม่'}
+              </h3>
+              <button onClick={() => setIsAddingSlot(false)} className="p-1 rounded-lg hover:bg-slate-100">
+                <X className="w-4 h-4 text-slate-400" />
+              </button>
+            </div>
+
+            {/* Time inputs */}
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">เริ่ม</label>
+                <input
+                  type="time"
+                  value={slotForm.startTime}
+                  onChange={e => setSlotForm(f => ({ ...f, startTime: e.target.value }))}
+                  className="w-full mt-1 px-3 py-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-emerald-300 focus:border-emerald-300 outline-none"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">จบ</label>
+                <input
+                  type="time"
+                  value={slotForm.endTime}
+                  onChange={e => setSlotForm(f => ({ ...f, endTime: e.target.value }))}
+                  className="w-full mt-1 px-3 py-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-emerald-300 focus:border-emerald-300 outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Group selector */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ประเภทกิจกรรม</label>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {taskGroups.map(g => {
+                  const clr = GROUP_COLORS[g.color] || GROUP_COLORS.orange;
+                  const isActive = slotForm.groupKey === g.key;
+                  return (
+                    <button
+                      key={g.key}
+                      onClick={() => setSlotForm(f => ({ ...f, groupKey: g.key }))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                        isActive
+                          ? `${clr.bg} ${clr.border} ${clr.text} ring-2 ${clr.ring}`
+                          : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {g.emoji} {g.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setIsAddingSlot(false)}
+                className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={saveSlot}
+                disabled={!slotForm.groupKey}
+                className="flex-1 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors disabled:opacity-40"
+              >
+                บันทึก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

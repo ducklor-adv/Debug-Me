@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Task } from '../types';
+import { Task, Milestone, TaskGroup, GROUP_COLORS, getTasksForDate } from '../types';
 import { CheckCircle2, Circle, Trophy, Zap, Flame, CheckCircle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, ChevronRight, Trash2, Square, Image, Coffee, Code, Sun, Moon, Dumbbell, BookOpen, Brain, FileText, Play, Pause, RotateCcw, Volume2, VolumeX, Target, SkipForward, AlertTriangle } from 'lucide-react';
-import { ScheduleBlock } from './DailyPlanner';
 
 interface Attachment {
   type: 'photo' | 'video' | 'audio' | 'phone' | 'contact' | 'gps';
@@ -12,10 +11,11 @@ interface Attachment {
 
 interface DashboardProps {
   tasks: Task[];
-  schedule: ScheduleBlock[];
+  milestones: Milestone[];
+  taskGroups: TaskGroup[];
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ tasks, schedule }) => {
+const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups }) => {
   const [showDoneModal, setShowDoneModal] = useState(false);
   const [showEditView, setShowEditView] = useState(false);
   const [notes, setNotes] = useState('');
@@ -75,29 +75,47 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, schedule }) => {
 
   const completedTasksCount = tasks.filter(t => t.completed).length;
 
-  const currentUrgentTask = tasks.find(t => !t.completed && t.priority === 'High');
-  const remainingTasks = tasks.filter(t => !t.completed && t !== currentUrgentTask);
-
-  // Countdown timer
+  // Countdown timer tick
   const [tick, setTick] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setTick(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // Schedule helpers
+  // Today's tasks
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayTasks = getTasksForDate(tasks, todayStr);
+
+  // Current time
   const now = new Date(tick);
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const nowSec = now.getSeconds();
-  const fmtTime = (h: number, m: number) => `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
-  const getDur = (b: ScheduleBlock) => (b.endHour * 60 + b.endMin) - (b.startHour * 60 + b.startMin);
-  const currentBlock = schedule.find(b => nowMin >= b.startHour * 60 + b.startMin && nowMin < b.endHour * 60 + b.endMin);
-  const upcomingBlocks = schedule.filter(b => (b.startHour * 60 + b.startMin) > nowMin);
 
-  // Countdown: remaining time in current block
+  // Find current task (time-wise)
+  const currentTask = todayTasks.find(t => {
+    const [sh, sm] = t.startTime.split(':').map(Number);
+    const [eh, em] = t.endTime.split(':').map(Number);
+    return nowMin >= sh * 60 + sm && nowMin < eh * 60 + em;
+  });
+
+  // Upcoming tasks
+  const upcomingTasks = todayTasks.filter(t => {
+    const [sh, sm] = t.startTime.split(':').map(Number);
+    return sh * 60 + sm > nowMin;
+  });
+
+  // Duration helper
+  const getDurMin = (t: Task) => {
+    const [sh, sm] = t.startTime.split(':').map(Number);
+    const [eh, em] = t.endTime.split(':').map(Number);
+    return (eh * 60 + em) - (sh * 60 + sm);
+  };
+
+  // Countdown for current task
   const countdownStr = (() => {
-    if (!currentBlock) return '';
-    const endTotalSec = (currentBlock.endHour * 60 + currentBlock.endMin) * 60;
+    if (!currentTask) return '';
+    const [eh, em] = currentTask.endTime.split(':').map(Number);
+    const endTotalSec = (eh * 60 + em) * 60;
     const nowTotalSec = (now.getHours() * 60 + now.getMinutes()) * 60 + nowSec;
     const remaining = Math.max(0, endTotalSec - nowTotalSec);
     const mm = Math.floor(remaining / 60).toString().padStart(2, '0');
@@ -105,7 +123,9 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, schedule }) => {
     return `${mm}:${ss}`;
   })();
 
-  const scheduleIcon = (icon: string, size = 'w-3.5 h-3.5') => {
+  const scheduleIcon = (cat: string, size = 'w-3.5 h-3.5') => {
+    const group = taskGroups.find(g => g.key === cat);
+    const icon = group?.icon || 'code';
     if (icon === 'code') return <Code className={size} />;
     if (icon === 'coffee') return <Coffee className={size} />;
     if (icon === 'sun') return <Sun className={size} />;
@@ -117,18 +137,9 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, schedule }) => {
     return <Clock className={size} />;
   };
 
-  const handleMarkAsDoneClick = () => {
-    setShowDoneModal(true);
-  };
-
-  const handleConfirmDone = () => {
-    setShowDoneModal(false);
-  };
-
-  const handleSaveDetails = () => {
-    setShowDoneModal(false);
-    setShowEditView(true);
-  };
+  const handleMarkAsDoneClick = () => { setShowDoneModal(true); };
+  const handleConfirmDone = () => { setShowDoneModal(false); };
+  const handleSaveDetails = () => { setShowDoneModal(false); setShowEditView(true); };
 
   const resetEditState = () => {
     setShowEditView(false);
@@ -141,10 +152,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, schedule }) => {
     setContactValue('');
   };
 
-  const handleSkipClick = () => {
-    setSkipMode(true);
-    setShowEditView(true);
-  };
+  const handleSkipClick = () => { setSkipMode(true); setShowEditView(true); };
 
   const removeAttachment = (index: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== index));
@@ -169,80 +177,48 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, schedule }) => {
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       mediaRecorder.onstop = () => {
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         const url = URL.createObjectURL(blob);
-        const now = new Date();
-        const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
-        setAttachments(prev => [...prev, {
-          type: 'audio',
-          label: `เสียงบันทึก ${timeStr}`,
-          value: url,
-        }]);
+        const n = new Date();
+        const timeStr = `${n.getHours().toString().padStart(2,'0')}:${n.getMinutes().toString().padStart(2,'0')}:${n.getSeconds().toString().padStart(2,'0')}`;
+        setAttachments(prev => [...prev, { type: 'audio', label: `เสียงบันทึก ${timeStr}`, value: url }]);
         stream.getTracks().forEach(t => t.stop());
       };
-
       mediaRecorder.start();
       setIsRecording(true);
-    } catch {
-      alert('ไม่สามารถเข้าถึงไมโครโฟนได้ กรุณาอนุญาตการใช้งาน');
-    }
+    } catch { alert('ไม่สามารถเข้าถึงไมโครโฟนได้'); }
   };
 
-  const handleStopRecording = () => {
-    mediaRecorderRef.current?.stop();
-    setIsRecording(false);
-  };
+  const handleStopRecording = () => { mediaRecorderRef.current?.stop(); setIsRecording(false); };
 
   const handleAddPhone = () => {
     if (phoneValue.trim()) {
       setAttachments(prev => [...prev, { type: 'phone', label: `เบอร์โทร: ${phoneValue}`, value: phoneValue }]);
-      setPhoneValue('');
-      setShowPhoneInput(false);
+      setPhoneValue(''); setShowPhoneInput(false);
     }
   };
 
   const handleAddContact = () => {
     if (contactValue.trim()) {
       setAttachments(prev => [...prev, { type: 'contact', label: `ผู้ติดต่อ: ${contactValue}`, value: contactValue }]);
-      setContactValue('');
-      setShowContactInput(false);
+      setContactValue(''); setShowContactInput(false);
     }
   };
 
   const handleGetGPS = () => {
-    if (!navigator.geolocation) {
-      alert('เบราว์เซอร์ไม่รองรับ GPS');
-      return;
-    }
+    if (!navigator.geolocation) { alert('เบราว์เซอร์ไม่รองรับ GPS'); return; }
     setGpsLoading(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
-        setAttachments(prev => [...prev, {
-          type: 'gps',
-          label: `พิกัด: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
-          value: `${latitude},${longitude}`,
-        }]);
+        setAttachments(prev => [...prev, { type: 'gps', label: `พิกัด: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`, value: `${latitude},${longitude}` }]);
         setGpsLoading(false);
       },
-      () => {
-        alert('ไม่สามารถดึงพิกัด GPS ได้ กรุณาอนุญาตการใช้งาน');
-        setGpsLoading(false);
-      },
+      () => { alert('ไม่สามารถดึงพิกัด GPS ได้'); setGpsLoading(false); },
       { enableHighAccuracy: true, timeout: 10000 }
     );
-  };
-
-  const priorityStyle = (p: string) => {
-    if (p === 'High') return 'bg-rose-100 text-rose-600 border-rose-200';
-    if (p === 'Medium') return 'bg-amber-100 text-amber-600 border-amber-200';
-    return 'bg-slate-100 text-slate-500 border-slate-200';
   };
 
   return (
@@ -279,16 +255,11 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, schedule }) => {
             <div className="p-6 overflow-y-auto flex-1 space-y-6">
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-2 block">Notes / รายละเอียดเพิ่มเติม</label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 h-28 resize-none shadow-inner"
-                  placeholder="พิมพ์รายละเอียดที่เจอมา..."
-                />
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 h-28 resize-none shadow-inner" placeholder="พิมพ์รายละเอียดที่เจอมา..." />
               </div>
 
               <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-3 block">Quick Attachments / เครื่องมือด่วน</label>
+                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-3 block">Quick Attachments</label>
                 <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFileSelect(e, 'photo')} />
                 <input ref={videoInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={(e) => handleFileSelect(e, 'video')} />
 
@@ -296,10 +267,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, schedule }) => {
                   <button onClick={() => photoInputRef.current?.click()} className="flex flex-col items-center justify-center gap-2 py-4 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-200 text-blue-500 hover:text-emerald-600 rounded-xl border border-emerald-100 transition-all active:scale-95 shadow-sm">
                     <Camera className="w-6 h-6" /> <span className="text-[10px] font-bold">ถ่ายรูป</span>
                   </button>
-                  <button
-                    onClick={isRecording ? handleStopRecording : handleStartRecording}
-                    className={`flex flex-col items-center justify-center gap-2 py-4 rounded-xl border transition-all active:scale-95 shadow-sm ${isRecording ? 'bg-rose-100 border-rose-300 text-rose-600 animate-pulse' : 'bg-slate-50 hover:bg-rose-50 hover:border-rose-200 text-blue-500 hover:text-rose-600 border-emerald-100'}`}
-                  >
+                  <button onClick={isRecording ? handleStopRecording : handleStartRecording} className={`flex flex-col items-center justify-center gap-2 py-4 rounded-xl border transition-all active:scale-95 shadow-sm ${isRecording ? 'bg-rose-100 border-rose-300 text-rose-600 animate-pulse' : 'bg-slate-50 hover:bg-rose-50 hover:border-rose-200 text-blue-500 hover:text-rose-600 border-emerald-100'}`}>
                     {isRecording ? <Square className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                     <span className="text-[10px] font-bold">{isRecording ? 'หยุดอัด' : 'อัดเสียง'}</span>
                   </button>
@@ -323,7 +291,6 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, schedule }) => {
                     <button onClick={handleAddPhone} className="px-4 py-2.5 bg-sky-500 text-white rounded-xl text-sm font-bold active:scale-95">เพิ่ม</button>
                   </div>
                 )}
-
                 {showContactInput && (
                   <div className="mt-3 flex gap-2">
                     <input type="text" value={contactValue} onChange={(e) => setContactValue(e.target.value)} placeholder="ชื่อผู้ติดต่อ" className="flex-1 bg-slate-50 border border-violet-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" onKeyDown={(e) => e.key === 'Enter' && handleAddContact()} />
@@ -374,47 +341,30 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, schedule }) => {
       {showFocus && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full shadow-2xl border border-emerald-100 animate-fadeIn overflow-hidden relative">
-            {/* Close button */}
             <button onClick={() => setShowFocus(false)} className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors z-10">
               <X className="w-4 h-4" />
             </button>
-            {/* Focus/Break Tabs */}
             <div className="flex items-center justify-center gap-2 pt-8 pb-4">
-              <button
-                onClick={() => switchFocusMode('focus')}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all ${focusMode === 'focus' ? 'bg-slate-800 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-              >
+              <button onClick={() => switchFocusMode('focus')} className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all ${focusMode === 'focus' ? 'bg-slate-800 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                 <Brain className="w-4 h-4" /> Focus
               </button>
-              <button
-                onClick={() => switchFocusMode('break')}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all ${focusMode === 'break' ? 'bg-slate-800 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-              >
+              <button onClick={() => switchFocusMode('break')} className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all ${focusMode === 'break' ? 'bg-slate-800 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                 <Coffee className="w-4 h-4" /> Break
               </button>
             </div>
-
-            {/* Big Timer */}
             <div className="text-center py-8">
               <div className="text-7xl font-black text-slate-800 tracking-tight tabular-nums">
                 {focusMM}<span className="text-slate-300">:</span>{focusSS}
               </div>
               <p className="mt-4 text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                {focusMode === 'focus'
-                  ? (currentBlock ? `Deep Work: ${currentBlock.title}` : 'Deep Work: Coding Time')
-                  : 'Break Time'}
+                {focusMode === 'focus' ? (currentTask ? `Deep Work: ${currentTask.title}` : 'Deep Work: Coding Time') : 'Break Time'}
               </p>
             </div>
-
-            {/* Controls */}
             <div className="flex items-center justify-center gap-5 pb-10">
               <button onClick={focusReset} className="w-12 h-12 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 transition-all active:scale-90">
                 <RotateCcw className="w-5 h-5" />
               </button>
-              <button
-                onClick={() => setFocusRunning(!focusRunning)}
-                className="w-16 h-16 bg-indigo-500 hover:bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-indigo-200 transition-all active:scale-90"
-              >
+              <button onClick={() => setFocusRunning(!focusRunning)} className="w-16 h-16 bg-indigo-500 hover:bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-indigo-200 transition-all active:scale-90">
                 {focusRunning ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 ml-0.5" />}
               </button>
               <button onClick={() => setSoundOn(!soundOn)} className="w-12 h-12 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 transition-all active:scale-90">
@@ -425,7 +375,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, schedule }) => {
         </div>
       )}
 
-      {/* ===== NOW: Current Schedule Block ===== */}
+      {/* ===== NOW: Current Task ===== */}
       <div className="bg-gradient-to-br from-emerald-600 via-emerald-500 to-green-500 p-6 pb-8">
         <div className="max-w-lg mx-auto">
           <div className="flex items-center gap-2 mb-3">
@@ -433,9 +383,8 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, schedule }) => {
             <span className="text-xs font-bold tracking-widest uppercase text-emerald-100">ตอนนี้ทำอะไร</span>
           </div>
 
-          {currentBlock ? (
+          {currentTask ? (
             <div className="bg-white rounded-2xl p-5 shadow-xl">
-              {/* Countdown ตัวใหญ่ ตรงกลาง บนสุด */}
               <div className="text-center mb-4">
                 <div className="flex items-center justify-center gap-2 mb-2">
                   <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
@@ -446,16 +395,14 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, schedule }) => {
                 </div>
               </div>
 
-              {/* ชื่อกิจกรรม + ช่วงเวลา + เวลาทั้งหมด ในแถวเดียวกัน */}
               <div className="flex items-center gap-2 mb-1">
-                <div className="text-emerald-500 shrink-0">{scheduleIcon(currentBlock.icon, 'w-5 h-5')}</div>
-                <h3 className="text-base font-bold text-slate-800 leading-tight truncate flex-1">{currentBlock.title}</h3>
-                <span className="text-xs font-mono font-bold text-blue-500 shrink-0">{fmtTime(currentBlock.startHour, currentBlock.startMin)}–{fmtTime(currentBlock.endHour, currentBlock.endMin)}</span>
-                <span className="text-xs font-bold text-blue-600 shrink-0">{getDur(currentBlock)}m</span>
+                <div className="text-emerald-500 shrink-0">{scheduleIcon(currentTask.category, 'w-5 h-5')}</div>
+                <h3 className="text-base font-bold text-slate-800 leading-tight truncate flex-1">{currentTask.title}</h3>
+                <span className="text-xs font-mono font-bold text-blue-500 shrink-0">{currentTask.startTime}–{currentTask.endTime}</span>
+                <span className="text-xs font-bold text-blue-600 shrink-0">{getDurMin(currentTask)}m</span>
               </div>
-              {currentBlock.subtitle && <p className="text-sm text-blue-400 leading-relaxed mb-3 ml-[28px]">{currentBlock.subtitle}</p>}
+              {currentTask.description && <p className="text-sm text-blue-400 leading-relaxed mb-3 ml-[28px]">{currentTask.description}</p>}
 
-              {/* ปุ่มต่าง ๆ */}
               <div className="flex flex-wrap gap-2 mt-3 justify-center">
                 <button onClick={() => setShowFocus(true)} className="py-2.5 px-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-xl font-semibold text-sm transition-all flex items-center gap-2 active:scale-95">
                   <Target className="w-4 h-4" /> Focus
@@ -496,41 +443,38 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, schedule }) => {
       {/* ===== Schedule: Next Up + Remaining ===== */}
       <div className="px-4 pt-6 pb-16 max-w-lg mx-auto space-y-4">
 
-        {/* Next Up - ตัวถัดไป */}
-        {upcomingBlocks.length > 0 && (
+        {upcomingTasks.length > 0 && (
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-emerald-100">
             <div className="flex items-center gap-2 text-emerald-500 mb-3">
               <Clock className="w-4 h-4" />
               <span className="text-[10px] font-bold uppercase tracking-widest">Next Up</span>
             </div>
             <div className="flex items-center gap-3">
-              <div className="shrink-0 opacity-60">{scheduleIcon(upcomingBlocks[0].icon)}</div>
-              <span className="text-base font-bold text-slate-800 truncate flex-1">{upcomingBlocks[0].title}</span>
-              <span className="text-xs font-mono font-bold text-emerald-600 shrink-0">{fmtTime(upcomingBlocks[0].startHour, upcomingBlocks[0].startMin)}–{fmtTime(upcomingBlocks[0].endHour, upcomingBlocks[0].endMin)}</span>
-              <span className="text-xs font-bold text-blue-400 shrink-0">{getDur(upcomingBlocks[0])}m</span>
+              <div className="shrink-0 opacity-60">{scheduleIcon(upcomingTasks[0].category)}</div>
+              <span className="text-base font-bold text-slate-800 truncate flex-1">{upcomingTasks[0].title}</span>
+              <span className="text-xs font-mono font-bold text-emerald-600 shrink-0">{upcomingTasks[0].startTime}–{upcomingTasks[0].endTime}</span>
+              <span className="text-xs font-bold text-blue-400 shrink-0">{getDurMin(upcomingTasks[0])}m</span>
             </div>
           </div>
         )}
 
-        {/* ตารางที่เหลือ — scrollable */}
-        {upcomingBlocks.length > 1 && (
+        {upcomingTasks.length > 1 && (
           <div className="bg-white rounded-2xl shadow-sm border border-emerald-100">
             <div className="px-4 py-2.5 border-b border-emerald-100">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400">อีก {upcomingBlocks.length - 1} รายการวันนี้</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400">อีก {upcomingTasks.length - 1} รายการวันนี้</span>
             </div>
             <div className="max-h-[320px] overflow-y-auto divide-y divide-emerald-50">
-              {upcomingBlocks.slice(1).map((block, idx) => (
+              {upcomingTasks.slice(1).map((task, idx) => (
                 <div key={idx} className="flex items-center gap-2.5 px-4 py-2.5">
-                  <div className={`shrink-0 ${block.isBreak ? 'text-slate-300' : block.icon === 'code' ? 'text-blue-400' : 'text-emerald-500'}`}>{scheduleIcon(block.icon)}</div>
-                  <span className="text-sm text-slate-700 font-medium truncate flex-1">{block.title}</span>
-                  <span className="text-[11px] font-mono text-blue-400 shrink-0">{fmtTime(block.startHour, block.startMin)}–{fmtTime(block.endHour, block.endMin)}</span>
-                  <span className="text-[11px] font-bold text-blue-400 shrink-0 w-10 text-right">{getDur(block)}m</span>
+                  <div className="shrink-0 text-emerald-500">{scheduleIcon(task.category)}</div>
+                  <span className="text-sm text-slate-700 font-medium truncate flex-1">{task.title}</span>
+                  <span className="text-[11px] font-mono text-blue-400 shrink-0">{task.startTime}–{task.endTime}</span>
+                  <span className="text-[11px] font-bold text-blue-400 shrink-0 w-10 text-right">{getDurMin(task)}m</span>
                 </div>
               ))}
             </div>
           </div>
         )}
-
       </div>
 
     </div>

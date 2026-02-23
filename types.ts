@@ -18,11 +18,54 @@ export interface Task {
   description: string;
   priority: Priority;
   completed: boolean;
-  dueDate: string;
+  startDate: string;    // YYYY-MM-DD
+  endDate: string;      // YYYY-MM-DD
+  startTime: string;    // HH:MM
+  endTime: string;      // HH:MM
   category: string;
   notes?: string;
   attachments?: TaskAttachment[];
   recurring?: 'daily';
+}
+
+export interface Milestone {
+  id: string;
+  title: string;
+  emoji: string;
+  time: string;       // HH:MM
+  icon: string;
+  color: string;      // Tailwind color classes e.g. 'bg-amber-50 border-amber-300 text-amber-700'
+}
+
+export interface TimeSlot {
+  id: string;
+  startTime: string;  // HH:MM
+  endTime: string;    // HH:MM
+  groupKey: string;   // references TaskGroup.key
+}
+
+export type DayType = 'workday' | 'saturday' | 'sunday';
+
+export interface ScheduleTemplates {
+  workday: TimeSlot[];
+  saturday: TimeSlot[];
+  sunday: TimeSlot[];
+}
+
+/** Determine the day type from a Date object */
+export function getDayType(date: Date): DayType {
+  const dow = date.getDay(); // 0=Sun, 6=Sat
+  if (dow === 0) return 'sunday';
+  if (dow === 6) return 'saturday';
+  return 'workday';
+}
+
+/** Get tasks that fall on a specific date */
+export function getTasksForDate(tasks: Task[], date: string): Task[] {
+  return tasks.filter(t =>
+    t.recurring === 'daily' ||
+    (t.startDate <= date && t.endDate >= date)
+  ).sort((a, b) => a.startTime.localeCompare(b.startTime));
 }
 
 // ===== Daily Record (historical tracking) =====
@@ -37,7 +80,6 @@ export interface DailyRecord {
   timeEnd?: string;        // HH:MM
   notes?: string;
   attachments?: TaskAttachment[];
-  syncedToSheets?: boolean;
 }
 
 export interface Habit {

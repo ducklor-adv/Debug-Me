@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Task, TaskAttachment, Priority, TaskGroup, GROUP_COLORS } from '../types';
-import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, ChevronDown, ChevronUp, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil } from 'lucide-react';
 import { getAIPrioritization } from '../services/geminiService';
 
 interface TaskManagerProps {
@@ -34,12 +34,17 @@ const GROUP_ICON_MAP: Record<string, React.ReactNode> = {
   moon: <Moon className="w-3.5 h-3.5" />,
 };
 
+const todayStr = new Date().toISOString().split('T')[0];
+
 const emptyForm = (): Omit<Task, 'id'> => ({
   title: '',
   description: '',
   priority: Priority.MEDIUM,
   completed: false,
-  dueDate: new Date().toISOString().split('T')[0],
+  startDate: todayStr,
+  endDate: todayStr,
+  startTime: '09:00',
+  endTime: '10:00',
   category: 'งานหลัก',
   notes: '',
   attachments: [],
@@ -79,6 +84,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   // Expanded card & selected category
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const openNewForm = () => {
     setEditId(null);
@@ -105,7 +111,10 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
       description: task.description,
       priority: task.priority,
       completed: task.completed,
-      dueDate: task.dueDate,
+      startDate: task.startDate,
+      endDate: task.endDate,
+      startTime: task.startTime,
+      endTime: task.endTime,
       category: task.category,
       notes: task.notes || '',
       attachments: task.attachments || [],
@@ -142,7 +151,14 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   };
 
   const deleteTask = (id: string) => {
-    setTasks(tasks.filter(t => t.id !== id));
+    setConfirmDeleteId(id);
+  };
+
+  const confirmDelete = () => {
+    if (confirmDeleteId) {
+      setTasks(tasks.filter(t => t.id !== confirmDeleteId));
+      setConfirmDeleteId(null);
+    }
   };
 
   // Attachment handlers
@@ -362,8 +378,8 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
 
       {/* ===== Task Form (Add / Edit) ===== */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl animate-fadeIn overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl animate-fadeIn overflow-hidden flex flex-col my-4">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50 shrink-0">
               <h3 className="font-bold text-slate-800 text-base">{editId ? 'แก้ไข Task' : 'เพิ่ม Task ใหม่'}</h3>
@@ -398,10 +414,28 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                 </div>
               </div>
 
-              {/* Date */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">Due Date</label>
-                <input type="date" value={form.dueDate} onChange={e => setForm({...form, dueDate: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              {/* Date Range */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">วันเริ่ม</label>
+                  <input type="date" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value, endDate: e.target.value > form.endDate ? e.target.value : form.endDate})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">วันจบ</label>
+                  <input type="date" value={form.endDate} min={form.startDate} onChange={e => setForm({...form, endDate: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+              </div>
+
+              {/* Time Range */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">เวลาเริ่ม</label>
+                  <input type="time" value={form.startTime} onChange={e => setForm({...form, startTime: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">เวลาจบ</label>
+                  <input type="time" value={form.endTime} onChange={e => setForm({...form, endTime: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
               </div>
 
               {/* Recurring Toggle */}
@@ -499,14 +533,13 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3 shrink-0">
-              <button onClick={closeForm} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-sm rounded-xl transition-colors">ยกเลิก</button>
-              <button onClick={saveForm} disabled={!form.title.trim()} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-200 transition-colors disabled:opacity-40 flex items-center gap-2">
-                <Save className="w-4 h-4" /> {editId ? 'บันทึก' : 'สร้าง Task'}
-              </button>
+              {/* Action buttons */}
+              <div className="flex justify-end gap-3 pt-2">
+                <button onClick={closeForm} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-sm rounded-xl transition-colors">ยกเลิก</button>
+                <button onClick={saveForm} disabled={!form.title.trim()} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-200 transition-colors disabled:opacity-40 flex items-center gap-2">
+                  <Save className="w-4 h-4" /> {editId ? 'บันทึก' : 'สร้าง Task'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -585,7 +618,8 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
       {/* ===== Selected Category Detail ===== */}
       {selectedCat && (() => {
         const style = getTypeStyle(selectedCat);
-        const group = tasks.filter(t => t.category === selectedCat);
+        const group = tasks.filter(t => t.category === selectedCat)
+          .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.endDate.localeCompare(b.endDate));
         return (
           <div className="space-y-3 animate-fadeIn">
             {/* Category header */}
@@ -609,76 +643,74 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
               <p className="text-center text-sm text-slate-400 py-8">ยังไม่มี task ในหมวดนี้</p>
             ) : (
               group.map(task => (
-                <div key={task.id} className={`${style.bg} border ${style.border} rounded-2xl transition-all ${task.completed ? 'opacity-50' : 'hover:shadow-md'}`}>
-                  {/* Main row */}
-                  <div className="flex items-center gap-3 p-4">
-                    <button onClick={() => toggleTask(task.id)} className="shrink-0 transition-transform active:scale-90">
+                <div key={task.id} className={`bg-white border border-slate-200 rounded-lg transition-all ${task.completed ? 'opacity-40' : 'hover:shadow-sm'}`}>
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer" onClick={() => setExpandedId(expandedId === task.id ? null : task.id)}>
+                    <button onClick={(e) => { e.stopPropagation(); toggleTask(task.id); }} className="shrink-0 active:scale-90">
                       {task.completed ? (
-                        <CheckCircle2 className={`w-7 h-7 ${style.text}`} />
+                        <CheckCircle2 className={`w-4.5 h-4.5 ${style.text}`} style={{ width: 18, height: 18 }} />
                       ) : (
-                        <Circle className={`w-7 h-7 ${style.text} opacity-40 hover:opacity-70 transition-opacity`} />
+                        <Circle className={`w-4.5 h-4.5 ${style.text} opacity-40 hover:opacity-70`} style={{ width: 18, height: 18 }} />
                       )}
                     </button>
-                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setExpandedId(expandedId === task.id ? null : task.id)}>
-                      <span className={`text-base font-bold block ${task.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>
-                        {task.title}
+                    <span className={`text-[13px] font-bold truncate flex-1 min-w-0 ${task.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                      {task.title}
+                    </span>
+                    {task.recurring === 'daily' && (
+                      <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1 rounded shrink-0">ทุกวัน</span>
+                    )}
+                    {(task.attachments?.length ?? 0) > 0 && (
+                      <Paperclip className="w-3 h-3 text-slate-300 shrink-0" />
+                    )}
+                    <span className="text-[10px] text-blue-500 font-bold shrink-0">{task.startTime}–{task.endTime}</span>
+                    <span className="text-[10px] text-slate-200 shrink-0">|</span>
+                    {task.startDate === task.endDate ? (
+                      <span className="text-[10px] text-emerald-500 font-bold shrink-0">{task.startDate}</span>
+                    ) : (
+                      <span className="text-[10px] font-bold shrink-0">
+                        <span className="text-emerald-500">{task.startDate}</span>
+                        <span className="text-slate-300">→</span>
+                        <span className="text-orange-500">{task.endDate}</span>
                       </span>
-                      <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="text-[10px] text-slate-400 font-bold">{task.dueDate}</span>
-                        {task.recurring === 'daily' && (
-                          <>
-                            <span className="w-1 h-1 bg-slate-200 rounded-full" />
-                            <span className="text-[10px] font-black bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                              <RefreshCw className="w-2.5 h-2.5" /> ทุกวัน
-                            </span>
-                          </>
-                        )}
-                        {(task.attachments?.length ?? 0) > 0 && (
-                          <>
-                            <span className="w-1 h-1 bg-slate-200 rounded-full" />
-                            <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-0.5"><Paperclip className="w-2.5 h-2.5" /> {task.attachments!.length}</span>
-                          </>
-                        )}
-                      </div>
+                    )}
+                    <div className="flex items-center shrink-0 ml-1" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => openEditForm(task)} className="p-0.5 rounded text-slate-300 hover:text-blue-500 transition-colors" title="แก้ไข">
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                      <button onClick={() => deleteTask(task.id)} className="p-0.5 rounded text-slate-300 hover:text-rose-500 transition-colors" title="ลบ">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
                     </div>
-                    <button onClick={() => setExpandedId(expandedId === task.id ? null : task.id)} className="p-1.5 rounded-lg text-slate-300 hover:text-slate-500 transition-colors shrink-0">
-                      {expandedId === task.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </button>
                   </div>
 
                   {/* Expanded details */}
                   {expandedId === task.id && (
-                    <div className="px-4 pb-4 pt-0 border-t border-current/10 space-y-2 animate-fadeIn">
-                      {task.description && <p className="text-sm text-slate-600 mt-3">{task.description}</p>}
+                    <div className="px-2.5 pb-2.5 border-t border-slate-100 space-y-1.5 animate-fadeIn">
+                      {task.description && <p className="text-xs text-slate-500 mt-1.5">{task.description}</p>}
                       {task.notes && (
-                        <div className="bg-white/60 rounded-xl p-3">
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-1">Notes</span>
-                          <p className="text-sm text-slate-700 whitespace-pre-wrap">{task.notes}</p>
+                        <div className="bg-slate-50 rounded-lg p-2">
+                          <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 block mb-0.5">Notes</span>
+                          <p className="text-xs text-slate-600 whitespace-pre-wrap">{task.notes}</p>
                         </div>
                       )}
                       {(task.attachments?.length ?? 0) > 0 && (
-                        <div className="space-y-1.5">
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">ไฟล์แนบ</span>
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">ไฟล์แนบ</span>
                           {task.attachments!.map((att, i) => (
-                            <div key={i} className="flex items-center gap-2 bg-white/60 border border-slate-200 rounded-lg px-3 py-2">
-                              <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 ${att.type === 'photo' ? 'bg-emerald-100 text-emerald-600' : att.type === 'audio' ? 'bg-rose-100 text-rose-600' : att.type === 'video' ? 'bg-emerald-100 text-emerald-600' : att.type === 'phone' ? 'bg-sky-100 text-sky-600' : att.type === 'contact' ? 'bg-violet-100 text-violet-600' : 'bg-amber-100 text-amber-600'}`}>
-                                {att.type === 'photo' && <Image className="w-3 h-3" />}
-                                {att.type === 'audio' && <Mic className="w-3 h-3" />}
-                                {att.type === 'video' && <Video className="w-3 h-3" />}
-                                {att.type === 'phone' && <Phone className="w-3 h-3" />}
-                                {att.type === 'contact' && <UserIcon className="w-3 h-3" />}
-                                {att.type === 'gps' && <MapPin className="w-3 h-3" />}
+                            <div key={i} className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded px-2 py-1">
+                              <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${att.type === 'photo' ? 'bg-emerald-100 text-emerald-600' : att.type === 'audio' ? 'bg-rose-100 text-rose-600' : att.type === 'video' ? 'bg-emerald-100 text-emerald-600' : att.type === 'phone' ? 'bg-sky-100 text-sky-600' : att.type === 'contact' ? 'bg-violet-100 text-violet-600' : 'bg-amber-100 text-amber-600'}`}>
+                                {att.type === 'photo' && <Image className="w-2.5 h-2.5" />}
+                                {att.type === 'audio' && <Mic className="w-2.5 h-2.5" />}
+                                {att.type === 'video' && <Video className="w-2.5 h-2.5" />}
+                                {att.type === 'phone' && <Phone className="w-2.5 h-2.5" />}
+                                {att.type === 'contact' && <UserIcon className="w-2.5 h-2.5" />}
+                                {att.type === 'gps' && <MapPin className="w-2.5 h-2.5" />}
                               </div>
-                              <span className="text-xs text-slate-600 font-medium truncate flex-1">{att.label}</span>
-                              {att.type === 'gps' && <a href={`https://maps.google.com/?q=${att.value}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-emerald-600 font-bold">แผนที่</a>}
+                              <span className="text-[11px] text-slate-600 font-medium truncate flex-1">{att.label}</span>
+                              {att.type === 'gps' && <a href={`https://maps.google.com/?q=${att.value}`} target="_blank" rel="noopener noreferrer" className="text-[9px] text-emerald-600 font-bold">แผนที่</a>}
                             </div>
                           ))}
                         </div>
                       )}
-                      <div className="flex gap-2 pt-2">
-                        <button onClick={() => openEditForm(task)} className="px-4 py-2 bg-white/70 hover:bg-white text-slate-700 border border-slate-200 rounded-xl text-sm font-bold transition-colors">แก้ไข</button>
-                        <button onClick={() => deleteTask(task.id)} className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-500 border border-rose-200 rounded-xl text-sm font-bold transition-colors">ลบ</button>
-                      </div>
                     </div>
                   )}
                 </div>
@@ -687,6 +719,31 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
           </div>
         );
       })()}
+
+      {/* Delete Confirmation Dialog */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn overflow-hidden">
+            <div className="p-6 text-center">
+              <div className="w-14 h-14 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-7 h-7 text-rose-500" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800 mb-2">ยืนยันการลบ</h3>
+              <p className="text-sm text-slate-500">
+                คุณต้องการลบ task "<span className="font-bold text-slate-700">{tasks.find(t => t.id === confirmDeleteId)?.title}</span>" ใช่หรือไม่?
+              </p>
+            </div>
+            <div className="flex border-t border-slate-100">
+              <button onClick={() => setConfirmDeleteId(null)} className="flex-1 py-3.5 text-sm font-bold text-slate-500 hover:bg-slate-50 transition-colors">
+                ยกเลิก
+              </button>
+              <button onClick={confirmDelete} className="flex-1 py-3.5 text-sm font-bold text-rose-500 hover:bg-rose-50 transition-colors border-l border-slate-100">
+                ลบ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
