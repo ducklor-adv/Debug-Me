@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
-import { Task, TaskGroup, GROUP_COLORS } from '../types';
-import { Sparkles, Bookmark, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Edit3, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, X, Plus, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Task, TaskGroup, GROUP_COLORS, DailyRecord } from '../types';
+import { Sparkles, Bookmark, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Edit3, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, X, Plus, Trash2, RefreshCw, Database } from 'lucide-react';
 import { generateSmartSchedule } from '../services/geminiService';
 
 export interface ScheduleBlock {
@@ -14,6 +14,7 @@ export interface ScheduleBlock {
   color: string;
   icon: string;
   isBreak?: boolean;
+  recurring?: 'daily';
 }
 
 export const SCHEDULE: ScheduleBlock[] = [];
@@ -117,6 +118,7 @@ const getCatStyle = (g: TaskGroup) => {
 // Special milestone markers (single-time, no duration)
 const MILESTONES = [
   { key: 'ตื่นนอน', emoji: '🌅', icon: 'sun', defaultTime: '05:00', bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-300', color: 'bg-amber-50 border-amber-200 text-amber-700' },
+  { key: 'กินข้าว', emoji: '🍚', icon: 'coffee', defaultTime: '12:00', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-300', color: 'bg-emerald-50 border-emerald-200 text-emerald-700' },
   { key: 'นอน', emoji: '🌙', icon: 'moon', defaultTime: '22:00', bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-300', color: 'bg-indigo-50 border-indigo-200 text-indigo-600' },
 ];
 
@@ -125,12 +127,29 @@ interface DailyPlannerProps {
   schedule: ScheduleBlock[];
   onScheduleChange: (s: ScheduleBlock[]) => void;
   taskGroups: TaskGroup[];
+  todayRecords?: DailyRecord[];
+  onSaveDailyRecord?: (record: DailyRecord) => void;
 }
 
-const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks, schedule, onScheduleChange, taskGroups }) => {
+const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks, schedule, onScheduleChange, taskGroups, todayRecords = [], onSaveDailyRecord }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiSchedule, setAiSchedule] = useState<string | null>(null);
   const [checkedBlocks, setCheckedBlocks] = useState<Set<number>>(new Set());
+
+  // Restore checked state from today's records
+  useEffect(() => {
+    if (todayRecords.length === 0) return;
+    const sorted = [...schedule].sort((a, b) => (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin));
+    const newChecked = new Set<number>();
+    sorted.forEach((block, idx) => {
+      const timeKey = `${formatTime(block.startHour, block.startMin)}-${formatTime(block.endHour, block.endMin)}`;
+      const hasRecord = todayRecords.some(r =>
+        r.taskTitle === block.title && r.timeStart === formatTime(block.startHour, block.startMin)
+      );
+      if (hasRecord) newChecked.add(idx);
+    });
+    if (newChecked.size > 0) setCheckedBlocks(newChecked);
+  }, [todayRecords, schedule]);
 
   // Edit state
   const [editIdx, setEditIdx] = useState<number | null>(null);
@@ -151,6 +170,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks, schedule, onSchedule
   const sortedSchedule = [...schedule].sort((a, b) => (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin));
 
   const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
   const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
   const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
   const dateStr = `วัน${dayNames[today.getDay()]}ที่ ${today.getDate()} ${monthNames[today.getMonth()]} ${today.getFullYear() + 543}`;
@@ -159,14 +179,36 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks, schedule, onSchedule
   const currentMin = today.getMinutes();
   const nowMinutes = currentHour * 60 + currentMin;
 
-  const toggleCheck = (idx: number) => {
+  const toggleCheck = useCallback((idx: number) => {
+    const block = sortedSchedule[idx];
+    if (!block) return;
+
     setCheckedBlocks(prev => {
       const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
+      const wasChecked = next.has(idx);
+
+      if (wasChecked) {
+        next.delete(idx);
+      } else {
+        next.add(idx);
+        // Create a daily record for this completion
+        if (onSaveDailyRecord) {
+          const record: DailyRecord = {
+            id: `${todayStr}-${block.title}-${formatTime(block.startHour, block.startMin)}`,
+            date: todayStr,
+            taskTitle: block.title,
+            category: block.icon,
+            completed: true,
+            completedAt: new Date().toISOString(),
+            timeStart: formatTime(block.startHour, block.startMin),
+            timeEnd: getDurationMin(block) > 0 ? formatTime(block.endHour, block.endMin) : undefined,
+          };
+          onSaveDailyRecord(record);
+        }
+      }
       return next;
     });
-  };
+  }, [sortedSchedule, onSaveDailyRecord]);
 
   const totalWork = sortedSchedule.filter(b => !b.isBreak).reduce((sum, b) => sum + getDurationMin(b), 0);
   const doneWork = sortedSchedule.filter((b, i) => !b.isBreak && checkedBlocks.has(i)).reduce((sum, b) => sum + getDurationMin(b), 0);
@@ -226,6 +268,9 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks, schedule, onSchedule
   const deleteBlock = () => {
     if (editIdx === null || editIdx >= sortedSchedule.length) return;
     const origBlock = sortedSchedule[editIdx];
+    if (origBlock.recurring === 'daily') {
+      if (!confirm('กิจกรรมนี้เป็นแบบทุกวัน (recurring) — ต้องการลบจริงหรือไม่?')) return;
+    }
     const updated = schedule.filter(b => b !== origBlock);
     onScheduleChange(updated);
     setEditIdx(null);
@@ -280,6 +325,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks, schedule, onSchedule
         color: ms.color,
         icon: ms.icon,
         isBreak: false,
+        recurring: 'daily',
       };
       const updated = [...schedule, newBlock].sort((a, b) => (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin));
       onScheduleChange(updated);
@@ -299,6 +345,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks, schedule, onSchedule
       color: COLOR_BY_ICON[icon] || 'bg-blue-50 border-blue-300 text-blue-700',
       icon,
       isBreak: pickerTask.category === 'พักผ่อน',
+      recurring: pickerTask.recurring,
     };
     const updated = [...schedule, newBlock].sort((a, b) => (a.startHour * 60 + a.startMin) - (b.startHour * 60 + b.startMin));
     onScheduleChange(updated);
@@ -334,7 +381,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks, schedule, onSchedule
                   {/* Milestone markers */}
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">จุดเริ่ม / จุดจบ</label>
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap gap-3">
                       {MILESTONES.map(ms => (
                         <button
                           key={ms.key}
@@ -530,6 +577,14 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks, schedule, onSchedule
                 <input type="checkbox" checked={editForm.isBreak || false} onChange={e => setEditForm({ ...editForm, isBreak: e.target.checked })} className="w-5 h-5 rounded-lg border-slate-300 text-emerald-600 focus:ring-emerald-500" />
                 <span className="text-sm font-bold text-slate-700">เป็นช่วงพัก (Break)</span>
               </label>
+
+              {/* Recurring toggle */}
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={editForm.recurring === 'daily'} onChange={e => setEditForm({ ...editForm, recurring: e.target.checked ? 'daily' : undefined })} className="w-5 h-5 rounded-lg border-slate-300 text-emerald-600 focus:ring-emerald-500" />
+                <span className="text-sm font-bold text-slate-700 flex items-center gap-1.5">
+                  <RefreshCw className="w-3.5 h-3.5 text-emerald-500" /> ทำซ้ำทุกวัน (Recurring Daily)
+                </span>
+              </label>
             </div>
 
             <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex items-center gap-3">
@@ -579,6 +634,11 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks, schedule, onSchedule
         </div>
         <div className="flex justify-between mt-2 text-[10px] text-slate-400 font-bold">
           <span>05:00 ตื่นนอน</span>
+          {todayRecords.length > 0 && (
+            <span className="flex items-center gap-1 text-violet-500">
+              <Database className="w-3 h-3" /> {todayRecords.length} records วันนี้
+            </span>
+          )}
           <span>22:00 เข้านอน</span>
         </div>
       </div>
@@ -631,7 +691,14 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({ tasks, schedule, onSchedule
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <div className={`text-sm font-bold leading-tight ${checked ? 'line-through' : ''}`}>{block.title}</div>
+                      <div className={`text-sm font-bold leading-tight ${checked ? 'line-through' : ''}`}>
+                        {block.title}
+                        {block.recurring === 'daily' && (
+                          <span className="ml-1.5 inline-flex items-center gap-0.5 text-[9px] font-black text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded-full align-middle">
+                            <RefreshCw className="w-2.5 h-2.5" /> ทุกวัน
+                          </span>
+                        )}
+                      </div>
                       {block.subtitle && <div className="text-[10px] opacity-60 font-medium mt-0.5">{block.subtitle}</div>}
                     </div>
                     <div className="shrink-0 opacity-50">{ICON_MAP[block.icon]}</div>

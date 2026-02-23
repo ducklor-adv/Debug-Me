@@ -7,6 +7,7 @@ import {
     GoogleAuthProvider,
     signInWithPopup
 } from 'firebase/auth';
+import { storeGoogleToken } from '../lib/googleSheetsSync';
 
 const Login: React.FC = () => {
     const [isRegistering, setIsRegistering] = useState(false);
@@ -44,7 +45,13 @@ const Login: React.FC = () => {
         setLoading(true);
         try {
             const provider = new GoogleAuthProvider();
-            await signInWithPopup(auth, provider);
+            provider.addScope('https://www.googleapis.com/auth/spreadsheets');
+            const result = await signInWithPopup(auth, provider);
+            // Store Google access token for Sheets API
+            const credential = GoogleAuthProvider.credentialFromResult(result);
+            if (credential?.accessToken) {
+                storeGoogleToken(credential.accessToken);
+            }
         } catch (err: any) {
             setError(err.message || "Failed to authenticate with Google.");
         } finally {

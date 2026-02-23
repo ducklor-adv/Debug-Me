@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, User } from 'firebase/auth';
 import { auth } from './firebase';
 import {
   Activity,
@@ -11,9 +11,17 @@ import {
   Menu,
   X,
   BookOpen,
-  Settings
+  Settings,
+  Download,
+  Upload,
+  Sheet,
+  Database,
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
-import { View, Task, Priority, TaskGroup } from './types';
+import { View, Task, Priority, TaskGroup, DailyRecord } from './types';
+import { addDailyRecord, getRecordsByDate, getRecordCount } from './lib/dailyRecordDB';
+import { syncToGoogleSheets, storeGoogleToken, getStoredToken, getSheetUrl } from './lib/googleSheetsSync';
 import Dashboard from './components/Dashboard';
 import TaskManager from './components/TaskManager';
 import FocusTimer from './components/FocusTimer';
@@ -22,23 +30,21 @@ import AICoach from './components/AICoach';
 import DailyPlanner, { SCHEDULE as DEFAULT_SCHEDULE, ScheduleBlock } from './components/DailyPlanner';
 import Login from './components/Login';
 
+// ===== localStorage keys =====
 const STORAGE_KEY = 'debugme-schedule-v2';
 const TASKS_KEY = 'debugme-tasks-v1';
 const GROUPS_KEY = 'debugme-groups-v1';
 const VIEW_KEY = 'debugme-view';
 
-const loadSchedule = (): ScheduleBlock[] => {
+const loadLocalSchedule = (): ScheduleBlock[] => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch {}
   return DEFAULT_SCHEDULE;
 };
-const saveSchedule = (s: ScheduleBlock[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
-};
 
-const loadTasks = (fallback: Task[]): Task[] => {
+const loadLocalTasks = (fallback: Task[]): Task[] => {
   try {
     const raw = localStorage.getItem(TASKS_KEY);
     if (raw) return JSON.parse(raw);
@@ -46,7 +52,7 @@ const loadTasks = (fallback: Task[]): Task[] => {
   return fallback;
 };
 
-const loadGroups = (): TaskGroup[] => {
+const loadLocalGroups = (): TaskGroup[] => {
   try {
     const raw = localStorage.getItem(GROUPS_KEY);
     if (raw) return JSON.parse(raw);
@@ -61,6 +67,7 @@ const DEFAULT_GROUPS: TaskGroup[] = [
   { key: 'พักผ่อน', label: 'พักผ่อน', emoji: '☕', color: 'green', icon: 'coffee', size: 56 },
   { key: 'พัฒนาตัวเอง', label: 'พัฒนาตัวเอง', emoji: '🧠', color: 'amber', icon: 'brain', size: 72 },
   { key: 'งานด่วน', label: 'งานด่วน', emoji: '⚡', color: 'rose', icon: 'file', size: 82 },
+  { key: 'กิจวัตร', label: 'กิจวัตรประจำวัน', emoji: '🌅', color: 'teal', icon: 'sun', size: 68 },
 ];
 
 const RADIAL_ITEMS: { view: View; icon: string; label: string; gradient: string }[] = [
@@ -75,13 +82,19 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   Activity: <Activity className="w-5 h-5 text-emerald-300" />,
   BookOpen: <BookOpen className="w-5 h-5" />,
   CheckSquare: <CheckSquare className="w-5 h-5" />,
-
   Timer: <Timer className="w-5 h-5" />,
   BarChart3: <BarChart3 className="w-5 h-5" />,
 };
 
 const RADIUS = 110;
 const ANGLES = [150, 120, 90, 60, 30];
+
+// Merge any missing default groups into loaded groups
+const mergeDefaultGroups = (loaded: TaskGroup[]): TaskGroup[] => {
+  const existingKeys = new Set(loaded.map(g => g.key));
+  const missing = DEFAULT_GROUPS.filter(g => !existingKeys.has(g.key));
+  return missing.length > 0 ? [...loaded, ...missing] : loaded;
+};
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -95,12 +108,12 @@ const App: React.FC = () => {
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isGearMenuOpen, setIsGearMenuOpen] = useState(false);
-  const [schedule, setSchedule] = useState<ScheduleBlock[]>(loadSchedule);
-  const [taskGroups, setTaskGroups] = useState<TaskGroup[]>(loadGroups);
-  const updateSchedule = (s: ScheduleBlock[]) => {
-    setSchedule(s);
-    saveSchedule(s);
-  };
+
+  // Daily records state
+  const [todayRecords, setTodayRecords] = useState<DailyRecord[]>([]);
+  const [totalRecordCount, setTotalRecordCount] = useState(0);
+  const [sheetsSyncStatus, setSheetsSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
+  const [sheetsSyncMsg, setSheetsSyncMsg] = useState('');
 
   const todayStr = new Date().toISOString().split('T')[0];
   const defaultTasks: Task[] = [
@@ -117,12 +130,160 @@ const App: React.FC = () => {
     { id: '11', title: 'อ่านหนังสือก่อนนอน', description: 'อ่านหนังสือ 30 นาที ก่อนเข้านอน', priority: Priority.LOW, completed: false, dueDate: todayStr, category: 'พัฒนาตัวเอง' },
     { id: '12', title: 'รวบรวมเอกสารคดีความ', description: 'เตรียมเอกสารเกี่ยวกับการเงินและหนี้สินทั้งหมดเพื่อปรึกษาทนาย', priority: Priority.HIGH, completed: false, dueDate: todayStr, category: 'งานด่วน' },
   ];
-  const [tasks, setTasks] = useState<Task[]>(() => loadTasks(defaultTasks));
 
-  // Auto-save tasks, groups & view to localStorage
-  useEffect(() => { localStorage.setItem(TASKS_KEY, JSON.stringify(tasks)); }, [tasks]);
-  useEffect(() => { localStorage.setItem(GROUPS_KEY, JSON.stringify(taskGroups)); }, [taskGroups]);
+  // ===== ALL personal data lives LOCAL only =====
+  const [schedule, setSchedule] = useState<ScheduleBlock[]>(() => loadLocalSchedule());
+  const [tasks, setTasks] = useState<Task[]>(() => loadLocalTasks(defaultTasks));
+  const [taskGroups, setTaskGroups] = useState<TaskGroup[]>(() => mergeDefaultGroups(loadLocalGroups()));
+  const dataReadyRef = useRef(false);
+
+  const updateSchedule = (s: ScheduleBlock[]) => setSchedule(s);
+
+  // Load today's daily records
+  const loadTodayRecords = useCallback(async () => {
+    try {
+      const records = await getRecordsByDate(todayStr);
+      setTodayRecords(records);
+      const count = await getRecordCount();
+      setTotalRecordCount(count);
+    } catch (err) {
+      console.error('Failed to load daily records:', err);
+    }
+  }, [todayStr]);
+
+  // Save a daily record (called from DailyPlanner when checking a block)
+  const handleSaveDailyRecord = useCallback(async (record: DailyRecord) => {
+    try {
+      await addDailyRecord(record);
+      await loadTodayRecords();
+    } catch (err) {
+      console.error('Failed to save daily record:', err);
+    }
+  }, [loadTodayRecords]);
+
+  // Sync ALL data to Google Sheets (records + tasks + schedule + groups)
+  const handleSyncToSheets = useCallback(async () => {
+    let token = getStoredToken();
+    if (!token) {
+      try {
+        const provider = new GoogleAuthProvider();
+        provider.addScope('https://www.googleapis.com/auth/spreadsheets');
+        const result = await signInWithPopup(auth, provider);
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        token = credential?.accessToken || null;
+        if (token) storeGoogleToken(token);
+      } catch {
+        setSheetsSyncStatus('error');
+        setSheetsSyncMsg('ไม่สามารถเชื่อมต่อ Google ได้');
+        return;
+      }
+    }
+    if (!token) {
+      setSheetsSyncStatus('error');
+      setSheetsSyncMsg('ไม่มี token สำหรับ Google Sheets');
+      return;
+    }
+
+    setSheetsSyncStatus('syncing');
+    try {
+      const result = await syncToGoogleSheets(token, {
+        tasks,
+        schedule,
+        groups: taskGroups,
+      });
+      setSheetsSyncStatus('done');
+      setSheetsSyncMsg(result.synced > 0
+        ? `Sync สำเร็จ! ข้อมูลทั้งหมด → Google Sheets ของคุณ`
+        : 'ข้อมูลทั้งหมด sync แล้ว (ไม่มีอะไรใหม่)'
+      );
+      setTimeout(() => setSheetsSyncStatus('idle'), 4000);
+    } catch (err: any) {
+      if (err.message === 'TOKEN_EXPIRED') {
+        sessionStorage.removeItem('debugme-google-token');
+        setSheetsSyncStatus('error');
+        setSheetsSyncMsg('Token หมดอายุ — กดอีกครั้งเพื่อ login ใหม่');
+      } else {
+        setSheetsSyncStatus('error');
+        setSheetsSyncMsg('Sync ล้มเหลว: ' + (err.message || 'Unknown error'));
+      }
+      setTimeout(() => setSheetsSyncStatus('idle'), 5000);
+    }
+  }, [tasks, schedule, taskGroups]);
+
+  // Mark data ready after initial load, load daily records
+  useEffect(() => {
+    if (user) {
+      dataReadyRef.current = true;
+      loadTodayRecords();
+    } else {
+      dataReadyRef.current = false;
+    }
+  }, [user, loadTodayRecords]);
+
+  // Auto-save to localStorage when data changes
+  useEffect(() => {
+    if (!dataReadyRef.current) return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(schedule));
+    localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+    localStorage.setItem(GROUPS_KEY, JSON.stringify(taskGroups));
+  }, [schedule, tasks, taskGroups]);
+
   useEffect(() => { localStorage.setItem(VIEW_KEY, activeView); }, [activeView]);
+
+  // Safety net: ensure localStorage is up-to-date before tab close
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (dataReadyRef.current) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(schedule));
+        localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+        localStorage.setItem(GROUPS_KEY, JSON.stringify(taskGroups));
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  });
+
+  const handleExportData = () => {
+    const data = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      schedule,
+      tasks,
+      groups: taskGroups,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `debugme-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportData = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target?.result as string);
+          if (data.schedule) setSchedule(data.schedule);
+          if (data.tasks) setTasks(data.tasks);
+          if (data.groups) setTaskGroups(data.groups);
+          alert('นำเข้าข้อมูลสำเร็จ!');
+        } catch {
+          alert('ไฟล์ไม่ถูกต้อง');
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   useEffect(() => {
@@ -133,15 +294,11 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  const handleSignOut = () => {
-    signOut(auth);
-  };
+  const handleSignOut = () => { signOut(auth); };
 
   const handleNavItemClick = (view: View) => {
     setActiveView(view);
-    if (window.innerWidth < 1024) {
-      setIsSidebarOpen(false);
-    }
+    if (window.innerWidth < 1024) setIsSidebarOpen(false);
   };
 
   const handleGearMenuNav = (view: View) => {
@@ -152,7 +309,7 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard tasks={tasks} schedule={schedule} />;
-      case 'planner': return <DailyPlanner tasks={tasks} schedule={schedule} onScheduleChange={updateSchedule} taskGroups={taskGroups} />;
+      case 'planner': return <DailyPlanner tasks={tasks} schedule={schedule} onScheduleChange={updateSchedule} taskGroups={taskGroups} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} />;
       case 'tasks': return <TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} />;
       case 'focus': return <FocusTimer />;
       case 'analytics': return <Analytics tasks={tasks} />;
@@ -163,7 +320,7 @@ const App: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-emerald-50">
+      <div className="flex h-screen items-center justify-center bg-emerald-50 flex-col gap-3">
         <div className="w-12 h-12 border-4 border-emerald-200 border-t-emerald-500 rounded-full animate-spin"></div>
       </div>
     );
@@ -183,7 +340,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Sidebar - desktop only */}
+      {/* Sidebar */}
       <aside className={`
         fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-xl shadow-emerald-200/50 border-r border-emerald-100 transition-transform duration-300 ease-in-out transform
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
@@ -225,6 +382,56 @@ const App: React.FC = () => {
                   <p className="text-xs font-medium text-slate-500 truncate">Life Planner</p>
                 </div>
               </div>
+
+              {/* Privacy Badge */}
+              <div className="flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold rounded-lg text-emerald-600 bg-emerald-50 border border-emerald-100">
+                <ShieldCheck className="w-3 h-3" /> ข้อมูลเก็บในเครื่องคุณเท่านั้น
+              </div>
+
+              <div className="flex gap-2">
+                <button onClick={handleExportData} className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors border border-emerald-200">
+                  <Download className="w-3.5 h-3.5" /> Export
+                </button>
+                <button onClick={handleImportData} className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded-xl transition-colors border border-blue-200">
+                  <Upload className="w-3.5 h-3.5" /> Import
+                </button>
+              </div>
+
+              {/* Data & Sync to Google Sheets */}
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Database className="w-3.5 h-3.5 text-violet-500" />
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Daily Records</span>
+                  <span className="ml-auto text-xs font-black text-violet-600">{totalRecordCount}</span>
+                </div>
+                <button
+                  onClick={handleSyncToSheets}
+                  disabled={sheetsSyncStatus === 'syncing'}
+                  className={`w-full flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-xl transition-colors border ${
+                    sheetsSyncStatus === 'syncing'
+                      ? 'bg-amber-50 border-amber-200 text-amber-600'
+                      : sheetsSyncStatus === 'done'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
+                      : sheetsSyncStatus === 'error'
+                      ? 'bg-rose-50 border-rose-200 text-rose-600'
+                      : 'bg-violet-50 border-violet-200 text-violet-600 hover:bg-violet-100'
+                  }`}
+                >
+                  <Sheet className={`w-3.5 h-3.5 ${sheetsSyncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+                  {sheetsSyncStatus === 'syncing' ? 'Syncing...'
+                    : sheetsSyncStatus === 'done' ? 'Synced!'
+                    : sheetsSyncStatus === 'error' ? 'Error'
+                    : 'Sync to My Google Sheets'}
+                </button>
+                {sheetsSyncMsg && sheetsSyncStatus !== 'idle' && (
+                  <p className="text-[10px] font-bold text-slate-400 text-center">{sheetsSyncMsg}</p>
+                )}
+                {getSheetUrl() && (
+                  <a href={getSheetUrl()!} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1 text-[10px] font-bold text-violet-500 hover:text-violet-700">
+                    <ExternalLink className="w-3 h-3" /> เปิด Google Sheets
+                  </a>
+                )}
+              </div>
               <button onClick={handleSignOut} className="w-full py-2.5 text-sm font-bold text-rose-500 hover:bg-rose-50 rounded-xl transition-colors shrink-0">
                 Sign Out
               </button>
@@ -235,7 +442,6 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        {/* Header - desktop only for sidebar, mobile only for non-dashboard */}
         {(activeView !== 'dashboard') && (
           <header className="h-12 flex items-center px-4 shrink-0 sticky top-0 z-30 bg-emerald-600 lg:h-16 lg:px-10">
             <button onClick={toggleSidebar} className="p-2 rounded-lg hover:bg-emerald-500 lg:hidden text-white/80 mr-3">
@@ -247,8 +453,7 @@ const App: React.FC = () => {
           </header>
         )}
 
-        {/* Content */}
-        <div className={`flex-1 overflow-y-auto pb-24 lg:pb-6 scroll-smooth ${activeView === 'dashboard' ? 'bg-emerald-50' : 'bg-emerald-50'}`}>
+        <div className={`flex-1 overflow-y-auto pb-24 lg:pb-6 scroll-smooth bg-emerald-50`}>
           {activeView === 'dashboard' ? (
             renderContent()
           ) : (
@@ -258,7 +463,6 @@ const App: React.FC = () => {
           )}
         </div>
 
-        {/* Gear menu overlay */}
         {isGearMenuOpen && (
           <div
             className="fixed inset-0 z-[59] bg-black/50 backdrop-blur-sm lg:hidden"
@@ -266,12 +470,10 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* ===== MOBILE BOTTOM NAV BAR ===== */}
+        {/* Mobile Bottom Nav */}
         <div className="fixed bottom-0 left-0 right-0 z-[60] lg:hidden">
           <div className="bg-emerald-800/80 backdrop-blur-md safe-bottom">
             <div className="flex items-center justify-center h-14 relative">
-
-              {/* Radial menu items */}
               {RADIAL_ITEMS.map((item, i) => {
                 const rad = (ANGLES[i] * Math.PI) / 180;
                 const x = Math.cos(rad) * RADIUS;
@@ -299,14 +501,12 @@ const App: React.FC = () => {
                 );
               })}
 
-              {/* Gear FAB - center */}
               <button
                 onClick={() => setIsGearMenuOpen(!isGearMenuOpen)}
                 className={`absolute -top-7 left-1/2 -translate-x-1/2 z-[92] w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 shadow-lg shadow-emerald-900/30 ${isGearMenuOpen ? 'bg-white text-emerald-700 scale-110' : 'bg-white text-emerald-600'}`}
               >
                 <Settings className={`w-6 h-6 transition-transform duration-500 ${isGearMenuOpen ? 'rotate-180' : ''}`} />
               </button>
-
             </div>
           </div>
         </div>

@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Task, TaskAttachment, Priority, TaskGroup, GROUP_COLORS } from '../types';
-import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, ChevronDown, ChevronUp, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, ChevronDown, ChevronUp, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw } from 'lucide-react';
 import { getAIPrioritization } from '../services/geminiService';
 
 interface TaskManagerProps {
@@ -43,6 +43,7 @@ const emptyForm = (): Omit<Task, 'id'> => ({
   category: 'งานหลัก',
   notes: '',
   attachments: [],
+  recurring: undefined,
 });
 
 const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups }) => {
@@ -108,6 +109,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
       category: task.category,
       notes: task.notes || '',
       attachments: task.attachments || [],
+      recurring: task.recurring,
     });
     setFormAttachments(task.attachments || []);
     setShowPhoneInput(false);
@@ -402,6 +404,25 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                 <input type="date" value={form.dueDate} onChange={e => setForm({...form, dueDate: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
               </div>
 
+              {/* Recurring Toggle */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ทำซ้ำ (Recurring)</label>
+                <button
+                  onClick={() => setForm({ ...form, recurring: form.recurring === 'daily' ? undefined : 'daily' })}
+                  className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border-2 transition-all w-full ${
+                    form.recurring === 'daily'
+                      ? 'bg-emerald-50 border-emerald-400 text-emerald-700'
+                      : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100'
+                  }`}
+                >
+                  <RefreshCw className={`w-4 h-4 ${form.recurring === 'daily' ? 'text-emerald-500' : 'text-slate-300'}`} />
+                  <span className="text-sm font-bold">ทุกวัน (Daily)</span>
+                  {form.recurring === 'daily' && (
+                    <span className="ml-auto text-[10px] font-black bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full">ON</span>
+                  )}
+                </button>
+              </div>
+
               {/* Notes */}
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">Notes / บันทึกเพิ่มเติม</label>
@@ -536,16 +557,29 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
         </div>
       </div>
 
-      {/* ===== Wake / Sleep Markers ===== */}
-      <div className="flex justify-center gap-4 -mt-1">
-        <div className="flex items-center gap-2 px-5 py-2.5 bg-amber-50 border-2 border-amber-200 rounded-full shadow-sm">
-          <span className="text-lg">🌅</span>
-          <span className="text-sm font-black text-amber-700">ตื่นนอน</span>
-        </div>
-        <div className="flex items-center gap-2 px-5 py-2.5 bg-indigo-50 border-2 border-indigo-200 rounded-full shadow-sm">
-          <span className="text-lg">🌙</span>
-          <span className="text-sm font-black text-indigo-700">นอน</span>
-        </div>
+      {/* ===== Wake / Eat / Sleep Markers ===== */}
+      <div className="flex justify-center gap-3 -mt-1 flex-wrap">
+        {[
+          { title: 'ตื่นนอน', emoji: '🌅', bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', hoverBg: 'hover:bg-amber-100', category: 'กิจวัตร' },
+          { title: 'กินข้าว', emoji: '🍚', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', hoverBg: 'hover:bg-emerald-100', category: 'กิจวัตร' },
+          { title: 'นอน', emoji: '🌙', bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700', hoverBg: 'hover:bg-indigo-100', category: 'กิจวัตร' },
+        ].map(m => (
+          <button
+            key={m.title}
+            onClick={() => {
+              setEditId(null);
+              setForm({ ...emptyForm(), title: m.title, category: m.category, recurring: 'daily' });
+              setFormAttachments([]);
+              setShowPhoneInput(false);
+              setShowContactInput(false);
+              setFormOpen(true);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 ${m.bg} border-2 ${m.border} rounded-full shadow-sm ${m.hoverBg} hover:scale-105 transition-all cursor-pointer active:scale-95`}
+          >
+            <span className="text-base">{m.emoji}</span>
+            <span className={`text-sm font-black ${m.text}`}>{m.title}</span>
+          </button>
+        ))}
       </div>
 
       {/* ===== Selected Category Detail ===== */}
@@ -591,6 +625,14 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                       </span>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-[10px] text-slate-400 font-bold">{task.dueDate}</span>
+                        {task.recurring === 'daily' && (
+                          <>
+                            <span className="w-1 h-1 bg-slate-200 rounded-full" />
+                            <span className="text-[10px] font-black bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                              <RefreshCw className="w-2.5 h-2.5" /> ทุกวัน
+                            </span>
+                          </>
+                        )}
                         {(task.attachments?.length ?? 0) > 0 && (
                           <>
                             <span className="w-1 h-1 bg-slate-200 rounded-full" />

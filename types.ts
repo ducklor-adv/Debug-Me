@@ -22,6 +22,22 @@ export interface Task {
   category: string;
   notes?: string;
   attachments?: TaskAttachment[];
+  recurring?: 'daily';
+}
+
+// ===== Daily Record (historical tracking) =====
+export interface DailyRecord {
+  id: string;
+  date: string;            // YYYY-MM-DD
+  taskTitle: string;       // snapshot of title
+  category: string;        // snapshot of category
+  completed: boolean;
+  completedAt?: string;    // ISO timestamp
+  timeStart?: string;      // HH:MM
+  timeEnd?: string;        // HH:MM
+  notes?: string;
+  attachments?: TaskAttachment[];
+  syncedToSheets?: boolean;
 }
 
 export interface Habit {
