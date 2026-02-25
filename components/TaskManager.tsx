@@ -3,12 +3,16 @@ import React, { useState, useRef } from 'react';
 import { Task, TaskAttachment, Priority, TaskGroup, GROUP_COLORS } from '../types';
 import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil } from 'lucide-react';
 import { getAIPrioritization } from '../services/geminiService';
+import TimePicker from './TimePicker';
 
 interface TaskManagerProps {
   tasks: Task[];
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
   taskGroups: TaskGroup[];
   setTaskGroups: React.Dispatch<React.SetStateAction<TaskGroup[]>>;
+  deletedDefaultTaskIds: string[];
+  setDeletedDefaultTaskIds: React.Dispatch<React.SetStateAction<string[]>>;
+  onImmediateSave?: (updatedTasks?: Task[], updatedDeletedIds?: string[]) => Promise<void>;
 }
 
 // Derive style from a TaskGroup using GROUP_COLORS
@@ -51,7 +55,7 @@ const emptyForm = (): Omit<Task, 'id'> => ({
   recurring: undefined,
 });
 
-const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups }) => {
+const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups, deletedDefaultTaskIds, setDeletedDefaultTaskIds, onImmediateSave }) => {
   const [aiInsight, setAiInsight] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -154,10 +158,28 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setConfirmDeleteId(id);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (confirmDeleteId) {
-      setTasks(tasks.filter(t => t.id !== confirmDeleteId));
+      console.log('🗑️ Deleting task:', confirmDeleteId);
+      const updatedTasks = tasks.filter(t => t.id !== confirmDeleteId);
+
+      // If deleting a default task (id starts with 'd-'), track it
+      let updatedDeletedIds = deletedDefaultTaskIds;
+      if (confirmDeleteId.startsWith('d-') && !deletedDefaultTaskIds.includes(confirmDeleteId)) {
+        updatedDeletedIds = [...deletedDefaultTaskIds, confirmDeleteId];
+        console.log('📝 Updated deletedDefaultTaskIds:', updatedDeletedIds);
+      }
+
+      setTasks(updatedTasks);
+      setDeletedDefaultTaskIds(updatedDeletedIds);
       setConfirmDeleteId(null);
+
+      // Save to Firestore immediately to prevent the task from coming back
+      if (onImmediateSave) {
+        console.log('💾 Calling immediate save with:', { taskCount: updatedTasks.length, deletedIds: updatedDeletedIds });
+        await onImmediateSave(updatedTasks, updatedDeletedIds);
+        console.log('✅ Immediate save completed');
+      }
     }
   };
 
@@ -263,21 +285,11 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   return (
     <div className="space-y-6 animate-fadeIn pb-10">
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 md:p-6 rounded-2xl border border-emerald-100 shadow-sm">
-        <div>
-          <h2 className="text-2xl font-black text-slate-800 tracking-tight mb-1">My Tasks</h2>
-          <p className="text-sm text-blue-400 font-medium">Organize your life, one step at a time.</p>
-        </div>
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          <button onClick={handleAIAnalyze} disabled={isAnalyzing} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-fuchsia-50 text-fuchsia-600 rounded-xl font-bold text-sm hover:bg-fuchsia-100 transition-colors disabled:opacity-50 border border-fuchsia-100">
-            <Sparkles className={`w-4 h-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
-            {isAnalyzing ? 'Analyzing...' : 'AI Strategy'}
-          </button>
-          <button onClick={openGroupForm} className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-200">
-            <Plus className="w-4 h-4" /> Add Group
-          </button>
-        </div>
+      {/* Header - Add Group Button */}
+      <div className="flex justify-end">
+        <button onClick={openGroupForm} className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-200">
+          <Plus className="w-4 h-4" /> เพิ่มกลุ่ม
+        </button>
       </div>
 
       {/* AI Insight */}
@@ -378,8 +390,8 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
 
       {/* ===== Task Form (Add / Edit) ===== */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl animate-fadeIn overflow-hidden flex flex-col my-4">
+        <div className="fixed inset-0 z-[60] flex items-start justify-center bg-slate-900/50 backdrop-blur-sm p-4 pt-16 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl animate-fadeIn overflow-hidden flex flex-col max-h-[85vh]">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50 shrink-0">
               <h3 className="font-bold text-slate-800 text-base">{editId ? 'แก้ไข Task' : 'เพิ่ม Task ใหม่'}</h3>
@@ -428,14 +440,16 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
 
               {/* Time Range */}
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">เวลาเริ่ม</label>
-                  <input type="time" value={form.startTime} onChange={e => setForm({...form, startTime: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">เวลาจบ</label>
-                  <input type="time" value={form.endTime} onChange={e => setForm({...form, endTime: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
+                <TimePicker
+                  label="เวลาเริ่ม"
+                  value={form.startTime}
+                  onChange={value => setForm({...form, startTime: value})}
+                />
+                <TimePicker
+                  label="เวลาจบ"
+                  value={form.endTime}
+                  onChange={value => setForm({...form, endTime: value})}
+                />
               </div>
 
               {/* Recurring Toggle */}
@@ -534,188 +548,221 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                 </div>
               )}
               {/* Action buttons */}
-              <div className="flex justify-end gap-3 pt-2">
-                <button onClick={closeForm} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-sm rounded-xl transition-colors">ยกเลิก</button>
-                <button onClick={saveForm} disabled={!form.title.trim()} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-200 transition-colors disabled:opacity-40 flex items-center gap-2">
-                  <Save className="w-4 h-4" /> {editId ? 'บันทึก' : 'สร้าง Task'}
-                </button>
+              <div className="flex justify-between gap-3 pt-2">
+                {editId && (
+                  <button
+                    onClick={() => {
+                      closeForm();
+                      deleteTask(editId);
+                    }}
+                    className="px-5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-semibold text-sm rounded-xl transition-colors flex items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" /> ลบ
+                  </button>
+                )}
+                <div className="flex gap-3 ml-auto">
+                  <button onClick={closeForm} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-sm rounded-xl transition-colors">ยกเลิก</button>
+                  <button onClick={saveForm} disabled={!form.title.trim()} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-200 transition-colors disabled:opacity-40 flex items-center gap-2">
+                    <Save className="w-4 h-4" /> {editId ? 'บันทึก' : 'สร้าง Task'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ===== Circular Overview ===== */}
-      <div className="flex justify-center py-2">
-        <div className="relative" style={{ width: 300, height: 300 }}>
-          {/* Center summary */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-[88px] h-[88px] rounded-full bg-white shadow-lg border border-emerald-100 flex flex-col items-center justify-center">
-              <span className="text-3xl font-black text-slate-800">{tasks.filter(t => !t.completed).length}</span>
-              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">เหลือ</span>
-            </div>
-          </div>
+      {/* ===== Grid Cards Overview ===== */}
+      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+        {groupStyles.map((type) => {
+          const group = tasks.filter(t => t.category === type.key);
+          const doneCount = group.filter(t => t.completed).length;
+          const isActive = selectedCat === type.key;
 
-          {/* category circles */}
-          {groupStyles.map((type, i) => {
-            const angle = (i * (360 / groupStyles.length) - 90) * Math.PI / 180;
-            const r = 108;
-            const x = Math.cos(angle) * r;
-            const y = Math.sin(angle) * r;
-            const group = tasks.filter(t => t.category === type.key);
-            const doneCount = group.filter(t => t.completed).length;
-            const isActive = selectedCat === type.key;
+          // Icon mapping
+          const IconComponent = type.icon === 'sun' ? Sun
+            : type.icon === 'code' ? Code
+            : type.icon === 'home' ? Home
+            : type.icon === 'brain' ? Brain
+            : type.icon === 'heart' ? Dumbbell
+            : type.icon === 'users' ? UserIcon
+            : type.icon === 'file' ? FileText
+            : type.icon === 'coffee' ? Coffee
+            : type.icon === 'wrench' ? Wrench
+            : Code;
 
-            return (
-              <button
-                key={type.key}
-                onClick={() => { setSelectedCat(isActive ? null : type.key); setExpandedId(null); }}
-                className={`absolute transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300 ${isActive ? 'scale-110 z-10' : selectedCat ? 'opacity-50 scale-90' : 'hover:scale-105'}`}
-                style={{
-                  left: `calc(50% + ${x}px)`,
-                  top: `calc(50% + ${y}px)`,
-                }}
-              >
-                <div
-                  className={`rounded-full ${type.bg} border-2 ${type.border} flex flex-col items-center justify-center shadow-md transition-all duration-300 ${isActive ? `${type.ring} ring-4 ring-offset-2 shadow-lg` : ''}`}
-                  style={{ width: type.size, height: type.size }}
-                >
-                  <span className={`font-black ${type.text} leading-none ${type.size >= 80 ? 'text-2xl' : type.size >= 66 ? 'text-xl' : 'text-lg'}`}>{group.length}</span>
-                  <span className={`font-bold ${type.text} leading-tight mt-0.5 ${type.size >= 80 ? 'text-[9px]' : 'text-[7px]'}`}>{type.key}</span>
-                  {doneCount > 0 && <span className={`text-slate-400 font-bold ${type.size >= 80 ? 'text-[8px]' : 'text-[6px]'}`}>✓{doneCount}</span>}
+          return (
+            <button
+              key={type.key}
+              onClick={() => { setSelectedCat(isActive ? null : type.key); setExpandedId(null); }}
+              className={`${type.bg} border-2 ${type.border} rounded-xl p-2.5 transition-all duration-300 hover:shadow-md ${
+                isActive ? `${type.ring} ring-2 ring-offset-1 shadow-md scale-105` : 'hover:scale-102'
+              }`}
+            >
+              <div className="flex flex-col items-center gap-1">
+                {/* Icon */}
+                <div className={`w-9 h-9 rounded-lg ${type.iconBg} flex items-center justify-center shadow-sm`}>
+                  <IconComponent className="w-5 h-5 text-white" />
                 </div>
-              </button>
-            );
-          })}
-        </div>
+
+                {/* Emoji */}
+                <span className="text-lg">{type.emoji}</span>
+
+                {/* Task count */}
+                <span className={`text-xl font-black ${type.text} leading-none`}>{group.length}</span>
+
+                {/* Label */}
+                <span className={`text-[10px] font-bold ${type.text} text-center leading-tight`}>{type.label}</span>
+
+                {/* Done count */}
+                {doneCount > 0 && (
+                  <span className="text-[9px] font-black bg-white/50 px-1.5 py-0.5 rounded-full text-slate-600">
+                    ✓ {doneCount}
+                  </span>
+                )}
+              </div>
+            </button>
+          );
+        })}
       </div>
 
-      {/* ===== Wake / Eat / Sleep Markers ===== */}
-      <div className="flex justify-center gap-3 -mt-1 flex-wrap">
-        {[
-          { title: 'ตื่นนอน', emoji: '🌅', bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', hoverBg: 'hover:bg-amber-100', category: 'กิจวัตร' },
-          { title: 'กินข้าว', emoji: '🍚', bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', hoverBg: 'hover:bg-emerald-100', category: 'กิจวัตร' },
-          { title: 'นอน', emoji: '🌙', bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700', hoverBg: 'hover:bg-indigo-100', category: 'กิจวัตร' },
-        ].map(m => (
-          <button
-            key={m.title}
-            onClick={() => {
-              setEditId(null);
-              setForm({ ...emptyForm(), title: m.title, category: m.category, recurring: 'daily' });
-              setFormAttachments([]);
-              setShowPhoneInput(false);
-              setShowContactInput(false);
-              setFormOpen(true);
-            }}
-            className={`flex items-center gap-2 px-4 py-2 ${m.bg} border-2 ${m.border} rounded-full shadow-sm ${m.hoverBg} hover:scale-105 transition-all cursor-pointer active:scale-95`}
-          >
-            <span className="text-base">{m.emoji}</span>
-            <span className={`text-sm font-black ${m.text}`}>{m.title}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* ===== Selected Category Detail ===== */}
+      {/* ===== Selected Category Modal ===== */}
       {selectedCat && (() => {
         const style = getTypeStyle(selectedCat);
         const group = tasks.filter(t => t.category === selectedCat)
           .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.endDate.localeCompare(b.endDate));
-        return (
-          <div className="space-y-3 animate-fadeIn">
-            {/* Category header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${style.dot}`} />
-                <span className={`text-lg font-black ${style.text}`}>{style.label}</span>
-                <span className="text-xs text-slate-400 font-bold">({group.length})</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => openNewFormWithCategory(selectedCat)} className={`px-3 py-1.5 ${style.bg} ${style.border} border ${style.text} rounded-xl text-xs font-bold transition-colors active:scale-95`}>
-                  <Plus className="w-3.5 h-3.5 inline mr-1" />เพิ่ม
-                </button>
-                <button onClick={() => setSelectedCat(null)} className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
 
-            {group.length === 0 ? (
-              <p className="text-center text-sm text-slate-400 py-8">ยังไม่มี task ในหมวดนี้</p>
-            ) : (
-              group.map(task => (
-                <div key={task.id} className={`bg-white border border-slate-200 rounded-lg transition-all ${task.completed ? 'opacity-40' : 'hover:shadow-sm'}`}>
-                  <div className="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer" onClick={() => setExpandedId(expandedId === task.id ? null : task.id)}>
-                    <button onClick={(e) => { e.stopPropagation(); toggleTask(task.id); }} className="shrink-0 active:scale-90">
-                      {task.completed ? (
-                        <CheckCircle2 className={`w-4.5 h-4.5 ${style.text}`} style={{ width: 18, height: 18 }} />
-                      ) : (
-                        <Circle className={`w-4.5 h-4.5 ${style.text} opacity-40 hover:opacity-70`} style={{ width: 18, height: 18 }} />
-                      )}
-                    </button>
-                    <span className={`text-[13px] font-bold truncate flex-1 min-w-0 ${task.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>
-                      {task.title}
-                    </span>
-                    {task.recurring === 'daily' && (
-                      <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1 rounded shrink-0">ทุกวัน</span>
-                    )}
-                    {(task.attachments?.length ?? 0) > 0 && (
-                      <Paperclip className="w-3 h-3 text-slate-300 shrink-0" />
-                    )}
-                    <span className="text-[10px] text-blue-500 font-bold shrink-0">{task.startTime}–{task.endTime}</span>
-                    <span className="text-[10px] text-slate-200 shrink-0">|</span>
-                    {task.startDate === task.endDate ? (
-                      <span className="text-[10px] text-emerald-500 font-bold shrink-0">{task.startDate}</span>
-                    ) : (
-                      <span className="text-[10px] font-bold shrink-0">
-                        <span className="text-emerald-500">{task.startDate}</span>
-                        <span className="text-slate-300">→</span>
-                        <span className="text-orange-500">{task.endDate}</span>
-                      </span>
-                    )}
-                    <div className="flex items-center shrink-0 ml-1" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => openEditForm(task)} className="p-0.5 rounded text-slate-300 hover:text-blue-500 transition-colors" title="แก้ไข">
-                        <Pencil className="w-3 h-3" />
-                      </button>
-                      <button onClick={() => deleteTask(task.id)} className="p-0.5 rounded text-slate-300 hover:text-rose-500 transition-colors" title="ลบ">
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+        // Icon mapping for modal
+        const IconComponent = style.icon === 'sun' ? Sun
+          : style.icon === 'code' ? Code
+          : style.icon === 'home' ? Home
+          : style.icon === 'brain' ? Brain
+          : style.icon === 'heart' ? Dumbbell
+          : style.icon === 'users' ? UserIcon
+          : style.icon === 'file' ? FileText
+          : style.icon === 'coffee' ? Coffee
+          : style.icon === 'wrench' ? Wrench
+          : Code;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 backdrop-blur-sm p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl animate-fadeIn my-8">
+              {/* Modal Header */}
+              <div className={`${style.bg} border-b-2 ${style.border} p-4 rounded-t-2xl`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl ${style.iconBg} flex items-center justify-center shadow-sm`}>
+                      <IconComponent className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{style.emoji}</span>
+                        <span className={`text-lg font-black ${style.text}`}>{style.label}</span>
+                        <span className="text-xs text-slate-400 font-bold">({group.length})</span>
+                      </div>
                     </div>
                   </div>
-
-                  {/* Expanded details */}
-                  {expandedId === task.id && (
-                    <div className="px-2.5 pb-2.5 border-t border-slate-100 space-y-1.5 animate-fadeIn">
-                      {task.description && <p className="text-xs text-slate-500 mt-1.5">{task.description}</p>}
-                      {task.notes && (
-                        <div className="bg-slate-50 rounded-lg p-2">
-                          <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 block mb-0.5">Notes</span>
-                          <p className="text-xs text-slate-600 whitespace-pre-wrap">{task.notes}</p>
-                        </div>
-                      )}
-                      {(task.attachments?.length ?? 0) > 0 && (
-                        <div className="space-y-1">
-                          <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">ไฟล์แนบ</span>
-                          {task.attachments!.map((att, i) => (
-                            <div key={i} className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded px-2 py-1">
-                              <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${att.type === 'photo' ? 'bg-emerald-100 text-emerald-600' : att.type === 'audio' ? 'bg-rose-100 text-rose-600' : att.type === 'video' ? 'bg-emerald-100 text-emerald-600' : att.type === 'phone' ? 'bg-sky-100 text-sky-600' : att.type === 'contact' ? 'bg-violet-100 text-violet-600' : 'bg-amber-100 text-amber-600'}`}>
-                                {att.type === 'photo' && <Image className="w-2.5 h-2.5" />}
-                                {att.type === 'audio' && <Mic className="w-2.5 h-2.5" />}
-                                {att.type === 'video' && <Video className="w-2.5 h-2.5" />}
-                                {att.type === 'phone' && <Phone className="w-2.5 h-2.5" />}
-                                {att.type === 'contact' && <UserIcon className="w-2.5 h-2.5" />}
-                                {att.type === 'gps' && <MapPin className="w-2.5 h-2.5" />}
-                              </div>
-                              <span className="text-[11px] text-slate-600 font-medium truncate flex-1">{att.label}</span>
-                              {att.type === 'gps' && <a href={`https://maps.google.com/?q=${att.value}`} target="_blank" rel="noopener noreferrer" className="text-[9px] text-emerald-600 font-bold">แผนที่</a>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => openNewFormWithCategory(selectedCat)} className={`px-3 py-2 bg-white ${style.border} border ${style.text} rounded-xl text-xs font-bold transition-colors active:scale-95 hover:shadow-md`}>
+                      <Plus className="w-3.5 h-3.5 inline mr-1" />เพิ่ม Task
+                    </button>
+                    <button onClick={() => setSelectedCat(null)} className="p-2 rounded-xl bg-white hover:bg-slate-100 text-slate-500 transition-colors">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
-              ))
-            )}
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-4 max-h-[60vh] overflow-y-auto">
+                {group.length === 0 ? (
+                  <p className="text-center text-sm text-slate-400 py-12">ยังไม่มี task ในหมวดนี้</p>
+                ) : (
+                  <div className="space-y-2">
+                    {group.map(task => (
+                      <div key={task.id} className={`bg-white border border-slate-200 rounded-xl transition-all ${task.completed ? 'opacity-40' : 'hover:shadow-sm'}`}>
+                        <div className="px-3 py-2 cursor-pointer" onClick={() => setExpandedId(expandedId === task.id ? null : task.id)}>
+                          {/* Title Row */}
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <button onClick={(e) => { e.stopPropagation(); toggleTask(task.id); }} className="shrink-0 active:scale-90">
+                              {task.completed ? (
+                                <CheckCircle2 className={`w-5 h-5 ${style.text}`} />
+                              ) : (
+                                <Circle className={`w-5 h-5 ${style.text} opacity-40 hover:opacity-70`} />
+                              )}
+                            </button>
+                            <span className={`text-sm font-bold flex-1 ${task.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                              {task.title}
+                            </span>
+                          </div>
+
+                          {/* Metadata Row */}
+                          <div className="flex items-center gap-2 ml-7">
+                            {task.recurring === 'daily' && (
+                              <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded shrink-0">ทุกวัน</span>
+                            )}
+                            {(task.attachments?.length ?? 0) > 0 && (
+                              <Paperclip className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                            )}
+                            <span className="text-[10px] text-blue-500 font-bold shrink-0">{task.startTime}–{task.endTime}</span>
+                            <span className="text-[10px] text-slate-200 shrink-0">|</span>
+                            {task.startDate === task.endDate ? (
+                              <span className="text-[10px] text-emerald-500 font-bold shrink-0">{task.startDate}</span>
+                            ) : (
+                              <span className="text-[10px] font-bold shrink-0">
+                                <span className="text-emerald-500">{task.startDate}</span>
+                                <span className="text-slate-300">→</span>
+                                <span className="text-orange-500">{task.endDate}</span>
+                              </span>
+                            )}
+                            <div className="flex items-center shrink-0 ml-auto" onClick={(e) => e.stopPropagation()}>
+                              <button onClick={() => openEditForm(task)} className="p-1 rounded text-slate-300 hover:text-blue-500 transition-colors" title="แก้ไข">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => deleteTask(task.id)} className="p-1 rounded text-slate-300 hover:text-rose-500 transition-colors" title="ลบ">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Expanded details */}
+                        {expandedId === task.id && (
+                          <div className="px-3 pb-3 border-t border-slate-100 space-y-2 animate-fadeIn mt-2">
+                            {task.description && <p className="text-xs text-slate-500 mt-2">{task.description}</p>}
+                            {task.notes && (
+                              <div className="bg-slate-50 rounded-lg p-2.5">
+                                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 block mb-1">Notes</span>
+                                <p className="text-xs text-slate-600 whitespace-pre-wrap">{task.notes}</p>
+                              </div>
+                            )}
+                            {(task.attachments?.length ?? 0) > 0 && (
+                              <div className="space-y-1.5">
+                                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">ไฟล์แนบ</span>
+                                {task.attachments!.map((att, i) => (
+                                  <div key={i} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+                                    <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${att.type === 'photo' ? 'bg-emerald-100 text-emerald-600' : att.type === 'audio' ? 'bg-rose-100 text-rose-600' : att.type === 'video' ? 'bg-emerald-100 text-emerald-600' : att.type === 'phone' ? 'bg-sky-100 text-sky-600' : att.type === 'contact' ? 'bg-violet-100 text-violet-600' : 'bg-amber-100 text-amber-600'}`}>
+                                      {att.type === 'photo' && <Image className="w-3 h-3" />}
+                                      {att.type === 'audio' && <Mic className="w-3 h-3" />}
+                                      {att.type === 'video' && <Video className="w-3 h-3" />}
+                                      {att.type === 'phone' && <Phone className="w-3 h-3" />}
+                                      {att.type === 'contact' && <UserIcon className="w-3 h-3" />}
+                                      {att.type === 'gps' && <MapPin className="w-3 h-3" />}
+                                    </div>
+                                    <span className="text-xs text-slate-600 font-medium truncate flex-1">{att.label}</span>
+                                    {att.type === 'gps' && <a href={`https://maps.google.com/?q=${att.value}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-emerald-600 font-bold">แผนที่</a>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         );
       })()}

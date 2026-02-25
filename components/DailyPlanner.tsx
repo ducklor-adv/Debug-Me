@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Task, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType } from '../types';
 import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown } from 'lucide-react';
+import TimePicker from './TimePicker';
 
 const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
@@ -28,12 +29,16 @@ function formatDuration(mins: number): string {
 
 interface DailyPlannerProps {
   tasks: Task[];
+  setTasks?: React.Dispatch<React.SetStateAction<Task[]>>;
   taskGroups: TaskGroup[];
   milestones: Milestone[];
   scheduleTemplates: ScheduleTemplates;
   setScheduleTemplates: React.Dispatch<React.SetStateAction<ScheduleTemplates>>;
   todayRecords?: DailyRecord[];
   onSaveDailyRecord?: (record: DailyRecord) => void;
+  deletedDefaultTaskIds?: string[];
+  setDeletedDefaultTaskIds?: React.Dispatch<React.SetStateAction<string[]>>;
+  onImmediateSave?: (updatedTasks?: Task[], updatedDeletedIds?: string[]) => Promise<void>;
 }
 
 /** Get tasks matching a slot's groupKey for a given date */
@@ -44,7 +49,8 @@ function getTasksForSlot(tasks: Task[], date: string, groupKey: string): Task[] 
 }
 
 const DailyPlanner: React.FC<DailyPlannerProps> = ({
-  tasks, taskGroups, milestones, scheduleTemplates, setScheduleTemplates, todayRecords = [], onSaveDailyRecord,
+  tasks, setTasks, taskGroups, milestones, scheduleTemplates, setScheduleTemplates, todayRecords = [], onSaveDailyRecord,
+  deletedDefaultTaskIds = [], setDeletedDefaultTaskIds, onImmediateSave,
 }) => {
   // Date navigation
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -69,6 +75,23 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
   // Derive active schedule from template
   const schedule = scheduleTemplates[activeTab] || [];
+
+  // Standalone task IDs that should be displayed as slots (routine tasks)
+  const standaloneTaskIds = ['d-1', 'd-2', 'd-3', 'd-16', 'd-17', 'd-18', 'd-21', 'd-22']; // wake up, meals, meditation, family time, rest
+
+  // Get standalone tasks for the selected date
+  const standaloneTasks = getTasksForDate(tasks, selectedDateStr).filter(t => standaloneTaskIds.includes(t.id));
+
+  // Convert standalone tasks to TimeSlots
+  const standaloneSlots: TimeSlot[] = standaloneTasks.map(t => ({
+    id: `task-slot-${t.id}`,
+    startTime: t.startTime,
+    endTime: t.endTime,
+    groupKey: t.category,
+  }));
+
+  // Merge template schedule with standalone task slots and sort by time
+  const mergedSchedule = [...schedule, ...standaloneSlots].sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   // Wrapper to update only the active tab's template
   const setScheduleForTab = useCallback((updater: (prev: TimeSlot[]) => TimeSlot[]) => {
@@ -98,10 +121,18 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   // Slot editor modal
   const [editingSlot, setEditingSlot] = useState<TimeSlot | null>(null);
   const [isAddingSlot, setIsAddingSlot] = useState(false);
+
+  // Task editor modal
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [taskEditForm, setTaskEditForm] = useState({ startTime: '', endTime: '' });
   const [slotForm, setSlotForm] = useState({ startTime: '09:00', endTime: '10:00', groupKey: '' });
 
+  // Delete confirmation
+  const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null);
+  const [confirmDeleteSlotId, setConfirmDeleteSlotId] = useState<string | null>(null);
+
   // Sorted schedule (filter out malformed entries)
-  const sortedSchedule = [...schedule]
+  const sortedSchedule = [...mergedSchedule]
     .filter(s => s.startTime && s.endTime && s.groupKey)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
@@ -191,8 +222,74 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     setEditingSlot(null);
   };
 
-  const deleteSlot = (slotId: string) => {
-    setScheduleForTab(prev => prev.filter(s => s.id !== slotId));
+  const showDeleteTaskConfirm = (taskId: string) => {
+    setConfirmDeleteTaskId(taskId);
+  };
+
+  const confirmDeleteTask = async () => {
+    if (!confirmDeleteTaskId || !setTasks) return;
+
+    const taskId = confirmDeleteTaskId;
+    const updatedTasks = tasks.filter(t => t.id !== taskId);
+
+    // If deleting a default task (id starts with 'd-'), track it
+    let updatedDeletedIds = deletedDefaultTaskIds;
+    if (taskId.startsWith('d-') && !deletedDefaultTaskIds.includes(taskId) && setDeletedDefaultTaskIds) {
+      updatedDeletedIds = [...deletedDefaultTaskIds, taskId];
+      setDeletedDefaultTaskIds(updatedDeletedIds);
+    }
+
+    setTasks(updatedTasks);
+    setConfirmDeleteTaskId(null);
+
+    // Save to Firestore immediately to prevent the task from coming back
+    if (onImmediateSave) {
+      await onImmediateSave(updatedTasks, updatedDeletedIds);
+    }
+  };
+
+  const showDeleteSlotConfirm = (slotId: string) => {
+    setConfirmDeleteSlotId(slotId);
+  };
+
+  const confirmDeleteSlot = () => {
+    if (!confirmDeleteSlotId) return;
+
+    const slotId = confirmDeleteSlotId;
+
+    // Check if this is a standalone task slot (from default tasks)
+    if (slotId.startsWith('task-slot-')) {
+      const taskId = slotId.replace('task-slot-', '');
+      // Delete the underlying task instead
+      setConfirmDeleteSlotId(null);
+      showDeleteTaskConfirm(taskId);
+    } else {
+      // Delete from schedule template
+      setScheduleForTab(prev => prev.filter(s => s.id !== slotId));
+      setConfirmDeleteSlotId(null);
+    }
+  };
+
+  // Task editing handlers
+  const openEditTask = (task: Task) => {
+    setEditingTask(task);
+    setTaskEditForm({ startTime: task.startTime, endTime: task.endTime });
+  };
+
+  const saveTaskEdit = () => {
+    if (!editingTask || !setTasks) return;
+    if (!taskEditForm.startTime || !taskEditForm.endTime) return;
+
+    setTasks(prev => prev.map(t =>
+      t.id === editingTask.id
+        ? { ...t, startTime: taskEditForm.startTime, endTime: taskEditForm.endTime }
+        : t
+    ));
+    setEditingTask(null);
+  };
+
+  const closeTaskEdit = () => {
+    setEditingTask(null);
   };
 
   // Summary: time per group from schedule slots
@@ -219,23 +316,31 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const doneAllMins = slotSummary.reduce((s, c) => s + c.doneMins, 0);
   const progressPct = totalAllMins > 0 ? Math.round((doneAllMins / totalAllMins) * 100) : 0;
 
-  // Merge milestones between slots
+  // Merge milestones and slots
   const buildTimeline = () => {
     const items: { type: 'slot' | 'milestone'; data: TimeSlot | Milestone }[] = [];
     const usedMilestones = new Set<string>();
 
+    // Filter out milestones that are now standalone slots (ms-1 to ms-5 are wake up, meals, sleep)
+    const milestonesToHide = ['ms-1', 'ms-2', 'ms-3', 'ms-4', 'ms-5'];
+    const visibleMilestones = milestones.filter(ms => !milestonesToHide.includes(ms.id));
+
     sortedSchedule.forEach((slot, i) => {
-      milestones.forEach(ms => {
+      // Insert milestones before this slot
+      visibleMilestones.forEach(ms => {
         if (usedMilestones.has(ms.id)) return;
         if (ms.time < slot.startTime || (i === 0 && ms.time <= slot.startTime)) {
           items.push({ type: 'milestone', data: ms });
           usedMilestones.add(ms.id);
         }
       });
+
       items.push({ type: 'slot', data: slot });
 
       const nextSlot = sortedSchedule[i + 1];
-      milestones.forEach(ms => {
+
+      // Insert milestones after this slot
+      visibleMilestones.forEach(ms => {
         if (usedMilestones.has(ms.id)) return;
         if (ms.time >= slot.endTime && (!nextSlot || ms.time < nextSlot.startTime)) {
           items.push({ type: 'milestone', data: ms });
@@ -244,7 +349,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       });
     });
 
-    milestones.forEach(ms => {
+    // Add remaining milestones
+    visibleMilestones.forEach(ms => {
       if (!usedMilestones.has(ms.id)) {
         items.push({ type: 'milestone', data: ms });
       }
@@ -375,7 +481,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                     <Pencil className="w-3 h-3" />
                   </button>
                   <button
-                    onClick={(e) => { e.stopPropagation(); deleteSlot(slot.id); }}
+                    onClick={(e) => { e.stopPropagation(); showDeleteSlotConfirm(slot.id); }}
                     className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500"
                   >
                     <Trash2 className="w-3 h-3" />
@@ -401,26 +507,46 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                         return (
                           <div
                             key={task.id}
-                            onClick={() => toggleCheck(task.id)}
-                            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all hover:bg-slate-50 ${
+                            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all hover:bg-slate-50 ${
                               checked ? 'opacity-40' : ''
                             } ${isNow ? 'bg-emerald-50' : ''}`}
                           >
-                            <div className="shrink-0">
-                              {checked
-                                ? <CheckCircle2 className={`w-4 h-4 ${colors.plannerText}`} />
-                                : <Circle className={`w-4 h-4 ${colors.plannerText} opacity-30`} />
-                              }
+                            <div
+                              onClick={() => toggleCheck(task.id)}
+                              className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
+                            >
+                              <div className="shrink-0">
+                                {checked
+                                  ? <CheckCircle2 className={`w-4 h-4 ${colors.plannerText}`} />
+                                  : <Circle className={`w-4 h-4 ${colors.plannerText} opacity-30`} />
+                                }
+                              </div>
+                              <span className={`text-[13px] font-bold flex-1 min-w-0 truncate ${checked ? 'line-through text-slate-400' : 'text-slate-700'}`}>
+                                {task.title}
+                              </span>
                             </div>
-                            <span className={`text-[13px] font-bold flex-1 min-w-0 truncate ${checked ? 'line-through text-slate-400' : 'text-slate-700'}`}>
-                              {task.title}
-                            </span>
                             {task.recurring === 'daily' && (
                               <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1 rounded shrink-0">ทุกวัน</span>
                             )}
                             <span className="text-[10px] font-bold text-blue-500 shrink-0">{task.startTime}–{task.endTime}</span>
                             {dur > 0 && <span className="text-[9px] text-slate-400 font-bold shrink-0">{formatDuration(dur)}</span>}
                             {isNow && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />}
+                            {setTasks && (
+                              <>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); openEditTask(task); }}
+                                  className="p-1 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 shrink-0"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); showDeleteTaskConfirm(task.id); }}
+                                  className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500 shrink-0"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         );
                       })
@@ -490,24 +616,18 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
             {/* Time inputs */}
             <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">เริ่ม</label>
-                <input
-                  type="time"
-                  value={slotForm.startTime}
-                  onChange={e => setSlotForm(f => ({ ...f, startTime: e.target.value }))}
-                  className="w-full mt-1 px-3 py-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-emerald-300 focus:border-emerald-300 outline-none"
-                />
-              </div>
-              <div className="flex-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">จบ</label>
-                <input
-                  type="time"
-                  value={slotForm.endTime}
-                  onChange={e => setSlotForm(f => ({ ...f, endTime: e.target.value }))}
-                  className="w-full mt-1 px-3 py-2 rounded-lg border border-slate-200 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-emerald-300 focus:border-emerald-300 outline-none"
-                />
-              </div>
+              <TimePicker
+                label="เริ่ม"
+                value={slotForm.startTime}
+                onChange={value => setSlotForm(f => ({ ...f, startTime: value }))}
+                className="flex-1"
+              />
+              <TimePicker
+                label="จบ"
+                value={slotForm.endTime}
+                onChange={value => setSlotForm(f => ({ ...f, endTime: value }))}
+                className="flex-1"
+              />
             </div>
 
             {/* Group selector */}
@@ -548,6 +668,118 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                 className="flex-1 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors disabled:opacity-40"
               >
                 บันทึก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Task Time Editor Modal */}
+      {editingTask && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={closeTaskEdit}>
+          <div className="bg-white rounded-2xl shadow-xl w-[90vw] max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black text-slate-800">แก้ไขเวลา Task</h3>
+              <button onClick={closeTaskEdit} className="p-1 rounded-lg hover:bg-slate-100">
+                <X className="w-4 h-4 text-slate-400" />
+              </button>
+            </div>
+
+            {/* Task title */}
+            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
+              <p className="text-xs font-bold text-slate-600">{editingTask.title}</p>
+              {editingTask.description && (
+                <p className="text-[11px] text-slate-400 mt-1">{editingTask.description}</p>
+              )}
+            </div>
+
+            {/* Time inputs */}
+            <div className="flex gap-3">
+              <TimePicker
+                label="เวลาเริ่ม"
+                value={taskEditForm.startTime}
+                onChange={value => setTaskEditForm(f => ({ ...f, startTime: value }))}
+                className="flex-1"
+              />
+              <TimePicker
+                label="เวลาจบ"
+                value={taskEditForm.endTime}
+                onChange={value => setTaskEditForm(f => ({ ...f, endTime: value }))}
+                className="flex-1"
+              />
+            </div>
+
+            {/* Duration display */}
+            {taskEditForm.startTime && taskEditForm.endTime && (
+              <div className="text-center text-xs text-slate-500">
+                ระยะเวลา: <span className="font-bold text-emerald-600">
+                  {formatDuration(getDurationMinutes(taskEditForm.startTime, taskEditForm.endTime))}
+                </span>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={closeTaskEdit}
+                className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={saveTaskEdit}
+                disabled={!taskEditForm.startTime || !taskEditForm.endTime}
+                className="flex-1 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors disabled:opacity-40"
+              >
+                บันทึก
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Task Confirmation */}
+      {confirmDeleteTaskId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn p-5">
+            <h3 className="text-lg font-black text-slate-800 mb-2">ยืนยันการลบ Task</h3>
+            <p className="text-sm text-slate-600 mb-6">คุณแน่ใจหรือไม่ว่าต้องการลบ task นี้?</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmDeleteTaskId(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={confirmDeleteTask}
+                className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white font-bold text-sm rounded-xl transition-colors"
+              >
+                ลบ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Slot Confirmation */}
+      {confirmDeleteSlotId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn p-5">
+            <h3 className="text-lg font-black text-slate-800 mb-2">ยืนยันการลบ Slot</h3>
+            <p className="text-sm text-slate-600 mb-6">คุณแน่ใจหรือไม่ว่าต้องการลบ slot นี้?</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmDeleteSlotId(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={confirmDeleteSlot}
+                className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white font-bold text-sm rounded-xl transition-colors"
+              >
+                ลบ
               </button>
             </div>
           </div>

@@ -46,7 +46,7 @@ const DEFAULT_GROUPS: TaskGroup[] = [
 
 const DEFAULT_MILESTONES: Milestone[] = [
   { id: 'ms-1', title: 'ตื่นนอน', emoji: '🌅', time: '05:00', icon: 'sun', color: 'bg-amber-50 border-amber-300 text-amber-700' },
-  { id: 'ms-2', title: 'กินข้าว (เช้า)', emoji: '🍚', time: '09:00', icon: 'coffee', color: 'bg-orange-50 border-orange-300 text-orange-700' },
+  { id: 'ms-2', title: 'กินข้าว (เช้า)', emoji: '🍚', time: '07:00', icon: 'coffee', color: 'bg-orange-50 border-orange-300 text-orange-700' },
   { id: 'ms-3', title: 'กินข้าว (เที่ยง)', emoji: '🍚', time: '12:00', icon: 'coffee', color: 'bg-orange-50 border-orange-300 text-orange-700' },
   { id: 'ms-4', title: 'กินข้าว (เย็น)', emoji: '🍚', time: '19:00', icon: 'coffee', color: 'bg-orange-50 border-orange-300 text-orange-700' },
   { id: 'ms-5', title: 'นอน', emoji: '🌙', time: '22:00', icon: 'moon', color: 'bg-indigo-50 border-indigo-300 text-indigo-700' },
@@ -112,10 +112,15 @@ const mergeDefaultGroups = (loaded: TaskGroup[]): TaskGroup[] => {
 };
 
 // Merge any missing default tasks into loaded tasks (by id prefix 'd-')
-const mergeDefaultTasks = (loaded: Task[], defaults: Task[]): Task[] => {
-  const existingIds = new Set(loaded.map(t => t.id));
-  const missing = defaults.filter(t => !existingIds.has(t.id));
-  return missing.length > 0 ? [...loaded, ...missing] : loaded;
+// Exclude tasks that user has explicitly deleted
+const mergeDefaultTasks = (loaded: Task[], defaults: Task[], deletedIds: string[] = []): Task[] => {
+  const deletedSet = new Set(deletedIds);
+  // CRITICAL: Filter out deleted default tasks from loaded tasks first!
+  const filtered = loaded.filter(t => !deletedSet.has(t.id));
+
+  const existingIds = new Set(filtered.map(t => t.id));
+  const missing = defaults.filter(t => !existingIds.has(t.id) && !deletedSet.has(t.id));
+  return missing.length > 0 ? [...filtered, ...missing] : filtered;
 };
 
 // Migrate old task format (dueDate) to new (startDate/endDate/startTime/endTime)
@@ -150,39 +155,72 @@ const App: React.FC = () => {
 
   const todayStr = new Date().toISOString().split('T')[0];
   const defaultTasks: Task[] = [
-    // 🌅 กิจวัตร
+    // ===== ทุกวัน (ไม่ต้องระบุ dayTypes) =====
+    // 🌅 กิจวัตร — ทุกวัน (กิจวัตรพื้นฐาน ตื่น กิน นอน)
     { id: 'd-1', title: 'ตื่นนอน อาบน้ำ แปรงฟัน', description: 'กิจวัตรเช้า เตรียมพร้อมเริ่มวัน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '05:00', endTime: '05:30', category: 'กิจวัตร', recurring: 'daily' },
     { id: 'd-2', title: 'เตรียมอาหารเช้า / กินข้าว', description: 'ทำอาหารเช้าง่ายๆ กินให้อิ่มก่อนเริ่มงาน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '07:00', endTime: '07:30', category: 'กิจวัตร', recurring: 'daily' },
     { id: 'd-3', title: 'อาบน้ำ เตรียมนอน', description: 'ผ่อนคลายก่อนเข้านอน ปิดหน้าจอ', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '21:30', endTime: '22:00', category: 'กิจวัตร', recurring: 'daily' },
-    // 💼 งานหลัก
-    { id: 'd-4', title: 'เช็คอีเมล / วางแผนงานวันนี้', description: 'อ่านอีเมล ดู task list จัดลำดับความสำคัญ', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '08:00', endTime: '08:30', category: 'งานหลัก', recurring: 'daily' },
-    { id: 'd-5', title: 'Deep Work — งานหลักช่วงเช้า', description: 'ทำงานที่ต้องใช้สมาธิสูง ปิดแจ้งเตือน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '08:30', endTime: '12:00', category: 'งานหลัก', recurring: 'daily' },
-    { id: 'd-6', title: 'Deep Work — งานหลักช่วงบ่าย', description: 'ทำงานต่อเนื่องจากช่วงเช้า หรือประชุม', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '13:00', endTime: '16:30', category: 'งานหลัก', recurring: 'daily' },
-    { id: 'd-7', title: 'สรุปงาน / วางแผนพรุ่งนี้', description: 'อัปเดตความคืบหน้า จดสิ่งที่ต้องทำต่อ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '16:30', endTime: '17:00', category: 'งานหลัก', recurring: 'daily' },
-    // 🏠 งานบ้าน
-    { id: 'd-8', title: 'ล้างจาน / เก็บครัว', description: 'ทำความสะอาดหลังทำอาหาร', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '18:00', endTime: '18:20', category: 'งานบ้าน', recurring: 'daily' },
-    { id: 'd-9', title: 'กวาดบ้าน / ถูพื้น', description: 'ทำความสะอาดพื้นที่ส่วนกลาง', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '18:20', endTime: '18:40', category: 'งานบ้าน', recurring: 'daily' },
-    { id: 'd-10', title: 'ซักผ้า / ตากผ้า / พับผ้า', description: 'จัดการเสื้อผ้า', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '18:40', endTime: '19:00', category: 'งานบ้าน', recurring: 'daily' },
-    // 🧠 พัฒนาตัวเอง
-    { id: 'd-11', title: 'อ่านหนังสือ / บทความ', description: 'อ่านหนังสือที่สนใจ หรือบทความเพิ่มความรู้', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '20:00', endTime: '20:30', category: 'พัฒนาตัวเอง', recurring: 'daily' },
-    { id: 'd-12', title: 'เรียนออนไลน์ / ฝึกทักษะใหม่', description: 'คอร์สออนไลน์ ดู tutorial หรือฝึกปฏิบัติ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '20:30', endTime: '21:00', category: 'พัฒนาตัวเอง', recurring: 'daily' },
-    { id: 'd-13', title: 'เขียนบันทึก / วางแผนเป้าหมาย', description: 'Journal สะท้อนตัวเอง ทบทวนเป้าหมาย', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '21:00', endTime: '21:15', category: 'พัฒนาตัวเอง', recurring: 'daily' },
-    // 💪 สุขภาพ
+    // 💪 สุขภาพ — ทุกวัน
     { id: 'd-14', title: 'ออกกำลังกาย / วิ่ง / เดินเร็ว', description: 'คาร์ดิโอ 30-45 นาที หรือเดินรอบหมู่บ้าน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '06:00', endTime: '06:40', category: 'สุขภาพ', recurring: 'daily' },
     { id: 'd-15', title: 'ยืดเหยียด / โยคะ', description: 'ยืดกล้ามเนื้อ ผ่อนคลายร่างกาย', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '06:40', endTime: '07:00', category: 'สุขภาพ', recurring: 'daily' },
     { id: 'd-16', title: 'นั่งสมาธิ / หายใจลึก', description: 'นั่งสมาธิ 10-15 นาที ฝึกจิตให้สงบ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '05:30', endTime: '05:45', category: 'สุขภาพ', recurring: 'daily' },
-    // 👨‍👩‍👧 ครอบครัว
-    { id: 'd-17', title: 'กินข้าวเย็นกับครอบครัว', description: 'นั่งกินข้าวด้วยกัน คุยเรื่องทั่วไป', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '19:00', endTime: '19:30', category: 'ครอบครัว', recurring: 'daily' },
-    { id: 'd-18', title: 'เวลาครอบครัว / พูดคุย', description: 'ใช้เวลาด้วยกัน ดูทีวี เล่นเกม หรือคุยกัน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '19:30', endTime: '20:00', category: 'ครอบครัว', recurring: 'daily' },
-    // ⚡ งานด่วน
-    { id: 'd-19', title: 'จ่ายบิล / ค่าน้ำค่าไฟ', description: 'ตรวจสอบและชำระค่าใช้จ่ายรายเดือน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: '2026-02-28', startTime: '17:00', endTime: '17:30', category: 'งานด่วน' },
-    { id: 'd-20', title: 'นัดหมอ / ตรวจสุขภาพ', description: 'นัดพบแพทย์ประจำปี หรือตามนัด', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: '2026-03-15', startTime: '09:00', endTime: '10:00', category: 'งานด่วน' },
-    // ☕ พักผ่อน
-    { id: 'd-21', title: 'พักเที่ยง / กินข้าวกลางวัน', description: 'กินข้าว พักสมอง เดินเล่นสั้นๆ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '12:00', endTime: '13:00', category: 'พักผ่อน', recurring: 'daily' },
+    // 🌅 กิจวัตร — มื้อกลางวัน
+    { id: 'd-21', title: 'พักเที่ยง / กินข้าวกลางวัน', description: 'กินข้าว พักสมอง เดินเล่นสั้นๆ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '12:00', endTime: '13:00', category: 'กิจวัตร', recurring: 'daily' },
+    // ☕ พักผ่อน — ทุกวัน
     { id: 'd-22', title: 'พักผ่อน / งานอดิเรก', description: 'ดูซีรีส์ เล่นเกม ฟังเพลง หรือพักสายตา', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '21:00', endTime: '21:30', category: 'พักผ่อน', recurring: 'daily' },
-    // 🔧 ธุระส่วนตัว
-    { id: 'd-23', title: 'ซื้อของใช้ / ของกิน', description: 'ไปตลาด ซื้อของที่จำเป็น', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '17:00', endTime: '17:45', category: 'ธุระส่วนตัว', recurring: 'daily' },
-    { id: 'd-24', title: 'จัดการเอกสาร / ธุระธนาคาร', description: 'เอกสารสำคัญ โอนเงิน หรือติดต่อหน่วยงาน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: '2026-02-28', startTime: '17:00', endTime: '18:00', category: 'ธุระส่วนตัว' },
+    // 🌅 กิจวัตร — มื้อเย็น
+    { id: 'd-17', title: 'กินข้าวเย็นกับครอบครัว', description: 'นั่งกินข้าวด้วยกัน คุยเรื่องทั่วไป', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '19:00', endTime: '19:30', category: 'กิจวัตร', recurring: 'daily' },
+    // 👨‍👩‍👧 ครอบครัว — ทุกวัน (เย็น)
+    { id: 'd-18', title: 'เวลาครอบครัว / พูดคุย', description: 'ใช้เวลาด้วยกัน ดูทีวี เล่นเกม หรือคุยกัน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '19:30', endTime: '20:00', category: 'ครอบครัว', recurring: 'daily' },
+
+    // ===== จ-ศ เท่านั้น (workday) =====
+    // 💼 งานหลัก
+    { id: 'd-4', title: 'เช็คอีเมล / วางแผนงานวันนี้', description: 'อ่านอีเมล ดู task list จัดลำดับความสำคัญ', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '08:00', endTime: '08:30', category: 'งานหลัก', recurring: 'daily', dayTypes: ['workday'] },
+    { id: 'd-5', title: 'Deep Work — งานหลักช่วงเช้า', description: 'ทำงานที่ต้องใช้สมาธิสูง ปิดแจ้งเตือน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '08:30', endTime: '12:00', category: 'งานหลัก', recurring: 'daily', dayTypes: ['workday'] },
+    { id: 'd-6', title: 'Deep Work — งานหลักช่วงบ่าย', description: 'ทำงานต่อเนื่องจากช่วงเช้า หรือประชุม', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '13:00', endTime: '16:30', category: 'งานหลัก', recurring: 'daily', dayTypes: ['workday'] },
+    { id: 'd-7', title: 'สรุปงาน / วางแผนพรุ่งนี้', description: 'อัปเดตความคืบหน้า จดสิ่งที่ต้องทำต่อ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '16:30', endTime: '17:00', category: 'งานหลัก', recurring: 'daily', dayTypes: ['workday'] },
+    // 🏠 งานบ้าน — จ-ศ (ช่วงเย็น)
+    { id: 'd-8', title: 'ล้างจาน / เก็บครัว', description: 'ทำความสะอาดหลังทำอาหาร', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '18:00', endTime: '18:20', category: 'งานบ้าน', recurring: 'daily', dayTypes: ['workday'] },
+    { id: 'd-9', title: 'กวาดบ้าน / ถูพื้น', description: 'ทำความสะอาดพื้นที่ส่วนกลาง', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '18:20', endTime: '18:40', category: 'งานบ้าน', recurring: 'daily', dayTypes: ['workday'] },
+    // 🧠 พัฒนาตัวเอง — จ-ศ (ช่วงค่ำ 1 ชม.)
+    { id: 'd-11', title: 'อ่านหนังสือ / บทความ', description: 'อ่านหนังสือที่สนใจ หรือบทความเพิ่มความรู้', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '20:00', endTime: '20:30', category: 'พัฒนาตัวเอง', recurring: 'daily', dayTypes: ['workday'] },
+    { id: 'd-12', title: 'เรียนออนไลน์ / ฝึกทักษะใหม่', description: 'คอร์สออนไลน์ ดู tutorial หรือฝึกปฏิบัติ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '20:30', endTime: '21:00', category: 'พัฒนาตัวเอง', recurring: 'daily', dayTypes: ['workday'] },
+    // 🔧 ธุระส่วนตัว — จ-ศ (หลังเลิกงาน)
+    { id: 'd-23', title: 'ซื้อของใช้ / ของกิน', description: 'ไปตลาด ซื้อของที่จำเป็น', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '17:00', endTime: '17:45', category: 'ธุระส่วนตัว', recurring: 'daily', dayTypes: ['workday'] },
+
+    // ===== เสาร์เท่านั้น (saturday) =====
+    // 🏠 งานบ้าน — เสาร์ (ทำใหญ่ช่วงเช้า)
+    { id: 'd-25', title: 'ทำความสะอาดบ้านใหญ่', description: 'ถูพื้น เช็ดกระจก จัดระเบียบ ซักผ้าปูที่นอน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '08:30', endTime: '10:30', category: 'งานบ้าน', recurring: 'daily', dayTypes: ['saturday'] },
+    // 🔧 ธุระส่วนตัว — เสาร์
+    { id: 'd-26', title: 'ธุระส่วนตัว / ช้อปปิ้ง', description: 'จ่ายตลาด ซื้อของใช้ประจำสัปดาห์ ธุระธนาคาร', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '10:30', endTime: '12:00', category: 'ธุระส่วนตัว', recurring: 'daily', dayTypes: ['saturday'] },
+    // 🧠 พัฒนาตัวเอง — เสาร์ (ช่วงบ่าย 2 ชม.)
+    { id: 'd-27', title: 'เรียนรู้ / Side Project', description: 'คอร์สออนไลน์ อ่านหนังสือ หรือทำโปรเจกต์ส่วนตัว', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '13:00', endTime: '15:00', category: 'พัฒนาตัวเอง', recurring: 'daily', dayTypes: ['saturday'] },
+    // 👨‍👩‍👧 ครอบครัว — เสาร์ (ช่วงบ่าย 2 ชม.)
+    { id: 'd-28', title: 'กิจกรรมครอบครัว / เที่ยว', description: 'ออกไปเที่ยวด้วยกัน ทำกิจกรรมร่วมกัน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '15:00', endTime: '17:00', category: 'ครอบครัว', recurring: 'daily', dayTypes: ['saturday'] },
+
+    // ===== อาทิตย์เท่านั้น (sunday) =====
+    // 👨‍👩‍👧 ครอบครัว — อาทิตย์ (ช่วงเช้ายาว)
+    { id: 'd-29', title: 'เวลาครอบครัว / ไปวัด / ทำบุญ', description: 'กิจกรรมครอบครัวช่วงเช้า ไปวัด ทำอาหารด้วยกัน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '09:00', endTime: '11:00', category: 'ครอบครัว', recurring: 'daily', dayTypes: ['sunday'] },
+    // 🔧 ธุระส่วนตัว — อาทิตย์
+    { id: 'd-30', title: 'จัดการธุระ / เตรียมของสัปดาห์หน้า', description: 'เตรียมเสื้อผ้า จัดกระเป๋า เตรียมอาหาร', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '11:00', endTime: '12:00', category: 'ธุระส่วนตัว', recurring: 'daily', dayTypes: ['sunday'] },
+    // 🧠 พัฒนาตัวเอง — อาทิตย์ (ช่วงบ่าย 2 ชม.)
+    { id: 'd-31', title: 'อ่านหนังสือ / วางแผนสัปดาห์', description: 'อ่านหนังสือ ทบทวนเป้าหมาย วางแผนสัปดาห์หน้า', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '15:00', endTime: '17:00', category: 'พัฒนาตัวเอง', recurring: 'daily', dayTypes: ['sunday'] },
+    // 👨‍👩‍👧 ครอบครัว — อาทิตย์ (ช่วงเย็น)
+    { id: 'd-32', title: 'กินข้าวเย็นครอบครัว / พูดคุยสัปดาห์หน้า', description: 'กินข้าวด้วยกัน คุยเรื่องสัปดาห์หน้า', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '17:00', endTime: '18:00', category: 'ครอบครัว', recurring: 'daily', dayTypes: ['sunday'] },
+
+    // ===== เสาร์+อาทิตย์ (weekend) =====
+    { id: 'd-33', title: 'พักผ่อนเต็มที่ / งานอดิเรก', description: 'ดูหนัง เล่นเกม ทำสวน หรืออะไรก็ได้ที่ชอบ', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '18:00', endTime: '19:30', category: 'พักผ่อน', recurring: 'daily', dayTypes: ['saturday', 'sunday'] },
+
+    // ===== ไม่ recurring (มี deadline) =====
+    // ⚡ งานด่วน
+    { id: 'd-19', title: 'จ่ายบิล / ค่าน้ำค่าไฟ', description: 'ตรวจสอบและชำระค่าใช้จ่ายรายเดือน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: '2026-02-28', startTime: '17:00', endTime: '17:30', category: 'งานด่วน', dayTypes: ['workday'] },
+    { id: 'd-20', title: 'นัดหมอ / ตรวจสุขภาพ', description: 'นัดพบแพทย์ประจำปี หรือตามนัด', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: '2026-03-15', startTime: '09:00', endTime: '10:00', category: 'งานด่วน', dayTypes: ['workday'] },
+    // 🏠 งานบ้าน — ซักผ้า (ทุกวัน แต่เวลาต่างกันตาม day type ก็ใช้ทุกวัน)
+    { id: 'd-10', title: 'ซักผ้า / ตากผ้า / พับผ้า', description: 'จัดการเสื้อผ้า', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '18:40', endTime: '19:00', category: 'งานบ้าน', recurring: 'daily' },
+    // 🧠 พัฒนาตัวเอง — เขียนบันทึก (ทุกวัน)
+    { id: 'd-13', title: 'เขียนบันทึก / วางแผนเป้าหมาย', description: 'Journal สะท้อนตัวเอง ทบทวนเป้าหมาย', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '21:00', endTime: '21:15', category: 'พัฒนาตัวเอง', recurring: 'daily' },
+    // 🔧 ธุระส่วนตัว — เอกสาร (มี deadline)
+    { id: 'd-24', title: 'จัดการเอกสาร / ธุระธนาคาร', description: 'เอกสารสำคัญ โอนเงิน หรือติดต่อหน่วยงาน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: '2026-02-28', startTime: '17:00', endTime: '18:00', category: 'ธุระส่วนตัว', dayTypes: ['workday'] },
   ];
 
   // ===== Data state (synced via Firestore) =====
@@ -190,6 +228,7 @@ const App: React.FC = () => {
   const [taskGroups, setTaskGroups] = useState<TaskGroup[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [scheduleTemplates, setScheduleTemplates] = useState<ScheduleTemplates>(DEFAULT_SCHEDULE_TEMPLATES);
+  const [deletedDefaultTaskIds, setDeletedDefaultTaskIds] = useState<string[]>([]);
   const [firestoreLoading, setFirestoreLoading] = useState(true);
   const firestoreReadyRef = useRef(false);
 
@@ -233,19 +272,46 @@ const App: React.FC = () => {
     loadTodayRecords();
 
     const unsubscribe = subscribeAppData(user.uid, (data) => {
+      console.log('🔄 Firestore data received');
       firestoreReadyRef.current = true;
+
+      // Track if this is a remote update (from our own save)
+      const wasRemoteUpdate = isRemoteUpdateRef.current;
       isRemoteUpdateRef.current = true;
+
       if (data) {
         // Migrate old tasks if needed
         const migratedTasks = (data.tasks || []).map(migrateTask);
         const needsMigration = (data.tasks || []).some((t: any) => t.dueDate && !t.startDate);
 
-        // Merge missing default tasks into existing user's tasks
-        const mergedTasks = mergeDefaultTasks(migratedTasks, defaultTasks);
+        // Load deleted default task IDs
+        const deletedIds = data.deletedDefaultTaskIds || [];
+        console.log('📥 Loaded deletedDefaultTaskIds from Firestore:', deletedIds);
+        setDeletedDefaultTaskIds(deletedIds);
+
+        // Merge missing default tasks into existing user's tasks (exclude deleted ones)
+        const mergedTasks = mergeDefaultTasks(migratedTasks, defaultTasks, deletedIds);
+        console.log('🔀 Merged tasks. Total:', mergedTasks.length, 'Deleted IDs:', deletedIds.length, 'Was remote update:', wasRemoteUpdate);
         setTasks(mergedTasks);
         if (data.groups) setTaskGroups(mergeDefaultGroups(data.groups));
-        if (data.milestones) setMilestones(data.milestones);
-        else setMilestones(DEFAULT_MILESTONES);
+        // Milestones: merge missing defaults + fix known timing issues
+        if (data.milestones?.length) {
+          let ms = data.milestones as Milestone[];
+          // Fix ms-2 breakfast time (was 09:00, should be 07:00)
+          let msChanged = false;
+          ms = ms.map(m => {
+            if (m.id === 'ms-2' && m.time === '09:00') { msChanged = true; return { ...m, time: '07:00' }; }
+            return m;
+          });
+          // Merge any missing default milestones
+          const existingIds = new Set(ms.map(m => m.id));
+          const missingMs = DEFAULT_MILESTONES.filter(m => !existingIds.has(m.id));
+          if (missingMs.length > 0) { ms = [...ms, ...missingMs]; msChanged = true; }
+          setMilestones(ms);
+          if (msChanged) saveAppData(user.uid, { milestones: ms });
+        } else {
+          setMilestones(DEFAULT_MILESTONES);
+        }
         // Schedule templates migration
         if (data.scheduleTemplates) {
           // Filter out malformed entries, replace with defaults if too few valid slots
@@ -280,8 +346,16 @@ const App: React.FC = () => {
         }
 
         // Save back if migration or new default tasks were added
-        if (needsMigration || mergedTasks.length > migratedTasks.length) {
-          saveAppData(user.uid, { tasks: mergedTasks, milestones: data.milestones || DEFAULT_MILESTONES });
+        // BUT ONLY if this is NOT triggered by our own save (prevent save loop)
+        if ((needsMigration || mergedTasks.length > migratedTasks.length) && !wasRemoteUpdate) {
+          console.log('💾 Auto-adding missing default tasks and saving...');
+          saveAppData(user.uid, {
+            tasks: mergedTasks,
+            milestones: data.milestones || DEFAULT_MILESTONES,
+            deletedDefaultTaskIds: deletedIds  // Preserve deleted task IDs
+          });
+        } else if (mergedTasks.length > migratedTasks.length) {
+          console.log('⏭️ Skipped auto-save (was remote update, would create loop)');
         }
       } else {
         // First time user — use defaults and save to Firestore
@@ -289,10 +363,17 @@ const App: React.FC = () => {
         setTaskGroups(DEFAULT_GROUPS);
         setMilestones(DEFAULT_MILESTONES);
         setScheduleTemplates(DEFAULT_SCHEDULE_TEMPLATES);
-        saveAppData(user.uid, { tasks: defaultTasks, groups: DEFAULT_GROUPS, milestones: DEFAULT_MILESTONES, scheduleTemplates: DEFAULT_SCHEDULE_TEMPLATES });
+        setDeletedDefaultTaskIds([]);
+        saveAppData(user.uid, {
+          tasks: defaultTasks,
+          groups: DEFAULT_GROUPS,
+          milestones: DEFAULT_MILESTONES,
+          scheduleTemplates: DEFAULT_SCHEDULE_TEMPLATES,
+          deletedDefaultTaskIds: []
+        });
       }
       setFirestoreLoading(false);
-      setTimeout(() => { isRemoteUpdateRef.current = false; }, 100);
+      setTimeout(() => { isRemoteUpdateRef.current = false; }, 1000);
     });
 
     return () => unsubscribe();
@@ -302,19 +383,28 @@ const App: React.FC = () => {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!firestoreReadyRef.current || isRemoteUpdateRef.current || !user) return;
+    console.log('🔄 Auto-save useEffect triggered. isRemoteUpdate:', isRemoteUpdateRef.current, 'tasks:', tasks.length);
+    if (!firestoreReadyRef.current || isRemoteUpdateRef.current || !user) {
+      console.log('⏭️ Auto-save skipped (not ready or remote update)');
+      return;
+    }
 
     // Clear previous timer
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    if (saveTimerRef.current) {
+      console.log('⏰ Auto-save: Clearing previous timer');
+      clearTimeout(saveTimerRef.current);
+    }
 
     setIsDirty(true);
     setSaveStatus('idle');
+    console.log('⏱️ Auto-save: Setting timer (1.5s)...');
 
     saveTimerRef.current = setTimeout(async () => {
+      console.log('💾 AUTO-SAVE executing! Tasks:', tasks.length, 'DeletedIds:', deletedDefaultTaskIds);
       setSaveStatus('saving');
       try {
         isRemoteUpdateRef.current = true;
-        await saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates });
+        await saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds });
         setIsDirty(false);
         setSaveStatus('saved');
         setTimeout(() => {
@@ -331,7 +421,7 @@ const App: React.FC = () => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [tasks, taskGroups, milestones, scheduleTemplates, user]);
+  }, [tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, user]);
 
   useEffect(() => { localStorage.setItem(VIEW_KEY, activeView); }, [activeView]);
 
@@ -378,6 +468,39 @@ const App: React.FC = () => {
     input.click();
   };
 
+  // Immediate save to Firestore (for delete/critical operations)
+  const handleImmediateSave = useCallback(async (updatedTasks?: Task[], updatedDeletedIds?: string[]) => {
+    if (!user) return;
+    try {
+      // CRITICAL: Cancel any pending auto-save to prevent race condition
+      if (saveTimerRef.current) {
+        console.log('⏰ Cancelled pending auto-save timer');
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+
+      isRemoteUpdateRef.current = true;
+      const dataToSave = {
+        tasks: updatedTasks || tasks,
+        groups: taskGroups,
+        milestones,
+        scheduleTemplates,
+        deletedDefaultTaskIds: updatedDeletedIds || deletedDefaultTaskIds
+      };
+      console.log('💾 Saving to Firestore:', {
+        taskCount: dataToSave.tasks.length,
+        deletedIdsCount: dataToSave.deletedDefaultTaskIds?.length || 0,
+        deletedIds: dataToSave.deletedDefaultTaskIds
+      });
+      await saveAppData(user.uid, dataToSave);
+      console.log('✅ Firestore save successful');
+      setTimeout(() => { isRemoteUpdateRef.current = false; }, 1000);
+    } catch (err) {
+      console.error('[DebugMe] Immediate save failed:', err);
+      isRemoteUpdateRef.current = false;
+    }
+  }, [user, tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds]);
+
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   useEffect(() => {
@@ -399,8 +522,8 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} />;
-      case 'planner': return <DailyPlanner tasks={tasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} />;
-      case 'tasks': return <TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} />;
+      case 'planner': return <DailyPlanner tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} />;
+      case 'tasks': return <TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} />;
       case 'focus': return <FocusTimer />;
       case 'analytics': return <Analytics tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} totalRecordCount={totalRecordCount} userId={user!.uid} />;
       case 'ai-coach': return <AICoach tasks={tasks} />;

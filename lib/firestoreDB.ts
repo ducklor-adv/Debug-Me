@@ -13,6 +13,7 @@ export interface AppData {
   milestones: Milestone[];
   schedule?: TimeSlot[];                // legacy (backward compat)
   scheduleTemplates?: ScheduleTemplates;
+  deletedDefaultTaskIds?: string[];    // Track which default tasks user has deleted
 }
 
 /** Real-time listener on user's appData document */

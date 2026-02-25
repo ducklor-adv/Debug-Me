@@ -26,6 +26,7 @@ export interface Task {
   notes?: string;
   attachments?: TaskAttachment[];
   recurring?: 'daily';
+  dayTypes?: DayType[];   // e.g. ['workday'] = จ-ศ only, undefined = ทุกวัน
 }
 
 export interface Milestone {
@@ -60,12 +61,17 @@ export function getDayType(date: Date): DayType {
   return 'workday';
 }
 
-/** Get tasks that fall on a specific date */
+/** Get tasks that fall on a specific date (respects dayTypes if set) */
 export function getTasksForDate(tasks: Task[], date: string): Task[] {
-  return tasks.filter(t =>
-    t.recurring === 'daily' ||
-    (t.startDate <= date && t.endDate >= date)
-  ).sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const dayType = getDayType(new Date(date));
+  return tasks.filter(t => {
+    // Check date match
+    const dateMatch = t.recurring === 'daily' || (t.startDate <= date && t.endDate >= date);
+    if (!dateMatch) return false;
+    // Check day type (undefined = all days)
+    if (t.dayTypes && t.dayTypes.length > 0) return t.dayTypes.includes(dayType);
+    return true;
+  }).sort((a, b) => a.startTime.localeCompare(b.startTime));
 }
 
 // ===== Daily Record (historical tracking) =====
