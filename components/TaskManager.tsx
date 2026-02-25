@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Task, TaskAttachment, Priority, TaskGroup, GROUP_COLORS } from '../types';
-import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket } from 'lucide-react';
 import { getAIPrioritization } from '../services/geminiService';
 import TimePicker from './TimePicker';
 
@@ -581,15 +581,34 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
 
           // Icon mapping
           const IconComponent = type.icon === 'sun' ? Sun
+            : type.icon === 'moon' ? Moon
             : type.icon === 'code' ? Code
             : type.icon === 'home' ? Home
             : type.icon === 'brain' ? Brain
-            : type.icon === 'heart' ? Dumbbell
-            : type.icon === 'users' ? UserIcon
+            : type.icon === 'heart' ? Heart
+            : type.icon === 'dumbbell' ? Dumbbell
+            : type.icon === 'users' ? Users
+            : type.icon === 'user' ? UserIcon
             : type.icon === 'file' ? FileText
             : type.icon === 'coffee' ? Coffee
             : type.icon === 'wrench' ? Wrench
-            : Code;
+            : type.icon === 'zap' ? Zap
+            : type.icon === 'briefcase' ? Briefcase
+            : type.icon === 'cart' ? ShoppingCart
+            : type.icon === 'star' ? Star
+            : type.icon === 'calendar' ? Calendar
+            : type.icon === 'clock' ? Clock
+            : type.icon === 'target' ? Target
+            : type.icon === 'trending' ? TrendingUp
+            : type.icon === 'lightbulb' ? Lightbulb
+            : type.icon === 'music' ? Music
+            : type.icon === 'game' ? Gamepad2
+            : type.icon === 'book' ? Book
+            : type.icon === 'utensils' ? Utensils
+            : type.icon === 'bike' ? Bike
+            : type.icon === 'palette' ? Palette
+            : type.icon === 'rocket' ? Rocket
+            : Briefcase;
 
           return (
             <button
@@ -599,17 +618,14 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                 isActive ? `${type.ring} ring-2 ring-offset-1 shadow-md scale-105` : 'hover:scale-102'
               }`}
             >
-              <div className="flex flex-col items-center gap-1">
+              <div className="flex flex-col items-center gap-1.5">
                 {/* Icon */}
-                <div className={`w-9 h-9 rounded-lg ${type.iconBg} flex items-center justify-center shadow-sm`}>
-                  <IconComponent className="w-5 h-5 text-white" />
+                <div className={`w-11 h-11 rounded-xl ${type.iconBg} flex items-center justify-center shadow-md`}>
+                  <IconComponent className="w-6 h-6 text-white" />
                 </div>
 
-                {/* Emoji */}
-                <span className="text-lg">{type.emoji}</span>
-
                 {/* Task count */}
-                <span className={`text-xl font-black ${type.text} leading-none`}>{group.length}</span>
+                <span className={`text-2xl font-black ${type.text} leading-none`}>{group.length}</span>
 
                 {/* Label */}
                 <span className={`text-[10px] font-bold ${type.text} text-center leading-tight`}>{type.label}</span>
@@ -634,15 +650,34 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
 
         // Icon mapping for modal
         const IconComponent = style.icon === 'sun' ? Sun
+          : style.icon === 'moon' ? Moon
           : style.icon === 'code' ? Code
           : style.icon === 'home' ? Home
           : style.icon === 'brain' ? Brain
-          : style.icon === 'heart' ? Dumbbell
-          : style.icon === 'users' ? UserIcon
+          : style.icon === 'heart' ? Heart
+          : style.icon === 'dumbbell' ? Dumbbell
+          : style.icon === 'users' ? Users
+          : style.icon === 'user' ? UserIcon
           : style.icon === 'file' ? FileText
           : style.icon === 'coffee' ? Coffee
           : style.icon === 'wrench' ? Wrench
-          : Code;
+          : style.icon === 'zap' ? Zap
+          : style.icon === 'briefcase' ? Briefcase
+          : style.icon === 'cart' ? ShoppingCart
+          : style.icon === 'star' ? Star
+          : style.icon === 'calendar' ? Calendar
+          : style.icon === 'clock' ? Clock
+          : style.icon === 'target' ? Target
+          : style.icon === 'trending' ? TrendingUp
+          : style.icon === 'lightbulb' ? Lightbulb
+          : style.icon === 'music' ? Music
+          : style.icon === 'game' ? Gamepad2
+          : style.icon === 'book' ? Book
+          : style.icon === 'utensils' ? Utensils
+          : style.icon === 'bike' ? Bike
+          : style.icon === 'palette' ? Palette
+          : style.icon === 'rocket' ? Rocket
+          : Briefcase;
 
         return (
           <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 backdrop-blur-sm p-4 overflow-y-auto">
