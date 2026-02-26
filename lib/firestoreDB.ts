@@ -60,8 +60,8 @@ function recordsCollection(uid: string) {
 }
 
 export async function addDailyRecordFS(uid: string, record: DailyRecord) {
-  const col = recordsCollection(uid);
-  await addDoc(col, stripUndefined(record) as DailyRecord);
+  const ref = doc(db, 'users', uid, 'dailyRecords', record.id);
+  await setDoc(ref, stripUndefined(record) as DailyRecord, { merge: true });
 }
 
 export async function getDailyRecordsByDate(uid: string, date: string): Promise<DailyRecord[]> {
