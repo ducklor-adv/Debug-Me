@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Task, Milestone, TaskGroup, GROUP_COLORS, getTasksForDate, getDayType, ScheduleTemplates, TimeSlot } from '../types';
-import { CheckCircle2, Circle, Trophy, Zap, Flame, CheckCircle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, ChevronRight, Trash2, Square, Image, Coffee, Code, Sun, Moon, Dumbbell, BookOpen, Brain, FileText, Play, Pause, RotateCcw, Volume2, VolumeX, Target, SkipForward, AlertTriangle, Plus, Handshake } from 'lucide-react';
+import { Task, SubTask, Milestone, TaskGroup, GROUP_COLORS, getTasksForDate, getDayType, ScheduleTemplates, TimeSlot, DailyRecord } from '../types';
+import { CheckCircle2, Circle, Trophy, Zap, Flame, CheckCircle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, ChevronRight, Trash2, Square, Image, Coffee, Code, Sun, Moon, Dumbbell, BookOpen, Brain, FileText, Play, Pause, RotateCcw, Volume2, VolumeX, Target, SkipForward, AlertTriangle, Plus, Handshake, RefreshCw } from 'lucide-react';
 
 interface Attachment {
   type: 'photo' | 'video' | 'audio' | 'phone' | 'contact' | 'gps';
@@ -14,10 +14,12 @@ interface DashboardProps {
   milestones: Milestone[];
   taskGroups: TaskGroup[];
   scheduleTemplates: ScheduleTemplates;
+  todayRecords?: DailyRecord[];
+  onSaveDailyRecord?: (record: DailyRecord) => void;
   onNavigateToPlanner?: (startTime: string, endTime: string) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, scheduleTemplates, onNavigateToPlanner }) => {
+const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, scheduleTemplates, todayRecords = [], onSaveDailyRecord, onNavigateToPlanner }) => {
   const [showDoneModal, setShowDoneModal] = useState(false);
   const [showEditView, setShowEditView] = useState(false);
   const [notes, setNotes] = useState('');
@@ -29,6 +31,10 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
   const [contactValue, setContactValue] = useState('');
   const [gpsLoading, setGpsLoading] = useState(false);
   const [skipMode, setSkipMode] = useState(false);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+
+  // Track which tasks are checked today (restored from DailyRecords)
+  const [checkedTasks, setCheckedTasks] = useState<Set<string>>(new Set());
 
   // Focus Timer
   const [showFocus, setShowFocus] = useState(false);
@@ -75,7 +81,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  const completedTasksCount = tasks.filter(t => t.completed).length;
+  const completedTasksCount = checkedTasks.size;
 
   // Countdown timer tick
   const [tick, setTick] = useState(() => Date.now());
@@ -87,6 +93,54 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
   // Today's tasks
   const todayStr = new Date().toISOString().split('T')[0];
   const todayTasks = getTasksForDate(tasks, todayStr);
+
+  // Restore checked state from todayRecords — run only ONCE on initial load
+  const hasRestoredChecks = useRef(false);
+  useEffect(() => {
+    if (hasRestoredChecks.current) return;
+    if (todayRecords.length === 0) return;
+    hasRestoredChecks.current = true;
+    const checked = new Set<string>();
+    todayRecords.forEach(r => {
+      if (!r.timeStart || !r.timeEnd) return;
+      const matchTask = todayTasks.find(t => t.title === r.taskTitle && t.category === r.category);
+      if (!matchTask) return;
+      const matchSlot = todaySlots.find(s =>
+        s.startTime === r.timeStart && s.endTime === r.timeEnd &&
+        (s.assignedTaskIds || []).includes(matchTask.id)
+      );
+      if (matchSlot) checked.add(matchTask.id);
+    });
+    setCheckedTasks(checked);
+  }, [todayRecords]);
+
+  // Toggle task check — create DailyRecord + update local checked state
+  const toggleCheck = (taskId: string, slotStart?: string, slotEnd?: string) => {
+    setCheckedTasks(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+        if (onSaveDailyRecord) {
+          const task = todayTasks.find(t => t.id === taskId);
+          if (task) {
+            onSaveDailyRecord({
+              id: `${todayStr}-${task.id}`,
+              date: todayStr,
+              taskTitle: task.title,
+              category: task.category,
+              completed: true,
+              completedAt: new Date().toISOString(),
+              timeStart: slotStart,
+              timeEnd: slotEnd,
+            });
+          }
+        }
+      }
+      return next;
+    });
+  };
 
   // Current time
   const now = new Date(tick);
@@ -100,12 +154,20 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
   const dayType = getDayType(new Date());
   const todaySlots = (scheduleTemplates[dayType] || []).slice().sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-  // Find current slot
-  const currentSlot = todaySlots.find(s => nowMin >= toMin(s.startTime) && nowMin < toMin(s.endTime));
+  // Find current slot (handles midnight-crossing slots like 22:00-05:00)
+  const currentSlot = todaySlots.find(s => {
+    const start = toMin(s.startTime);
+    const end = toMin(s.endTime);
+    if (end > start) return nowMin >= start && nowMin < end;
+    // Crosses midnight: e.g. 22:00-05:00
+    return nowMin >= start || nowMin < end;
+  });
 
-  // Tasks in current slot (by group)
+  // Tasks in current slot (by assignedTaskIds whitelist)
   const slotTasks = currentSlot
-    ? todayTasks.filter(t => t.category === currentSlot.groupKey)
+    ? (currentSlot.assignedTaskIds || [])
+        .map(id => todayTasks.find(t => t.id === id))
+        .filter((t): t is Task => t !== undefined)
     : [];
 
   // Upcoming slots (after current time)
@@ -122,14 +184,24 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
   })() : null;
 
   // Slot duration in minutes
-  const getSlotDur = (s: TimeSlot) => toMin(s.endTime) - toMin(s.startTime);
+  const getSlotDur = (s: TimeSlot) => {
+    let diff = toMin(s.endTime) - toMin(s.startTime);
+    if (diff < 0) diff += 24 * 60; // ข้ามเที่ยงคืน
+    return diff;
+  };
 
-  // Countdown for current slot
+  // Countdown for current slot (handles midnight-crossing e.g. 22:00-05:00)
   const countdownStr = (() => {
     if (!currentSlot) return '';
-    const endTotalSec = toMin(currentSlot.endTime) * 60;
+    let endTotalSec = toMin(currentSlot.endTime) * 60;
+    const startTotalSec = toMin(currentSlot.startTime) * 60;
     const nowTotalSec = (now.getHours() * 60 + now.getMinutes()) * 60 + nowSec;
-    const remaining = Math.max(0, endTotalSec - nowTotalSec);
+    // If slot crosses midnight, add 24h to end time
+    if (endTotalSec <= startTotalSec) endTotalSec += 24 * 60 * 60;
+    // If we're before midnight (nowTotalSec >= startTotalSec), use as-is
+    // If we're after midnight (nowTotalSec < startTotalSec), add 24h to now too
+    const adjustedNow = nowTotalSec < startTotalSec ? nowTotalSec + 24 * 60 * 60 : nowTotalSec;
+    const remaining = Math.max(0, endTotalSec - adjustedNow);
     const mm = Math.floor(remaining / 60).toString().padStart(2, '0');
     const ss = (remaining % 60).toString().padStart(2, '0');
     return `${mm}:${ss}`;
@@ -154,13 +226,20 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
     return <Clock className={size} />;
   };
 
-  const handleMarkAsDoneClick = () => { setShowDoneModal(true); };
-  const handleConfirmDone = () => { setShowDoneModal(false); };
+  const handleMarkAsDoneClick = (taskId: string) => { setActiveTaskId(taskId); setShowDoneModal(true); };
+  const handleConfirmDone = () => {
+    if (currentSlot && activeTaskId && !checkedTasks.has(activeTaskId)) {
+      toggleCheck(activeTaskId, currentSlot.startTime, currentSlot.endTime);
+    }
+    setShowDoneModal(false);
+    setActiveTaskId(null);
+  };
   const handleSaveDetails = () => { setShowDoneModal(false); setShowEditView(true); };
 
   const resetEditState = () => {
     setShowEditView(false);
     setSkipMode(false);
+    setActiveTaskId(null);
     setNotes('');
     setAttachments([]);
     setShowPhoneInput(false);
@@ -169,7 +248,29 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
     setContactValue('');
   };
 
-  const handleSkipClick = () => { setSkipMode(true); setShowEditView(true); };
+  const handleSkipClick = (taskId: string) => { setActiveTaskId(taskId); setSkipMode(true); setShowEditView(true); };
+
+  const handleSaveAndDone = () => {
+    if (currentSlot && onSaveDailyRecord && activeTaskId) {
+      const task = todayTasks.find(t => t.id === activeTaskId);
+      if (task && !checkedTasks.has(activeTaskId)) {
+        onSaveDailyRecord({
+          id: `${todayStr}-${task.id}`,
+          date: todayStr,
+          taskTitle: task.title,
+          category: task.category,
+          completed: !skipMode,
+          completedAt: new Date().toISOString(),
+          timeStart: currentSlot.startTime,
+          timeEnd: currentSlot.endTime,
+          notes: notes || undefined,
+          attachments: attachments.length > 0 ? attachments : undefined,
+        });
+        setCheckedTasks(prev => new Set(prev).add(activeTaskId));
+      }
+    }
+    resetEditState();
+  };
 
   const removeAttachment = (index: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== index));
@@ -246,6 +347,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl p-6 md:p-8 max-w-sm w-full shadow-2xl border border-emerald-100 transform animate-fadeIn">
             <h3 className="text-xl font-bold text-slate-800 mb-2">ข้อมูลเพิ่มเติม?</h3>
+            {activeTaskId && <p className="text-sm font-bold text-emerald-600 mb-2">{todayTasks.find(t => t.id === activeTaskId)?.title}</p>}
             <p className="text-sm text-blue-400 mb-6">คุณมีข้อมูลรายละเอียด, รูปภาพ, วิดีโอ หรือเสียงที่ต้องการบันทึกก่อนจะปิดกิจกรรมนี้ไหมครับ?</p>
             <div className="flex flex-col gap-3">
               <button onClick={handleSaveDetails} className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold text-sm transition-colors shadow-lg shadow-emerald-300">
@@ -346,7 +448,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
 
             <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3 shrink-0">
               <button onClick={resetEditState} className="px-5 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold text-sm rounded-xl transition-colors">ย้อนกลับ</button>
-              <button onClick={resetEditState} className={`px-5 py-3 font-semibold text-sm rounded-xl shadow-lg transition-colors ${skipMode ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-300'}`}>
+              <button onClick={handleSaveAndDone} className={`px-5 py-3 font-semibold text-sm rounded-xl shadow-lg transition-colors ${skipMode ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-300'}`}>
                 {skipMode ? 'บันทึก สาเหตุที่พลาด' : 'บันทึกข้อมูล & สำเร็จ'}
               </button>
             </div>
@@ -434,23 +536,45 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
                   {slotTasks.length > 0 ? (
                     <div className="space-y-2">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">กิจกรรมในช่วงนี้ ({slotTasks.length})</p>
-                      {slotTasks.map((task, idx) => (
-                        <div key={idx} className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                          <Circle className="w-4 h-4 text-slate-300 shrink-0" />
-                          <span className="text-sm font-medium text-slate-700 truncate flex-1">{task.title}</span>
-                          {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration}น.</span>}
+                      {slotTasks.map((task, idx) => {
+                        const isDone = checkedTasks.has(task.id);
+                        return (
+                        <div key={idx} className="py-1.5">
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => toggleCheck(task.id, currentSlot.startTime, currentSlot.endTime)} className="shrink-0 active:scale-90">
+                              {isDone
+                                ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                : <Circle className="w-4 h-4 text-slate-300" />}
+                            </button>
+                            <span className={`text-sm font-medium truncate ${isDone ? 'line-through text-slate-400' : 'text-slate-700'}`}>{task.title}</span>
+                            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                              {task.recurrence && (
+                                <span className="text-[8px] font-black bg-violet-100 text-violet-600 px-1 py-0.5 rounded flex items-center gap-0.5">
+                                  <RefreshCw className="w-2.5 h-2.5" />
+                                  {task.recurrence.pattern === 'daily' ? 'ทุกวัน' :
+                                   task.recurrence.pattern === 'every_x_days' ? `ทุก ${task.recurrence.interval || 2} วัน` :
+                                   task.recurrence.pattern === 'weekly' ? 'สัปดาห์' :
+                                   task.recurrence.pattern === 'monthly' ? 'เดือน' : 'ปี'}
+                                </span>
+                              )}
+                              {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400">{task.estimatedDuration}น.</span>}
+                              {!isDone && (
+                                <>
+                                  <span className="text-slate-200">|</span>
+                                  <button onClick={() => setShowFocus(true)} className="text-[11px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">Focus</button>
+                                  <button onClick={() => handleMarkAsDoneClick(task.id)} className="text-[11px] font-bold text-emerald-500 hover:text-emerald-700 transition-colors">Done</button>
+                                  <button onClick={() => handleSkipClick(task.id)} className="text-[11px] font-bold text-amber-500 hover:text-amber-700 transition-colors">Skip</button>
+                                </>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-sm text-slate-400 text-center py-2">ไม่มี task ย่อยในช่วงนี้</p>
                   )}
-
-                  <div className="flex flex-wrap gap-2 mt-4 justify-center">
-                    <button onClick={() => setShowFocus(true)} className="py-2.5 px-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-xl font-semibold text-sm transition-all flex items-center gap-2 active:scale-95">
-                      <Target className="w-4 h-4" /> Focus
-                    </button>
-                  </div>
                 </div>
               </div>
             );
@@ -495,7 +619,9 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
           const next = upcomingSlots[0];
           const nextGroup = getSlotGroup(next);
           const nextClr = getSlotColor(next);
-          const nextTasks = todayTasks.filter(t => t.category === next.groupKey);
+          const nextTasks = (next.assignedTaskIds || [])
+            .map(id => todayTasks.find(t => t.id === id))
+            .filter((t): t is Task => t !== undefined);
           return (
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-emerald-100">
               <div className="flex items-center gap-2 text-emerald-500 mb-3">
@@ -513,7 +639,17 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
               {nextTasks.length > 0 && (
                 <div className="mt-2 pl-11 space-y-1">
                   {nextTasks.map((t, i) => (
-                    <p key={i} className="text-xs text-slate-500 truncate">• {t.title}</p>
+                    <div key={i} className="flex items-center gap-1.5">
+                      <p className="text-xs text-slate-500 truncate flex-1">• {t.title}</p>
+                      {t.recurrence && (
+                        <span className="text-[8px] font-black bg-violet-100 text-violet-600 px-1 py-0.5 rounded shrink-0">
+                          <RefreshCw className="w-2 h-2 inline" />
+                        </span>
+                      )}
+                      {t.subtasks && t.subtasks.length > 0 && (
+                        <span className="text-[9px] font-bold text-slate-400 shrink-0">{t.subtasks.filter((s: SubTask) => s.completed).length}/{t.subtasks.length}</span>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -530,7 +666,9 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
               {upcomingSlots.slice(1).map((slot, idx) => {
                 const g = getSlotGroup(slot);
                 const c = getSlotColor(slot);
-                const sTaskList = todayTasks.filter(t => t.category === slot.groupKey);
+                const sTaskList = (slot.assignedTaskIds || [])
+                  .map(id => todayTasks.find(t => t.id === id))
+                  .filter((t): t is Task => t !== undefined);
                 return (
                   <div key={idx} className="px-4 py-2.5">
                     <div className="flex items-center gap-2.5">
@@ -545,7 +683,11 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
                       <div className="mt-1.5 pl-9 space-y-0.5">
                         {sTaskList.map((t, i) => (
                           <div key={i} className="flex items-center gap-1.5">
-                            <span className="text-xs text-slate-400 truncate">• {t.title}</span>
+                            <span className="text-xs text-slate-400 truncate flex-1">• {t.title}</span>
+                            {t.recurrence && <RefreshCw className="w-2.5 h-2.5 text-violet-400 shrink-0" />}
+                            {t.subtasks && t.subtasks.length > 0 && (
+                              <span className="text-[9px] font-bold text-slate-300 shrink-0">{t.subtasks.filter((s: SubTask) => s.completed).length}/{t.subtasks.length}</span>
+                            )}
                             {t.estimatedDuration && <span className="text-[9px] font-mono text-blue-300 shrink-0">{t.estimatedDuration}น.</span>}
                           </div>
                         ))}

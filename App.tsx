@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from './firebase';
 import {
@@ -16,8 +16,13 @@ import {
   Database,
   ShieldCheck,
   Cloud,
+  Flame,
+  CalendarDays,
+  Search,
+  Bell,
+  WifiOff,
 } from 'lucide-react';
-import { View, Task, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates } from './types';
+import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates } from './types';
 import { subscribeAppData, saveAppData, addDailyRecordFS, getDailyRecordsByDate, getDailyRecordCount } from './lib/firestoreDB';
 import Dashboard from './components/Dashboard';
 import TaskManager from './components/TaskManager';
@@ -25,7 +30,13 @@ import FocusTimer from './components/FocusTimer';
 import Analytics from './components/Analytics';
 import AICoach from './components/AICoach';
 import DailyPlanner from './components/DailyPlanner';
+import HabitTracker from './components/HabitTracker';
+import SearchView from './components/SearchView';
+import CalendarView from './components/CalendarView';
+import UndoToast from './components/UndoToast';
 import Login from './components/Login';
+import { useNotificationScheduler } from './hooks/useNotificationScheduler';
+import { useUndoStack, UndoAction } from './hooks/useUndoStack';
 
 const VIEW_KEY = 'debugme-view';
 
@@ -179,8 +190,34 @@ const App: React.FC = () => {
   const [todayRecords, setTodayRecords] = useState<DailyRecord[]>([]);
   const [totalRecordCount, setTotalRecordCount] = useState(0);
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  const defaultTasks: Task[] = [
+  // Reactive todayStr — updates when day changes (overnight / visibility change)
+  const [todayStr, setTodayStr] = useState(() => new Date().toISOString().split('T')[0]);
+
+  useEffect(() => {
+    const checkDayChange = () => {
+      const now = new Date().toISOString().split('T')[0];
+      setTodayStr(prev => {
+        if (prev !== now) {
+          console.log('📅 Day changed:', prev, '→', now);
+          return now;
+        }
+        return prev;
+      });
+    };
+
+    // Check when tab becomes visible again
+    const onVisibility = () => { if (document.visibilityState === 'visible') checkDayChange(); };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    // Also check every 60s as fallback
+    const interval = setInterval(checkDayChange, 60_000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      clearInterval(interval);
+    };
+  }, []);
+  const defaultTasks: Task[] = useMemo(() => [
     // ===== ทุกวัน (ไม่ต้องระบุ dayTypes — recurring, no dates) =====
     // 🌅 กิจวัตร — ทุกวัน
     { id: 'd-1', title: 'ตื่นนอน อาบน้ำ แปรงฟัน', description: 'กิจวัตรเช้า เตรียมพร้อมเริ่มวัน', priority: Priority.MEDIUM, completed: false, category: 'กิจวัตร', estimatedDuration: 30 },
@@ -238,7 +275,7 @@ const App: React.FC = () => {
     { id: 'd-13', title: 'เขียนบันทึก / วางแผนเป้าหมาย', description: 'Journal สะท้อนตัวเอง ทบทวนเป้าหมาย', priority: Priority.LOW, completed: false, category: 'พัฒนาตัวเอง', estimatedDuration: 15 },
     // 🔧 ธุระส่วนตัว — เอกสาร (มี deadline)
     { id: 'd-24', title: 'จัดการเอกสาร / ธุระธนาคาร', description: 'เอกสารสำคัญ โอนเงิน หรือติดต่อหน่วยงาน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: '2026-02-28', category: 'ธุระส่วนตัว', dayTypes: ['workday'], estimatedDuration: 60 },
-  ];
+  ], [todayStr]);
 
   // ===== Data state (synced via Firestore) =====
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -246,8 +283,35 @@ const App: React.FC = () => {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [scheduleTemplates, setScheduleTemplates] = useState<ScheduleTemplates>(DEFAULT_SCHEDULE_TEMPLATES);
   const [deletedDefaultTaskIds, setDeletedDefaultTaskIds] = useState<string[]>([]);
+  const [habits, setHabits] = useState<Habit[]>([]);
   const [firestoreLoading, setFirestoreLoading] = useState(true);
   const firestoreReadyRef = useRef(false);
+  const isRemoteUpdateRef = useRef(false);
+  const [isDirty, setIsDirty] = useState(false);
+
+  // ===== Online/Offline detection =====
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); };
+  }, []);
+
+  // ===== Undo system =====
+  const { push: pushUndo, undo, toast: undoToast, dismissToast } = useUndoStack();
+
+  // ===== Notification settings (device-local) =====
+  const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
+    try { return localStorage.getItem('debugme-notif') === 'true'; } catch { return false; }
+  });
+  const [reminderMinutes, setReminderMinutes] = useState(() => {
+    try { return parseInt(localStorage.getItem('debugme-reminder-min') || '5'); } catch { return 5; }
+  });
+  const [showNotifSettings, setShowNotifSettings] = useState(false);
+
+  useNotificationScheduler(scheduleTemplates, taskGroups, notificationsEnabled, reminderMinutes);
 
   // Load today's daily records from Firestore
   const loadTodayRecords = useCallback(async () => {
@@ -274,9 +338,7 @@ const App: React.FC = () => {
   }, [loadTodayRecords, user]);
 
   // Dirty state: tracks unsaved local changes
-  const [isDirty, setIsDirty] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
-  const isRemoteUpdateRef = useRef(false);
 
   // Subscribe to Firestore real-time updates when user logs in
   useEffect(() => {
@@ -292,57 +354,57 @@ const App: React.FC = () => {
       console.log('🔄 Firestore data received');
       firestoreReadyRef.current = true;
 
-      // Track if this is a remote update (from our own save)
-      const wasRemoteUpdate = isRemoteUpdateRef.current;
-      isRemoteUpdateRef.current = true;
+      // If isRemoteUpdateRef is true, this snapshot is from our own write — skip re-saving
+      const wasOwnSave = isRemoteUpdateRef.current;
 
       if (data) {
+        // Collect all changes that need to be saved back (consolidated into 1 write)
+        const saveBack: Record<string, unknown> = {};
+
         // Migrate old tasks if needed
         const migratedTasks = (data.tasks || []).map(migrateTask);
         const needsMigration = (data.tasks || []).some((t: any) => t.dueDate && !t.startDate);
 
         // Load deleted default task IDs
         const deletedIds = data.deletedDefaultTaskIds || [];
-        console.log('📥 Loaded deletedDefaultTaskIds from Firestore:', deletedIds);
         setDeletedDefaultTaskIds(deletedIds);
 
         // Merge missing default tasks into existing user's tasks (exclude deleted ones)
         const mergedTasks = mergeDefaultTasks(migratedTasks, defaultTasks, deletedIds);
-        console.log('🔀 Merged tasks. Total:', mergedTasks.length, 'Deleted IDs:', deletedIds.length, 'Was remote update:', wasRemoteUpdate);
         setTasks(mergedTasks);
+
+        // Groups: merge defaults + fix icons
         if (data.groups) {
           const mergedGroups = mergeDefaultGroups(data.groups);
           setTaskGroups(mergedGroups);
-          // Save back if any group icons were updated
           const iconsChanged = data.groups.some((g: TaskGroup) => {
             const def = DEFAULT_ICON_MAP.get(g.key);
             return def && g.icon !== def;
           });
-          if (iconsChanged && !wasRemoteUpdate) {
-            saveAppData(user.uid, { groups: mergedGroups });
+          if (iconsChanged) {
+            saveBack.groups = mergedGroups;
           }
         }
+
         // Milestones: merge missing defaults + fix known timing issues
         if (data.milestones?.length) {
           let ms = data.milestones as Milestone[];
-          // Fix ms-2 breakfast time (was 09:00, should be 07:00)
           let msChanged = false;
           ms = ms.map(m => {
             if (m.id === 'ms-2' && m.time === '09:00') { msChanged = true; return { ...m, time: '07:00' }; }
             return m;
           });
-          // Merge any missing default milestones
           const existingIds = new Set(ms.map(m => m.id));
           const missingMs = DEFAULT_MILESTONES.filter(m => !existingIds.has(m.id));
           if (missingMs.length > 0) { ms = [...ms, ...missingMs]; msChanged = true; }
           setMilestones(ms);
-          if (msChanged) saveAppData(user.uid, { milestones: ms });
+          if (msChanged) saveBack.milestones = ms;
         } else {
           setMilestones(DEFAULT_MILESTONES);
         }
+
         // Schedule templates migration
         if (data.scheduleTemplates) {
-          // Filter out malformed entries, replace with defaults if too few valid slots
           const tpl = data.scheduleTemplates;
           const validSlots = (arr: any[]) => (arr || []).filter((s: any) => s.startTime && s.endTime && s.groupKey);
           const vWork = validSlots(tpl.workday);
@@ -354,13 +416,10 @@ const App: React.FC = () => {
             sunday: vSun.length >= 3 ? vSun : DEFAULT_SCHEDULE_TEMPLATES.sunday,
           };
           setScheduleTemplates(fixed);
-          // Save back if any template was replaced
           if (vWork.length < 3 || vSat.length < 3 || vSun.length < 3) {
-            saveAppData(user.uid, { scheduleTemplates: fixed });
+            saveBack.scheduleTemplates = fixed;
           }
         } else if (data.schedule && data.schedule.length > 0) {
-          // Migrate old single schedule → workday template
-          // Only use old schedule if entries have valid startTime
           const validOldSchedule = data.schedule.filter((s: any) => s.startTime && s.endTime && s.groupKey);
           const migrated: ScheduleTemplates = {
             workday: validOldSchedule.length > 0 ? validOldSchedule : DEFAULT_SCHEDULE_TEMPLATES.workday,
@@ -368,22 +427,29 @@ const App: React.FC = () => {
             sunday: DEFAULT_SCHEDULE_TEMPLATES.sunday,
           };
           setScheduleTemplates(migrated);
-          saveAppData(user.uid, { scheduleTemplates: migrated });
+          saveBack.scheduleTemplates = migrated;
         } else {
           setScheduleTemplates(DEFAULT_SCHEDULE_TEMPLATES);
         }
 
-        // Save back if migration or new default tasks were added
-        // BUT ONLY if this is NOT triggered by our own save (prevent save loop)
-        if ((needsMigration || mergedTasks.length > migratedTasks.length) && !wasRemoteUpdate) {
-          console.log('💾 Auto-adding missing default tasks and saving...');
-          saveAppData(user.uid, {
-            tasks: mergedTasks,
-            milestones: data.milestones || DEFAULT_MILESTONES,
-            deletedDefaultTaskIds: deletedIds  // Preserve deleted task IDs
-          });
-        } else if (mergedTasks.length > migratedTasks.length) {
-          console.log('⏭️ Skipped auto-save (was remote update, would create loop)');
+        // Habits
+        if (data.habits) {
+          setHabits(data.habits);
+        } else {
+          setHabits([]);
+        }
+
+        // Tasks: save back if migration or new defaults added
+        if (needsMigration || mergedTasks.length > migratedTasks.length) {
+          saveBack.tasks = mergedTasks;
+          saveBack.milestones = saveBack.milestones || data.milestones || DEFAULT_MILESTONES;
+          saveBack.deletedDefaultTaskIds = deletedIds;
+        }
+
+        // SINGLE consolidated write (only if not triggered by our own save)
+        if (Object.keys(saveBack).length > 0 && !wasOwnSave) {
+          console.log('💾 Consolidated save-back:', Object.keys(saveBack));
+          saveAppData(user.uid, saveBack);
         }
       } else {
         // First time user — use defaults and save to Firestore
@@ -392,12 +458,14 @@ const App: React.FC = () => {
         setMilestones(DEFAULT_MILESTONES);
         setScheduleTemplates(DEFAULT_SCHEDULE_TEMPLATES);
         setDeletedDefaultTaskIds([]);
+        setHabits([]);
         saveAppData(user.uid, {
           tasks: defaultTasks,
           groups: DEFAULT_GROUPS,
           milestones: DEFAULT_MILESTONES,
           scheduleTemplates: DEFAULT_SCHEDULE_TEMPLATES,
-          deletedDefaultTaskIds: []
+          deletedDefaultTaskIds: [],
+          habits: []
         });
       }
       setFirestoreLoading(false);
@@ -432,7 +500,7 @@ const App: React.FC = () => {
       setSaveStatus('saving');
       try {
         isRemoteUpdateRef.current = true;
-        await saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds });
+        await saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits });
         setIsDirty(false);
         setSaveStatus('saved');
         setTimeout(() => {
@@ -449,7 +517,7 @@ const App: React.FC = () => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, user]);
+  }, [tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, user]);
 
   useEffect(() => { localStorage.setItem(VIEW_KEY, activeView); }, [activeView]);
 
@@ -461,6 +529,8 @@ const App: React.FC = () => {
       groups: taskGroups,
       milestones,
       scheduleTemplates,
+      deletedDefaultTaskIds,
+      habits,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -486,6 +556,8 @@ const App: React.FC = () => {
           if (data.groups) setTaskGroups(data.groups);
           if (data.milestones) setMilestones(data.milestones);
           if (data.scheduleTemplates) setScheduleTemplates(data.scheduleTemplates);
+          if (data.deletedDefaultTaskIds) setDeletedDefaultTaskIds(data.deletedDefaultTaskIds);
+          if (data.habits) setHabits(data.habits);
           alert('นำเข้าข้อมูลสำเร็จ!');
         } catch {
           alert('ไฟล์ไม่ถูกต้อง');
@@ -513,7 +585,8 @@ const App: React.FC = () => {
         groups: taskGroups,
         milestones,
         scheduleTemplates,
-        deletedDefaultTaskIds: updatedDeletedIds || deletedDefaultTaskIds
+        deletedDefaultTaskIds: updatedDeletedIds || deletedDefaultTaskIds,
+        habits
       };
       console.log('💾 Saving to Firestore:', {
         taskCount: dataToSave.tasks.length,
@@ -527,7 +600,7 @@ const App: React.FC = () => {
       console.error('[DebugMe] Immediate save failed:', err);
       isRemoteUpdateRef.current = false;
     }
-  }, [user, tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds]);
+  }, [user, tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits]);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
@@ -556,13 +629,16 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (activeView) {
-      case 'dashboard': return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} onNavigateToPlanner={handleNavigateToPlanner} />;
+      case 'dashboard': return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onNavigateToPlanner={handleNavigateToPlanner} />;
       case 'planner': return <DailyPlanner tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} pendingSlot={pendingSlot} onPendingSlotHandled={() => setPendingSlot(null)} />;
       case 'tasks': return <TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} />;
       case 'focus': return <FocusTimer />;
       case 'analytics': return <Analytics tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} totalRecordCount={totalRecordCount} userId={user!.uid} />;
       case 'ai-coach': return <AICoach tasks={tasks} />;
-      default: return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} onNavigateToPlanner={handleNavigateToPlanner} />;
+      case 'habits': return <HabitTracker habits={habits} setHabits={setHabits} />;
+      case 'search': return <SearchView tasks={tasks} taskGroups={taskGroups} />;
+      case 'calendar': return <CalendarView tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} userId={user!.uid} />;
+      default: return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onNavigateToPlanner={handleNavigateToPlanner} />;
     }
   };
 
@@ -622,7 +698,13 @@ const App: React.FC = () => {
             <NavItem icon={<CheckSquare />} label="Tasks" active={activeView === 'tasks'} onClick={() => handleNavItemClick('tasks')} />
             <NavItem icon={<Timer />} label="Focus" active={activeView === 'focus'} onClick={() => handleNavItemClick('focus')} />
             <NavItem icon={<BarChart3 />} label="Analyst" active={activeView === 'analytics'} onClick={() => handleNavItemClick('analytics')} />
-            <div className="pt-6 mt-6 border-t border-slate-100/60 px-2">
+            <div className="pt-4 mt-4 border-t border-slate-100/60 px-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">More</p>
+              <NavItem icon={<Flame />} label="Habits" active={activeView === 'habits'} onClick={() => handleNavItemClick('habits')} />
+              <NavItem icon={<CalendarDays />} label="Calendar" active={activeView === 'calendar'} onClick={() => handleNavItemClick('calendar')} />
+              <NavItem icon={<Search />} label="Search" active={activeView === 'search'} onClick={() => handleNavItemClick('search')} />
+            </div>
+            <div className="pt-4 mt-4 border-t border-slate-100/60 px-2">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">AI Assistant</p>
               <NavItem icon={<Sparkles className="text-fuchsia-500" />} label="AI Life Coach" active={activeView === 'ai-coach'} onClick={() => handleNavItemClick('ai-coach')} isSpecial />
             </div>
@@ -639,6 +721,13 @@ const App: React.FC = () => {
                   <p className="text-xs font-medium text-slate-500 truncate">Life Planner</p>
                 </div>
               </div>
+
+              {/* Offline indicator */}
+              {!isOnline && (
+                <div className="w-full flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-xl border bg-amber-50 border-amber-200 text-amber-600">
+                  <WifiOff className="w-3.5 h-3.5" /> ออฟไลน์
+                </div>
+              )}
 
               {/* Auto-save status */}
               <div className={`w-full flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-xl border transition-all ${
@@ -689,9 +778,12 @@ const App: React.FC = () => {
             <button onClick={toggleSidebar} className="p-2 rounded-lg hover:bg-emerald-500 lg:hidden text-white/80 mr-3">
               <Menu className="w-5 h-5" />
             </button>
-            <h2 className="text-lg font-bold text-white capitalize tracking-tight lg:text-2xl">
-              {activeView === 'dashboard' ? 'TODAY' : activeView === 'planner' ? 'Daily Planner' : activeView === 'ai-coach' ? 'AI Coach' : activeView}
+            <h2 className="text-lg font-bold text-white capitalize tracking-tight lg:text-2xl flex-1">
+              {activeView === 'dashboard' ? 'TODAY' : activeView === 'planner' ? 'Daily Planner' : activeView === 'ai-coach' ? 'AI Coach' : activeView === 'habits' ? 'Habits' : activeView === 'calendar' ? 'Calendar' : activeView === 'search' ? 'Search' : activeView}
             </h2>
+            <button onClick={() => setShowNotifSettings(true)} className="p-2 rounded-lg hover:bg-emerald-500 text-white/80">
+              <Bell className="w-5 h-5" />
+            </button>
           </header>
         )}
 
@@ -733,6 +825,9 @@ const App: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Undo Toast */}
+        <UndoToast action={undoToast} onUndo={undo} onDismiss={dismissToast} />
       </main>
     </div>
   );

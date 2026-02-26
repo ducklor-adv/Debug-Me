@@ -1,8 +1,11 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Task, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType } from '../types';
-import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Task, SubTask, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType } from '../types';
+import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown, RefreshCw, GripVertical } from 'lucide-react';
 import TimePicker from './TimePicker';
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
@@ -16,7 +19,9 @@ const TAB_CONFIG: { key: DayType; label: string; emoji: string }[] = [
 function getDurationMinutes(start: string, end: string): number {
   const [sh, sm] = start.split(':').map(Number);
   const [eh, em] = end.split(':').map(Number);
-  return (eh * 60 + em) - (sh * 60 + sm);
+  let diff = (eh * 60 + em) - (sh * 60 + sm);
+  if (diff < 0) diff += 24 * 60; // ข้ามเที่ยงคืน
+  return diff;
 }
 
 function formatDuration(mins: number): string {
@@ -43,11 +48,54 @@ interface DailyPlannerProps {
   onPendingSlotHandled?: () => void;
 }
 
-/** Get tasks matching a slot's groupKey for a given date */
-function getTasksForSlot(tasks: Task[], date: string, groupKey: string): Task[] {
-  return getTasksForDate(tasks, date)
-    .filter(t => t.category === groupKey);
+/** Get tasks explicitly assigned to a slot */
+function getTasksForSlot(tasks: Task[], slot: TimeSlot): Task[] {
+  const assigned = slot.assignedTaskIds || [];
+  if (assigned.length === 0) return [];
+  const assignedSet = new Set(assigned);
+  // Preserve order from assignedTaskIds
+  return assigned
+    .map(id => tasks.find(t => t.id === id))
+    .filter((t): t is Task => t !== undefined);
 }
+
+// Sortable wrapper for slot items
+const SortableSlotWrapper: React.FC<{ id: string; children: React.ReactNode }> = ({ id, children }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  };
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} className="flex items-stretch">
+      <div {...listeners} className="w-6 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors">
+        <GripVertical className="w-4 h-4" />
+      </div>
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+};
+
+// Sortable wrapper for task items inside a slot
+const SortableTaskItem: React.FC<{ id: string; children: React.ReactNode }> = ({ id, children }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 30 : undefined,
+  };
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} className="flex items-stretch">
+      <div {...listeners} className="w-5 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors">
+        <GripVertical className="w-3.5 h-3.5" />
+      </div>
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+};
 
 const DailyPlanner: React.FC<DailyPlannerProps> = ({
   tasks, setTasks, taskGroups, milestones, scheduleTemplates, setScheduleTemplates, todayRecords = [], onSaveDailyRecord,
@@ -116,8 +164,12 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const [slotForm, setSlotForm] = useState({ startTime: '09:00', endTime: '10:00', groupKey: '' });
 
   // Delete confirmation
-  const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null);
+  const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<{ taskId: string; slotId: string } | null>(null);
   const [confirmDeleteSlotId, setConfirmDeleteSlotId] = useState<string | null>(null);
+
+  // Task Picker for adding tasks to a slot
+  const [pickerSlot, setPickerSlot] = useState<TimeSlot | null>(null);
+  const [pickerSelected, setPickerSelected] = useState<Set<string>>(new Set());
 
   // Sorted schedule (filter out malformed entries)
   const sortedSchedule = [...mergedSchedule]
@@ -127,15 +179,24 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   // All tasks for the day (for summary)
   const dayTasks = getTasksForDate(tasks, selectedDateStr);
 
-  // Restore checked state from todayRecords
+  // Restore checked state from todayRecords — run only ONCE on initial load
+  const hasRestoredChecks = useRef(false);
   useEffect(() => {
+    if (hasRestoredChecks.current) return;
     if (!isToday || todayRecords.length === 0) return;
+    hasRestoredChecks.current = true;
     const checked = new Set<string>();
     todayRecords.forEach(r => {
+      if (!r.timeStart || !r.timeEnd) return;
       const matchTask = dayTasks.find(t => t.title === r.taskTitle && t.category === r.category);
-      if (matchTask) checked.add(matchTask.id);
+      if (!matchTask) return;
+      const matchSlot = sortedSchedule.find(s =>
+        s.startTime === r.timeStart && s.endTime === r.timeEnd &&
+        (s.assignedTaskIds || []).includes(matchTask.id)
+      );
+      if (matchSlot) checked.add(matchTask.id);
     });
-    if (checked.size > 0) setCheckedTasks(checked);
+    setCheckedTasks(checked);
   }, [todayRecords]);
 
   // Auto-expand current slot
@@ -220,30 +281,58 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     setEditingSlot(null);
   };
 
-  const showDeleteTaskConfirm = (taskId: string) => {
-    setConfirmDeleteTaskId(taskId);
+  // Task Picker: open picker for a slot
+  const openTaskPicker = (slot: TimeSlot) => {
+    setPickerSlot(slot);
+    setPickerSelected(new Set());
   };
 
-  const confirmDeleteTask = async () => {
-    if (!confirmDeleteTaskId || !setTasks) return;
+  // Task Picker: get available tasks for the picker (same group, not already assigned)
+  const getPickerTasks = (slot: TimeSlot): Task[] => {
+    const assigned = new Set(slot.assignedTaskIds || []);
+    return getTasksForDate(tasks, selectedDateStr)
+      .filter(t => t.category === slot.groupKey && !assigned.has(t.id));
+  };
 
-    const taskId = confirmDeleteTaskId;
-    const updatedTasks = tasks.filter(t => t.id !== taskId);
-
-    // If deleting a default task (id starts with 'd-'), track it
-    let updatedDeletedIds = deletedDefaultTaskIds;
-    if (taskId.startsWith('d-') && !deletedDefaultTaskIds.includes(taskId) && setDeletedDefaultTaskIds) {
-      updatedDeletedIds = [...deletedDefaultTaskIds, taskId];
-      setDeletedDefaultTaskIds(updatedDeletedIds);
+  // Task Picker: confirm selection
+  const confirmTaskPicker = () => {
+    if (!pickerSlot || pickerSelected.size === 0) {
+      setPickerSlot(null);
+      return;
     }
+    setScheduleForTab(prev => prev.map(s => {
+      if (s.id !== pickerSlot.id) return s;
+      const existing = s.assignedTaskIds || [];
+      return { ...s, assignedTaskIds: [...existing, ...Array.from(pickerSelected)] };
+    }));
+    // Clear checked state for newly added tasks (start fresh)
+    setCheckedTasks(prev => {
+      const next = new Set(prev);
+      pickerSelected.forEach(id => next.delete(id));
+      return next;
+    });
+    // Auto-expand the slot
+    setExpandedSlots(prev => new Set(prev).add(pickerSlot.id));
+    setPickerSlot(null);
+    setPickerSelected(new Set());
+  };
 
-    setTasks(updatedTasks);
+  const showDeleteTaskConfirm = (taskId: string, slotId: string) => {
+    setConfirmDeleteTaskId({ taskId, slotId });
+  };
+
+  const confirmDeleteTask = () => {
+    if (!confirmDeleteTaskId) return;
+
+    const { taskId, slotId } = confirmDeleteTaskId;
+
+    // Remove task from slot's assignedTaskIds
+    setScheduleForTab(prev => prev.map(s => {
+      if (s.id !== slotId) return s;
+      return { ...s, assignedTaskIds: (s.assignedTaskIds || []).filter(id => id !== taskId) };
+    }));
+
     setConfirmDeleteTaskId(null);
-
-    // Save to Firestore immediately to prevent the task from coming back
-    if (onImmediateSave) {
-      await onImmediateSave(updatedTasks, updatedDeletedIds);
-    }
   };
 
   const showDeleteSlotConfirm = (slotId: string) => {
@@ -284,7 +373,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   sortedSchedule.forEach(slot => {
     const slotMins = Math.max(0, getDurationMinutes(slot.startTime, slot.endTime));
     const prev = summaryMap.get(slot.groupKey) || { totalMins: 0, doneMins: 0 };
-    const slotTasks = getTasksForSlot(tasks, selectedDateStr, slot.groupKey);
+    const slotTasks = getTasksForSlot(tasks, slot);
     const doneMins = slotTasks
       .filter(t => checkedTasks.has(t.id))
       .reduce((s, t) => s + (t.estimatedDuration || 0), 0);
@@ -300,6 +389,46 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const totalAllMins = slotSummary.reduce((s, c) => s + c.totalMins, 0);
   const doneAllMins = slotSummary.reduce((s, c) => s + c.doneMins, 0);
   const progressPct = totalAllMins > 0 ? Math.round((doneAllMins / totalAllMins) * 100) : 0;
+
+  // DnD: swap groupKeys between slots when reordered
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeSlot = sortedSchedule.find(s => s.id === active.id);
+    const overSlot = sortedSchedule.find(s => s.id === over.id);
+    if (!activeSlot || !overSlot) return;
+
+    // Swap groupKeys between the two slots (times stay in place)
+    setScheduleForTab(prev => prev.map(s => {
+      if (s.id === activeSlot.id) return { ...s, groupKey: overSlot.groupKey };
+      if (s.id === overSlot.id) return { ...s, groupKey: activeSlot.groupKey };
+      return s;
+    }));
+  };
+
+  // DnD: reorder tasks within a slot
+  const taskSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+  );
+
+  const handleTaskDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !setTasks) return;
+
+    setTasks(prev => {
+      const oldIndex = prev.findIndex(t => t.id === active.id);
+      const newIndex = prev.findIndex(t => t.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+  };
 
   // Merge milestones and slots
   const buildTimeline = () => {
@@ -406,6 +535,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       <div className="flex flex-col md:flex-row gap-4">
         {/* Left: Slot Timeline */}
         <div className="flex-[2] space-y-2">
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={sortedSchedule.map(s => s.id)} strategy={verticalListSortingStrategy}>
           {timeline.map((item) => {
             if (item.type === 'milestone') {
               const ms = item.data as Milestone;
@@ -421,7 +552,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
             const slot = item.data as TimeSlot;
             const group = groupMap.get(slot.groupKey);
             const colors = GROUP_COLORS[group?.color || 'orange'] || GROUP_COLORS.orange;
-            const slotTasks = getTasksForSlot(tasks, selectedDateStr, slot.groupKey);
+            const slotTasks = getTasksForSlot(tasks, slot);
             const checkedCount = slotTasks.filter(t => checkedTasks.has(t.id)).length;
             const slotDur = getDurationMinutes(slot.startTime, slot.endTime);
             const isExpanded = expandedSlots.has(slot.id);
@@ -430,11 +561,13 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
             const [seh, sem] = slot.endTime.split(':').map(Number);
             const slotStartMin = ssh * 60 + ssm;
             const slotEndMin = seh * 60 + sem;
-            const isCurrentSlot = isToday && nowMinutes >= slotStartMin && nowMinutes < slotEndMin;
+            const isCurrentSlot = isToday && (slotEndMin > slotStartMin
+              ? (nowMinutes >= slotStartMin && nowMinutes < slotEndMin)
+              : (nowMinutes >= slotStartMin || nowMinutes < slotEndMin));
 
             return (
+              <SortableSlotWrapper key={slot.id} id={slot.id}>
               <div
-                key={slot.id}
                 className={`bg-white rounded-xl border overflow-hidden transition-all ${
                   isCurrentSlot ? 'ring-2 ring-emerald-400 ring-offset-1' : ''
                 } ${colors.plannerBorder}`}
@@ -476,65 +609,95 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
                 {/* Expanded Task List */}
                 {isExpanded && (
-                  <div className="border-t px-3 py-2 space-y-1" style={{ borderColor: 'inherit' }}>
-                    {slotTasks.length === 0 ? (
-                      <p className="text-xs text-slate-400 italic py-1">ไม่มี Task ในกลุ่มนี้</p>
-                    ) : (
-                      slotTasks.map(task => {
+                  <div className="border-t px-2 py-2 space-y-0.5" style={{ borderColor: 'inherit' }}>
+                    {slotTasks.length > 0 && (
+                      <DndContext sensors={taskSensors} collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd}>
+                      <SortableContext items={slotTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                      {slotTasks.map(task => {
                         const checked = checkedTasks.has(task.id);
 
                         return (
+                          <SortableTaskItem key={task.id} id={task.id}>
                           <div
-                            key={task.id}
-                            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all hover:bg-slate-50 ${
+                            className={`px-2 py-1.5 rounded-lg transition-all hover:bg-slate-50 ${
                               checked ? 'opacity-40' : ''
                             }`}
                           >
-                            <div
-                              onClick={() => toggleCheck(task.id, slot.startTime, slot.endTime)}
-                              className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
-                            >
-                              <div className="shrink-0">
-                                {checked
-                                  ? <CheckCircle2 className={`w-4 h-4 ${colors.plannerText}`} />
-                                  : <Circle className={`w-4 h-4 ${colors.plannerText} opacity-30`} />
-                                }
+                            <div className="flex items-center gap-2">
+                              <div
+                                onClick={() => toggleCheck(task.id, slot.startTime, slot.endTime)}
+                                className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
+                              >
+                                <div className="shrink-0">
+                                  {checked
+                                    ? <CheckCircle2 className={`w-4 h-4 ${colors.plannerText}`} />
+                                    : <Circle className={`w-4 h-4 ${colors.plannerText} opacity-30`} />
+                                  }
+                                </div>
+                                <span className={`text-[13px] font-bold flex-1 min-w-0 truncate ${checked ? 'line-through text-slate-400' : 'text-slate-700'}`}>
+                                  {task.title}
+                                </span>
                               </div>
-                              <span className={`text-[13px] font-bold flex-1 min-w-0 truncate ${checked ? 'line-through text-slate-400' : 'text-slate-700'}`}>
-                                {task.title}
-                              </span>
+                              {task.recurrence && (
+                                <span className="text-[8px] font-black bg-violet-100 text-violet-600 px-1 py-0.5 rounded shrink-0 flex items-center gap-0.5">
+                                  <RefreshCw className="w-2.5 h-2.5" />
+                                  {task.recurrence.pattern === 'daily' ? 'ทุกวัน' :
+                                   task.recurrence.pattern === 'every_x_days' ? `ทุก${task.recurrence.interval}วัน` :
+                                   task.recurrence.pattern === 'weekly' ? 'สัปดาห์' :
+                                   task.recurrence.pattern === 'monthly' ? 'เดือน' : 'ปี'}
+                                </span>
+                              )}
+                              {task.estimatedDuration && (
+                                <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration}น.</span>
+                              )}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openEditTask(task); }}
+                                className="p-1 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 shrink-0"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); showDeleteTaskConfirm(task.id, slot.id); }}
+                                className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500 shrink-0"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
                             </div>
-                            {!task.startDate && !task.endDate && (
-                              <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1 rounded shrink-0">ทำซ้ำ</span>
-                            )}
-                            {task.estimatedDuration && (
-                              <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration}น.</span>
-                            )}
-                            {setTasks && (
-                              <>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); openEditTask(task); }}
-                                  className="p-1 rounded hover:bg-blue-50 text-slate-400 hover:text-blue-600 shrink-0"
-                                >
-                                  <Pencil className="w-3 h-3" />
-                                </button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); showDeleteTaskConfirm(task.id); }}
-                                  className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500 shrink-0"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </>
+                            {task.subtasks && task.subtasks.length > 0 && (
+                              <div className="flex items-center gap-2 mt-1 ml-6">
+                                <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className="h-full bg-emerald-400 rounded-full transition-all" style={{ width: `${Math.round((task.subtasks.filter((s: SubTask) => s.completed).length / task.subtasks.length) * 100)}%` }} />
+                                </div>
+                                <span className="text-[9px] font-bold text-slate-400 shrink-0">{task.subtasks.filter((s: SubTask) => s.completed).length}/{task.subtasks.length}</span>
+                              </div>
                             )}
                           </div>
+                          </SortableTaskItem>
                         );
-                      })
+                      })}
+                      </SortableContext>
+                      </DndContext>
                     )}
+                    {/* Add Task Button */}
+                    <button
+                      onClick={() => openTaskPicker(slot)}
+                      className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed transition-all text-xs font-bold ${
+                        slotTasks.length === 0
+                          ? `${colors.plannerBorder} ${colors.plannerText} hover:${colors.plannerBg}`
+                          : 'border-slate-200 text-slate-400 hover:border-emerald-300 hover:text-emerald-500 hover:bg-emerald-50/50'
+                      }`}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      เพิ่ม Task
+                    </button>
                   </div>
                 )}
               </div>
+              </SortableSlotWrapper>
             );
           })}
+            </SortableContext>
+          </DndContext>
 
           {/* Add Slot Button */}
           <button
@@ -713,8 +876,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       {confirmDeleteTaskId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn p-5">
-            <h3 className="text-lg font-black text-slate-800 mb-2">ยืนยันการลบ Task</h3>
-            <p className="text-sm text-slate-600 mb-6">คุณแน่ใจหรือไม่ว่าต้องการลบ task นี้?</p>
+            <h3 className="text-lg font-black text-slate-800 mb-2">นำ Task ออกจาก Slot นี้</h3>
+            <p className="text-sm text-slate-600 mb-6">Task จะถูกนำออกจาก slot นี้ แต่ยังอยู่ในกลุ่ม Task เดิม<br/><span className="text-xs text-slate-400">สามารถเพิ่มกลับได้ด้วยปุ่ม +</span></p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setConfirmDeleteTaskId(null)}
@@ -724,14 +887,103 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               </button>
               <button
                 onClick={confirmDeleteTask}
-                className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white font-bold text-sm rounded-xl transition-colors"
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm rounded-xl transition-colors"
               >
-                ลบ
+                นำออก
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Task Picker Modal */}
+      {pickerSlot && (() => {
+        const pGroup = groupMap.get(pickerSlot.groupKey);
+        const pColors = GROUP_COLORS[pGroup?.color || 'orange'] || GROUP_COLORS.orange;
+        const available = getPickerTasks(pickerSlot);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setPickerSlot(null)}>
+            <div className="bg-white rounded-2xl shadow-xl w-[90vw] max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className={`${pColors.plannerBg} px-5 py-4 flex items-center justify-between`}>
+                <div>
+                  <h3 className={`text-sm font-black ${pColors.plannerText}`}>
+                    เพิ่ม Task ใน Slot
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-bold mt-0.5">
+                    {pGroup?.emoji} {pGroup?.label} • {pickerSlot.startTime}–{pickerSlot.endTime}
+                  </p>
+                </div>
+                <button onClick={() => setPickerSlot(null)} className="p-1 rounded-lg hover:bg-white/60">
+                  <X className="w-4 h-4 text-slate-400" />
+                </button>
+              </div>
+
+              <div className="max-h-[50vh] overflow-y-auto p-3 space-y-1">
+                {available.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic text-center py-6">
+                    ไม่มี Task ในกลุ่ม "{pGroup?.label}" ที่ยังไม่ได้เพิ่ม
+                    <br/>
+                    <span className="text-[10px]">สร้าง Task ใหม่ได้ที่หน้า Task Manager</span>
+                  </p>
+                ) : (
+                  available.map(task => {
+                    const isSelected = pickerSelected.has(task.id);
+                    return (
+                      <button
+                        key={task.id}
+                        onClick={() => setPickerSelected(prev => {
+                          const next = new Set(prev);
+                          if (next.has(task.id)) next.delete(task.id); else next.add(task.id);
+                          return next;
+                        })}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                          isSelected
+                            ? `${pColors.bg} ${pColors.border} ring-2 ${pColors.ring}`
+                            : 'bg-white border-slate-100 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="shrink-0">
+                          {isSelected
+                            ? <CheckCircle2 className={`w-4.5 h-4.5 ${pColors.text}`} />
+                            : <Circle className="w-4.5 h-4.5 text-slate-300" />
+                          }
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[13px] font-bold text-slate-700 truncate block">{task.title}</span>
+                          {task.description && (
+                            <span className="text-[10px] text-slate-400 truncate block">{task.description}</span>
+                          )}
+                        </div>
+                        {task.estimatedDuration && (
+                          <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration}น.</span>
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+
+              {available.length > 0 && (
+                <div className="px-5 py-3 border-t border-slate-100 flex gap-2">
+                  <button
+                    onClick={() => setPickerSlot(null)}
+                    className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    onClick={confirmTaskPicker}
+                    disabled={pickerSelected.size === 0}
+                    className="flex-1 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors disabled:opacity-40"
+                  >
+                    เพิ่ม {pickerSelected.size > 0 ? `(${pickerSelected.size})` : ''}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Delete Slot Confirmation */}
       {confirmDeleteSlotId && (

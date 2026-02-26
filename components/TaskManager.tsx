@@ -1,7 +1,11 @@
 
 import React, { useState, useRef } from 'react';
-import { Task, TaskAttachment, Priority, TaskGroup, GROUP_COLORS } from '../types';
-import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning, Handshake } from 'lucide-react';
+import { Task, TaskAttachment, SubTask, Recurrence, Priority, TaskGroup, GROUP_COLORS } from '../types';
+import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning, Handshake, GripVertical } from 'lucide-react';
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { arrayMove } from '@dnd-kit/sortable';
 
 // Custom SVG icons (lucide style: 24x24 viewBox, stroke-based)
 const BroomIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -127,6 +131,24 @@ const GROUP_ICON_MAP: Record<string, React.ReactNode> = {
   handshake: <Handshake className="w-3.5 h-3.5" />,
 };
 
+// Sortable wrapper for task items in category modal
+const SortableTaskItem: React.FC<{ id: string; children: React.ReactNode }> = ({ id, children }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} className="flex items-stretch">
+      <div {...listeners} className="w-6 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors">
+        <GripVertical className="w-3.5 h-3.5" />
+      </div>
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+};
+
 const emptyForm = (): Omit<Task, 'id'> => ({
   title: '',
   description: '',
@@ -141,6 +163,24 @@ const emptyForm = (): Omit<Task, 'id'> => ({
 const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups, deletedDefaultTaskIds, setDeletedDefaultTaskIds, onImmediateSave }) => {
   const [aiInsight, setAiInsight] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // DnD sensors for task reordering
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+  );
+
+  const handleTaskDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setTasks(prev => {
+      const oldIndex = prev.findIndex(t => t.id === active.id);
+      const newIndex = prev.findIndex(t => t.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+  };
 
   // Derive style objects from dynamic groups
   const groupStyles = taskGroups.map(getGroupStyle);
@@ -157,6 +197,9 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   const [editId, setEditId] = useState<string | null>(null); // null = new, string = editing
   const [form, setForm] = useState<Omit<Task, 'id'>>(emptyForm());
   const [formAttachments, setFormAttachments] = useState<TaskAttachment[]>([]);
+  const [formSubtasks, setFormSubtasks] = useState<SubTask[]>([]);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [formRecurrence, setFormRecurrence] = useState<Recurrence | undefined>(undefined);
 
   // Attachment helpers
   const [isRecording, setIsRecording] = useState(false);
@@ -179,6 +222,9 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setEditId(null);
     setForm(emptyForm());
     setFormAttachments([]);
+    setFormSubtasks([]);
+    setNewSubtaskTitle('');
+    setFormRecurrence(undefined);
     setShowPhoneInput(false);
     setShowContactInput(false);
     setFormOpen(true);
@@ -188,6 +234,9 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setEditId(null);
     setForm({ ...emptyForm(), category: cat });
     setFormAttachments([]);
+    setFormSubtasks([]);
+    setNewSubtaskTitle('');
+    setFormRecurrence(undefined);
     setShowPhoneInput(false);
     setShowContactInput(false);
     setFormOpen(true);
@@ -209,6 +258,9 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
       estimatedDuration: task.estimatedDuration,
     });
     setFormAttachments(task.attachments || []);
+    setFormSubtasks(task.subtasks || []);
+    setNewSubtaskTitle('');
+    setFormRecurrence(task.recurrence);
     setShowPhoneInput(false);
     setShowContactInput(false);
     setFormOpen(true);
@@ -219,19 +271,40 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setEditId(null);
     setForm(emptyForm());
     setFormAttachments([]);
+    setFormSubtasks([]);
+    setNewSubtaskTitle('');
+    setFormRecurrence(undefined);
     setShowPhoneInput(false);
     setShowContactInput(false);
   };
 
   const saveForm = () => {
     if (!form.title.trim()) return;
+    const subtasks = formSubtasks.length > 0 ? formSubtasks : undefined;
+    const recurrence = formRecurrence;
     if (editId) {
-      setTasks(prev => prev.map(t => t.id === editId ? { ...t, ...form, attachments: formAttachments } : t));
+      setTasks(prev => prev.map(t => t.id === editId ? { ...t, ...form, attachments: formAttachments, subtasks, recurrence } : t));
     } else {
-      const newTask: Task = { id: Date.now().toString(), ...form, attachments: formAttachments };
+      const newTask: Task = { id: Date.now().toString(), ...form, attachments: formAttachments, subtasks, recurrence };
       setTasks(prev => [newTask, ...prev]);
     }
     closeForm();
+  };
+
+  // Subtask helpers
+  const addSubtask = () => {
+    const title = newSubtaskTitle.trim();
+    if (!title) return;
+    setFormSubtasks(prev => [...prev, { id: Date.now().toString(), title, completed: false }]);
+    setNewSubtaskTitle('');
+  };
+
+  const toggleSubtask = (id: string) => {
+    setFormSubtasks(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
+  };
+
+  const removeSubtask = (id: string) => {
+    setFormSubtasks(prev => prev.filter(s => s.id !== id));
   };
 
   const toggleTask = (id: string) => {
@@ -552,8 +625,9 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                 <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ประเภท</label>
                 <div className="flex flex-wrap gap-1.5">
                   {groupStyles.map(t => (
-                    <button key={t.key} onClick={() => setForm({...form, category: t.key})} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${form.category === t.key ? `${t.bg} ${t.border} ${t.text}` : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'}`}>
-                      {t.emoji} {t.label}
+                    <button key={t.key} onClick={() => setForm({...form, category: t.key})} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 ${form.category === t.key ? `${t.bg} ${t.border} ${t.text}` : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'}`}>
+                      <span className={`inline-flex items-center justify-center w-5 h-5 rounded ${form.category === t.key ? t.iconBg : 'bg-slate-300'} text-white`}>{GROUP_ICON_MAP[t.icon] || t.emoji}</span>
+                      {t.label}
                     </button>
                   ))}
                 </div>
@@ -606,6 +680,149 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">Notes / บันทึกเพิ่มเติม</label>
                 <textarea value={form.notes || ''} onChange={e => setForm({...form, notes: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 h-24 resize-none shadow-inner" placeholder="พิมพ์บันทึก..." />
+              </div>
+
+              {/* Subtasks */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">งานย่อย ({formSubtasks.length})</label>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={newSubtaskTitle}
+                    onChange={e => setNewSubtaskTitle(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addSubtask())}
+                    placeholder="เพิ่มงานย่อย..."
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button onClick={addSubtask} disabled={!newSubtaskTitle.trim()} className="px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-40 active:scale-95">
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+                {formSubtasks.length > 0 && (
+                  <div className="space-y-1">
+                    {formSubtasks.map(sub => (
+                      <div key={sub.id} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                        <button onClick={() => toggleSubtask(sub.id)} className="shrink-0 active:scale-90">
+                          {sub.completed
+                            ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                            : <Circle className="w-4 h-4 text-slate-300" />}
+                        </button>
+                        <span className={`text-sm flex-1 ${sub.completed ? 'line-through text-slate-400' : 'text-slate-700'}`}>{sub.title}</span>
+                        <button onClick={() => removeSubtask(sub.id)} className="p-1 hover:bg-rose-50 rounded text-slate-300 hover:text-rose-500 transition-colors shrink-0">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Recurrence */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">การทำซ้ำ</label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {([
+                    { key: undefined, label: 'ไม่ซ้ำ' },
+                    { key: 'daily', label: 'ทุกวัน' },
+                    { key: 'every_x_days', label: 'ทุก X วัน' },
+                    { key: 'weekly', label: 'รายสัปดาห์' },
+                    { key: 'monthly', label: 'รายเดือน' },
+                    { key: 'yearly', label: 'รายปี' },
+                  ] as { key: Recurrence['pattern'] | undefined; label: string }[]).map(opt => (
+                    <button
+                      key={opt.label}
+                      onClick={() => setFormRecurrence(opt.key ? { pattern: opt.key } : undefined)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                        (formRecurrence?.pattern || undefined) === opt.key
+                          ? 'bg-violet-100 text-violet-700 border-violet-300'
+                          : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Conditional inputs based on pattern */}
+                {formRecurrence?.pattern === 'every_x_days' && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-sm text-slate-500 font-bold">ทุก</span>
+                    <input
+                      type="number"
+                      min="2"
+                      max="365"
+                      value={formRecurrence.interval || 2}
+                      onChange={e => setFormRecurrence({ ...formRecurrence, interval: parseInt(e.target.value) || 2 })}
+                      className="w-20 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    />
+                    <span className="text-sm text-slate-500 font-bold">วัน</span>
+                  </div>
+                )}
+
+                {formRecurrence?.pattern === 'weekly' && (
+                  <div className="mt-2">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">เลือกวัน</span>
+                    <div className="flex gap-1.5">
+                      {['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((d, i) => {
+                        const isOn = (formRecurrence.weekDays || []).includes(i);
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => {
+                              const days = formRecurrence.weekDays || [];
+                              const next = isOn ? days.filter(x => x !== i) : [...days, i];
+                              setFormRecurrence({ ...formRecurrence, weekDays: next });
+                            }}
+                            className={`w-9 h-9 rounded-lg text-xs font-bold transition-all ${
+                              isOn ? 'bg-violet-500 text-white' : 'bg-slate-50 text-slate-400 border border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {d}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {formRecurrence?.pattern === 'monthly' && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-sm text-slate-500 font-bold">ทุกวันที่</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={formRecurrence.monthDay || 1}
+                      onChange={e => setFormRecurrence({ ...formRecurrence, monthDay: parseInt(e.target.value) || 1 })}
+                      className="w-20 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    />
+                    <span className="text-sm text-slate-500 font-bold">ของเดือน</span>
+                  </div>
+                )}
+
+                {formRecurrence?.pattern === 'yearly' && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-sm text-slate-500 font-bold">เดือน</span>
+                    <select
+                      value={formRecurrence.monthDate?.month || 1}
+                      onChange={e => setFormRecurrence({ ...formRecurrence, monthDate: { month: parseInt(e.target.value), day: formRecurrence.monthDate?.day || 1 } })}
+                      className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    >
+                      {['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'].map((m, i) => (
+                        <option key={i} value={i + 1}>{m}</option>
+                      ))}
+                    </select>
+                    <span className="text-sm text-slate-500 font-bold">วันที่</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={formRecurrence.monthDate?.day || 1}
+                      onChange={e => setFormRecurrence({ ...formRecurrence, monthDate: { month: formRecurrence.monthDate?.month || 1, day: parseInt(e.target.value) || 1 } })}
+                      className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-sm text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Quick Attachments */}
@@ -803,8 +1020,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
       {/* ===== Selected Category Modal ===== */}
       {selectedCat && (() => {
         const style = getTypeStyle(selectedCat);
-        const group = tasks.filter(t => t.category === selectedCat)
-          .sort((a, b) => a.title.localeCompare(b.title));
+        const group = tasks.filter(t => t.category === selectedCat);
 
         // Icon mapping for modal
         const IconComponent = style.icon === 'sun' ? Sun
@@ -880,9 +1096,12 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                 {group.length === 0 ? (
                   <p className="text-center text-sm text-slate-400 py-12">ยังไม่มี task ในหมวดนี้</p>
                 ) : (
+                  <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd}>
+                  <SortableContext items={group.map(t => t.id)} strategy={verticalListSortingStrategy}>
                   <div className="space-y-2">
                     {group.map(task => (
-                      <div key={task.id} className={`bg-white border border-slate-200 rounded-xl transition-all ${task.completed ? 'opacity-40' : 'hover:shadow-sm'}`}>
+                      <SortableTaskItem key={task.id} id={task.id}>
+                      <div className={`bg-white border border-slate-200 rounded-xl transition-all ${task.completed ? 'opacity-40' : 'hover:shadow-sm'}`}>
                         <div className="px-3 py-2 cursor-pointer" onClick={() => setExpandedId(expandedId === task.id ? null : task.id)}>
                           {/* Title Row */}
                           <div className="flex items-center gap-2 mb-1.5">
@@ -898,9 +1117,32 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                             </span>
                           </div>
 
+                          {/* Subtask progress */}
+                          {task.subtasks && task.subtasks.length > 0 && (
+                            <div className="ml-7 mb-1">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className="h-full bg-emerald-400 rounded-full transition-all" style={{ width: `${Math.round((task.subtasks.filter((s: SubTask) => s.completed).length / task.subtasks.length) * 100)}%` }} />
+                                </div>
+                                <span className="text-[10px] font-bold text-slate-400 shrink-0">
+                                  {task.subtasks.filter((s: SubTask) => s.completed).length}/{task.subtasks.length}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
                           {/* Metadata Row */}
                           <div className="flex items-center gap-2 ml-7">
-                            {!task.startDate && !task.endDate && (
+                            {task.recurrence && (
+                              <span className="text-[8px] font-black bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded shrink-0 flex items-center gap-0.5">
+                                <RefreshCw className="w-2.5 h-2.5" />
+                                {task.recurrence.pattern === 'daily' ? 'ทุกวัน' :
+                                 task.recurrence.pattern === 'every_x_days' ? `ทุก ${task.recurrence.interval || 2} วัน` :
+                                 task.recurrence.pattern === 'weekly' ? 'รายสัปดาห์' :
+                                 task.recurrence.pattern === 'monthly' ? 'รายเดือน' : 'รายปี'}
+                              </span>
+                            )}
+                            {!task.startDate && !task.endDate && !task.recurrence && (
                               <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded shrink-0">ทำซ้ำ</span>
                             )}
                             {task.dayTypes && task.dayTypes.length > 0 && task.dayTypes.length < 3 && (
@@ -971,8 +1213,11 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                           </div>
                         )}
                       </div>
+                      </SortableTaskItem>
                     ))}
                   </div>
+                  </SortableContext>
+                  </DndContext>
                 )}
               </div>
             </div>
