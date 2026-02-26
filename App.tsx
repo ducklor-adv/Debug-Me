@@ -42,6 +42,7 @@ const DEFAULT_GROUPS: TaskGroup[] = [
   // Legacy groups (kept for existing users' tasks)
   { key: 'งานรอง', label: 'งานรอง', emoji: '📝', color: 'yellow', icon: 'pencil', size: 66 },
   { key: 'เฉพาะกิจ', label: 'เฉพาะกิจ', emoji: '🎯', color: 'blue', icon: 'target', size: 62 },
+  { key: 'นัดหมาย', label: 'นัดหมาย', emoji: '📅', color: 'indigo', icon: 'handshake', size: 66 },
 ];
 
 const DEFAULT_MILESTONES: Milestone[] = [
@@ -98,10 +99,10 @@ const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
 
 const NAV_ITEMS: { view: View; icon: string; label: string }[] = [
   { view: 'dashboard', icon: 'Activity', label: 'TODAY' },
-  { view: 'tasks', icon: 'CheckSquare', label: 'Tasks' },
   { view: 'planner', icon: 'BookOpen', label: 'Planner' },
+  { view: 'tasks', icon: 'CheckSquare', label: 'Tasks' },
   { view: 'focus', icon: 'Timer', label: 'Focus' },
-  { view: 'analytics', icon: 'BarChart3', label: 'Stats' },
+  { view: 'analytics', icon: 'BarChart3', label: 'Analyst' },
 ];
 
 // Merge any missing default groups into loaded groups
@@ -134,18 +135,32 @@ const mergeDefaultTasks = (loaded: Task[], defaults: Task[], deletedIds: string[
   return missing.length > 0 ? [...filtered, ...missing] : filtered;
 };
 
-// Migrate old task format (dueDate) to new (startDate/endDate/startTime/endTime)
+// Migrate old task formats to new (no startTime/endTime/recurring)
 function migrateTask(t: any): Task {
-  if (t.dueDate && !t.startDate) {
-    return {
-      ...t,
-      startDate: t.dueDate,
-      endDate: t.dueDate,
-      startTime: '09:00',
-      endTime: '10:00',
-    };
+  const migrated = { ...t };
+  // Old format: dueDate → startDate/endDate
+  if (migrated.dueDate && !migrated.startDate) {
+    migrated.startDate = migrated.dueDate;
+    migrated.endDate = migrated.dueDate;
   }
-  return t as Task;
+  // Convert old time fields to estimatedDuration
+  if (migrated.startTime && migrated.endTime && !migrated.estimatedDuration) {
+    const [sh, sm] = migrated.startTime.split(':').map(Number);
+    const [eh, em] = migrated.endTime.split(':').map(Number);
+    const dur = (eh * 60 + em) - (sh * 60 + sm);
+    if (dur > 0) migrated.estimatedDuration = dur;
+  }
+  // Convert recurring tasks: remove dates (= always active)
+  if (migrated.recurring === 'daily') {
+    delete migrated.startDate;
+    delete migrated.endDate;
+  }
+  // Remove deprecated fields
+  delete migrated.startTime;
+  delete migrated.endTime;
+  delete migrated.dueDate;
+  delete migrated.recurring;
+  return migrated as Task;
 }
 
 const App: React.FC = () => {
@@ -166,72 +181,63 @@ const App: React.FC = () => {
 
   const todayStr = new Date().toISOString().split('T')[0];
   const defaultTasks: Task[] = [
-    // ===== ทุกวัน (ไม่ต้องระบุ dayTypes) =====
-    // 🌅 กิจวัตร — ทุกวัน (กิจวัตรพื้นฐาน ตื่น กิน นอน)
-    { id: 'd-1', title: 'ตื่นนอน อาบน้ำ แปรงฟัน', description: 'กิจวัตรเช้า เตรียมพร้อมเริ่มวัน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '05:00', endTime: '05:30', category: 'กิจวัตร', recurring: 'daily' },
-    { id: 'd-2', title: 'เตรียมอาหารเช้า / กินข้าว', description: 'ทำอาหารเช้าง่ายๆ กินให้อิ่มก่อนเริ่มงาน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '07:00', endTime: '07:30', category: 'กิจวัตร', recurring: 'daily' },
-    { id: 'd-3', title: 'อาบน้ำ เตรียมนอน', description: 'ผ่อนคลายก่อนเข้านอน ปิดหน้าจอ', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '21:30', endTime: '22:00', category: 'กิจวัตร', recurring: 'daily' },
+    // ===== ทุกวัน (ไม่ต้องระบุ dayTypes — recurring, no dates) =====
+    // 🌅 กิจวัตร — ทุกวัน
+    { id: 'd-1', title: 'ตื่นนอน อาบน้ำ แปรงฟัน', description: 'กิจวัตรเช้า เตรียมพร้อมเริ่มวัน', priority: Priority.MEDIUM, completed: false, category: 'กิจวัตร', estimatedDuration: 30 },
+    { id: 'd-2', title: 'เตรียมอาหารเช้า / กินข้าว', description: 'ทำอาหารเช้าง่ายๆ กินให้อิ่มก่อนเริ่มงาน', priority: Priority.MEDIUM, completed: false, category: 'กิจวัตร', estimatedDuration: 30 },
+    { id: 'd-3', title: 'อาบน้ำ เตรียมนอน', description: 'ผ่อนคลายก่อนเข้านอน ปิดหน้าจอ', priority: Priority.LOW, completed: false, category: 'กิจวัตร', estimatedDuration: 30 },
     // 💪 สุขภาพ — ทุกวัน
-    { id: 'd-14', title: 'ออกกำลังกาย / วิ่ง / เดินเร็ว', description: 'คาร์ดิโอ 30-45 นาที หรือเดินรอบหมู่บ้าน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '06:00', endTime: '06:40', category: 'สุขภาพ', recurring: 'daily' },
-    { id: 'd-15', title: 'ยืดเหยียด / โยคะ', description: 'ยืดกล้ามเนื้อ ผ่อนคลายร่างกาย', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '06:40', endTime: '07:00', category: 'สุขภาพ', recurring: 'daily' },
-    { id: 'd-16', title: 'นั่งสมาธิ / หายใจลึก', description: 'นั่งสมาธิ 10-15 นาที ฝึกจิตให้สงบ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '05:30', endTime: '05:45', category: 'สุขภาพ', recurring: 'daily' },
+    { id: 'd-14', title: 'ออกกำลังกาย / วิ่ง / เดินเร็ว', description: 'คาร์ดิโอ 30-45 นาที หรือเดินรอบหมู่บ้าน', priority: Priority.HIGH, completed: false, category: 'สุขภาพ', estimatedDuration: 40 },
+    { id: 'd-15', title: 'ยืดเหยียด / โยคะ', description: 'ยืดกล้ามเนื้อ ผ่อนคลายร่างกาย', priority: Priority.LOW, completed: false, category: 'สุขภาพ', estimatedDuration: 20 },
+    { id: 'd-16', title: 'นั่งสมาธิ / หายใจลึก', description: 'นั่งสมาธิ 10-15 นาที ฝึกจิตให้สงบ', priority: Priority.MEDIUM, completed: false, category: 'สุขภาพ', estimatedDuration: 15 },
     // 🌅 กิจวัตร — มื้อกลางวัน
-    { id: 'd-21', title: 'พักเที่ยง / กินข้าวกลางวัน', description: 'กินข้าว พักสมอง เดินเล่นสั้นๆ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '12:00', endTime: '13:00', category: 'กิจวัตร', recurring: 'daily' },
+    { id: 'd-21', title: 'พักเที่ยง / กินข้าวกลางวัน', description: 'กินข้าว พักสมอง เดินเล่นสั้นๆ', priority: Priority.MEDIUM, completed: false, category: 'กิจวัตร', estimatedDuration: 60 },
     // ☕ พักผ่อน — ทุกวัน
-    { id: 'd-22', title: 'พักผ่อน / งานอดิเรก', description: 'ดูซีรีส์ เล่นเกม ฟังเพลง หรือพักสายตา', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '21:00', endTime: '21:30', category: 'พักผ่อน', recurring: 'daily' },
+    { id: 'd-22', title: 'พักผ่อน / งานอดิเรก', description: 'ดูซีรีส์ เล่นเกม ฟังเพลง หรือพักสายตา', priority: Priority.LOW, completed: false, category: 'พักผ่อน', estimatedDuration: 30 },
     // 🌅 กิจวัตร — มื้อเย็น
-    { id: 'd-17', title: 'กินข้าวเย็นกับครอบครัว', description: 'นั่งกินข้าวด้วยกัน คุยเรื่องทั่วไป', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '19:00', endTime: '19:30', category: 'กิจวัตร', recurring: 'daily' },
+    { id: 'd-17', title: 'กินข้าวเย็นกับครอบครัว', description: 'นั่งกินข้าวด้วยกัน คุยเรื่องทั่วไป', priority: Priority.HIGH, completed: false, category: 'กิจวัตร', estimatedDuration: 30 },
     // 👨‍👩‍👧 ครอบครัว — ทุกวัน (เย็น)
-    { id: 'd-18', title: 'เวลาครอบครัว / พูดคุย', description: 'ใช้เวลาด้วยกัน ดูทีวี เล่นเกม หรือคุยกัน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '19:30', endTime: '20:00', category: 'ครอบครัว', recurring: 'daily' },
+    { id: 'd-18', title: 'เวลาครอบครัว / พูดคุย', description: 'ใช้เวลาด้วยกัน ดูทีวี เล่นเกม หรือคุยกัน', priority: Priority.MEDIUM, completed: false, category: 'ครอบครัว', estimatedDuration: 30 },
 
     // ===== จ-ศ เท่านั้น (workday) =====
     // 💼 งานหลัก
-    { id: 'd-4', title: 'เช็คอีเมล / วางแผนงานวันนี้', description: 'อ่านอีเมล ดู task list จัดลำดับความสำคัญ', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '08:00', endTime: '08:30', category: 'งานหลัก', recurring: 'daily', dayTypes: ['workday'] },
-    { id: 'd-5', title: 'Deep Work — งานหลักช่วงเช้า', description: 'ทำงานที่ต้องใช้สมาธิสูง ปิดแจ้งเตือน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '08:30', endTime: '12:00', category: 'งานหลัก', recurring: 'daily', dayTypes: ['workday'] },
-    { id: 'd-6', title: 'Deep Work — งานหลักช่วงบ่าย', description: 'ทำงานต่อเนื่องจากช่วงเช้า หรือประชุม', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '13:00', endTime: '16:30', category: 'งานหลัก', recurring: 'daily', dayTypes: ['workday'] },
-    { id: 'd-7', title: 'สรุปงาน / วางแผนพรุ่งนี้', description: 'อัปเดตความคืบหน้า จดสิ่งที่ต้องทำต่อ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '16:30', endTime: '17:00', category: 'งานหลัก', recurring: 'daily', dayTypes: ['workday'] },
+    { id: 'd-4', title: 'เช็คอีเมล / วางแผนงานวันนี้', description: 'อ่านอีเมล ดู task list จัดลำดับความสำคัญ', priority: Priority.HIGH, completed: false, category: 'งานหลัก', dayTypes: ['workday'], estimatedDuration: 30 },
+    { id: 'd-5', title: 'Deep Work — งานหลักช่วงเช้า', description: 'ทำงานที่ต้องใช้สมาธิสูง ปิดแจ้งเตือน', priority: Priority.HIGH, completed: false, category: 'งานหลัก', dayTypes: ['workday'], estimatedDuration: 210 },
+    { id: 'd-6', title: 'Deep Work — งานหลักช่วงบ่าย', description: 'ทำงานต่อเนื่องจากช่วงเช้า หรือประชุม', priority: Priority.HIGH, completed: false, category: 'งานหลัก', dayTypes: ['workday'], estimatedDuration: 210 },
+    { id: 'd-7', title: 'สรุปงาน / วางแผนพรุ่งนี้', description: 'อัปเดตความคืบหน้า จดสิ่งที่ต้องทำต่อ', priority: Priority.MEDIUM, completed: false, category: 'งานหลัก', dayTypes: ['workday'], estimatedDuration: 30 },
     // 🏠 งานบ้าน — จ-ศ (ช่วงเย็น)
-    { id: 'd-8', title: 'ล้างจาน / เก็บครัว', description: 'ทำความสะอาดหลังทำอาหาร', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '18:00', endTime: '18:20', category: 'งานบ้าน', recurring: 'daily', dayTypes: ['workday'] },
-    { id: 'd-9', title: 'กวาดบ้าน / ถูพื้น', description: 'ทำความสะอาดพื้นที่ส่วนกลาง', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '18:20', endTime: '18:40', category: 'งานบ้าน', recurring: 'daily', dayTypes: ['workday'] },
+    { id: 'd-8', title: 'ล้างจาน / เก็บครัว', description: 'ทำความสะอาดหลังทำอาหาร', priority: Priority.LOW, completed: false, category: 'งานบ้าน', dayTypes: ['workday'], estimatedDuration: 20 },
+    { id: 'd-9', title: 'กวาดบ้าน / ถูพื้น', description: 'ทำความสะอาดพื้นที่ส่วนกลาง', priority: Priority.LOW, completed: false, category: 'งานบ้าน', dayTypes: ['workday'], estimatedDuration: 20 },
     // 🧠 พัฒนาตัวเอง — จ-ศ (ช่วงค่ำ 1 ชม.)
-    { id: 'd-11', title: 'อ่านหนังสือ / บทความ', description: 'อ่านหนังสือที่สนใจ หรือบทความเพิ่มความรู้', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '20:00', endTime: '20:30', category: 'พัฒนาตัวเอง', recurring: 'daily', dayTypes: ['workday'] },
-    { id: 'd-12', title: 'เรียนออนไลน์ / ฝึกทักษะใหม่', description: 'คอร์สออนไลน์ ดู tutorial หรือฝึกปฏิบัติ', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '20:30', endTime: '21:00', category: 'พัฒนาตัวเอง', recurring: 'daily', dayTypes: ['workday'] },
+    { id: 'd-11', title: 'อ่านหนังสือ / บทความ', description: 'อ่านหนังสือที่สนใจ หรือบทความเพิ่มความรู้', priority: Priority.MEDIUM, completed: false, category: 'พัฒนาตัวเอง', dayTypes: ['workday'], estimatedDuration: 30 },
+    { id: 'd-12', title: 'เรียนออนไลน์ / ฝึกทักษะใหม่', description: 'คอร์สออนไลน์ ดู tutorial หรือฝึกปฏิบัติ', priority: Priority.MEDIUM, completed: false, category: 'พัฒนาตัวเอง', dayTypes: ['workday'], estimatedDuration: 30 },
     // 🔧 ธุระส่วนตัว — จ-ศ (หลังเลิกงาน)
-    { id: 'd-23', title: 'ซื้อของใช้ / ของกิน', description: 'ไปตลาด ซื้อของที่จำเป็น', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '17:00', endTime: '17:45', category: 'ธุระส่วนตัว', recurring: 'daily', dayTypes: ['workday'] },
+    { id: 'd-23', title: 'ซื้อของใช้ / ของกิน', description: 'ไปตลาด ซื้อของที่จำเป็น', priority: Priority.MEDIUM, completed: false, category: 'ธุระส่วนตัว', dayTypes: ['workday'], estimatedDuration: 45 },
 
     // ===== เสาร์เท่านั้น (saturday) =====
-    // 🏠 งานบ้าน — เสาร์ (ทำใหญ่ช่วงเช้า)
-    { id: 'd-25', title: 'ทำความสะอาดบ้านใหญ่', description: 'ถูพื้น เช็ดกระจก จัดระเบียบ ซักผ้าปูที่นอน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '08:30', endTime: '10:30', category: 'งานบ้าน', recurring: 'daily', dayTypes: ['saturday'] },
-    // 🔧 ธุระส่วนตัว — เสาร์
-    { id: 'd-26', title: 'ธุระส่วนตัว / ช้อปปิ้ง', description: 'จ่ายตลาด ซื้อของใช้ประจำสัปดาห์ ธุระธนาคาร', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '10:30', endTime: '12:00', category: 'ธุระส่วนตัว', recurring: 'daily', dayTypes: ['saturday'] },
-    // 🧠 พัฒนาตัวเอง — เสาร์ (ช่วงบ่าย 2 ชม.)
-    { id: 'd-27', title: 'เรียนรู้ / Side Project', description: 'คอร์สออนไลน์ อ่านหนังสือ หรือทำโปรเจกต์ส่วนตัว', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '13:00', endTime: '15:00', category: 'พัฒนาตัวเอง', recurring: 'daily', dayTypes: ['saturday'] },
-    // 👨‍👩‍👧 ครอบครัว — เสาร์ (ช่วงบ่าย 2 ชม.)
-    { id: 'd-28', title: 'กิจกรรมครอบครัว / เที่ยว', description: 'ออกไปเที่ยวด้วยกัน ทำกิจกรรมร่วมกัน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '15:00', endTime: '17:00', category: 'ครอบครัว', recurring: 'daily', dayTypes: ['saturday'] },
+    { id: 'd-25', title: 'ทำความสะอาดบ้านใหญ่', description: 'ถูพื้น เช็ดกระจก จัดระเบียบ ซักผ้าปูที่นอน', priority: Priority.MEDIUM, completed: false, category: 'งานบ้าน', dayTypes: ['saturday'], estimatedDuration: 120 },
+    { id: 'd-26', title: 'ธุระส่วนตัว / ช้อปปิ้ง', description: 'จ่ายตลาด ซื้อของใช้ประจำสัปดาห์ ธุระธนาคาร', priority: Priority.MEDIUM, completed: false, category: 'ธุระส่วนตัว', dayTypes: ['saturday'], estimatedDuration: 90 },
+    { id: 'd-27', title: 'เรียนรู้ / Side Project', description: 'คอร์สออนไลน์ อ่านหนังสือ หรือทำโปรเจกต์ส่วนตัว', priority: Priority.MEDIUM, completed: false, category: 'พัฒนาตัวเอง', dayTypes: ['saturday'], estimatedDuration: 120 },
+    { id: 'd-28', title: 'กิจกรรมครอบครัว / เที่ยว', description: 'ออกไปเที่ยวด้วยกัน ทำกิจกรรมร่วมกัน', priority: Priority.HIGH, completed: false, category: 'ครอบครัว', dayTypes: ['saturday'], estimatedDuration: 120 },
 
     // ===== อาทิตย์เท่านั้น (sunday) =====
-    // 👨‍👩‍👧 ครอบครัว — อาทิตย์ (ช่วงเช้ายาว)
-    { id: 'd-29', title: 'เวลาครอบครัว / ไปวัด / ทำบุญ', description: 'กิจกรรมครอบครัวช่วงเช้า ไปวัด ทำอาหารด้วยกัน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '09:00', endTime: '11:00', category: 'ครอบครัว', recurring: 'daily', dayTypes: ['sunday'] },
-    // 🔧 ธุระส่วนตัว — อาทิตย์
-    { id: 'd-30', title: 'จัดการธุระ / เตรียมของสัปดาห์หน้า', description: 'เตรียมเสื้อผ้า จัดกระเป๋า เตรียมอาหาร', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '11:00', endTime: '12:00', category: 'ธุระส่วนตัว', recurring: 'daily', dayTypes: ['sunday'] },
-    // 🧠 พัฒนาตัวเอง — อาทิตย์ (ช่วงบ่าย 2 ชม.)
-    { id: 'd-31', title: 'อ่านหนังสือ / วางแผนสัปดาห์', description: 'อ่านหนังสือ ทบทวนเป้าหมาย วางแผนสัปดาห์หน้า', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: todayStr, startTime: '15:00', endTime: '17:00', category: 'พัฒนาตัวเอง', recurring: 'daily', dayTypes: ['sunday'] },
-    // 👨‍👩‍👧 ครอบครัว — อาทิตย์ (ช่วงเย็น)
-    { id: 'd-32', title: 'กินข้าวเย็นครอบครัว / พูดคุยสัปดาห์หน้า', description: 'กินข้าวด้วยกัน คุยเรื่องสัปดาห์หน้า', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: todayStr, startTime: '17:00', endTime: '18:00', category: 'ครอบครัว', recurring: 'daily', dayTypes: ['sunday'] },
+    { id: 'd-29', title: 'เวลาครอบครัว / ไปวัด / ทำบุญ', description: 'กิจกรรมครอบครัวช่วงเช้า ไปวัด ทำอาหารด้วยกัน', priority: Priority.HIGH, completed: false, category: 'ครอบครัว', dayTypes: ['sunday'], estimatedDuration: 120 },
+    { id: 'd-30', title: 'จัดการธุระ / เตรียมของสัปดาห์หน้า', description: 'เตรียมเสื้อผ้า จัดกระเป๋า เตรียมอาหาร', priority: Priority.MEDIUM, completed: false, category: 'ธุระส่วนตัว', dayTypes: ['sunday'], estimatedDuration: 60 },
+    { id: 'd-31', title: 'อ่านหนังสือ / วางแผนสัปดาห์', description: 'อ่านหนังสือ ทบทวนเป้าหมาย วางแผนสัปดาห์หน้า', priority: Priority.MEDIUM, completed: false, category: 'พัฒนาตัวเอง', dayTypes: ['sunday'], estimatedDuration: 120 },
+    { id: 'd-32', title: 'กินข้าวเย็นครอบครัว / พูดคุยสัปดาห์หน้า', description: 'กินข้าวด้วยกัน คุยเรื่องสัปดาห์หน้า', priority: Priority.HIGH, completed: false, category: 'ครอบครัว', dayTypes: ['sunday'], estimatedDuration: 60 },
 
     // ===== เสาร์+อาทิตย์ (weekend) =====
-    { id: 'd-33', title: 'พักผ่อนเต็มที่ / งานอดิเรก', description: 'ดูหนัง เล่นเกม ทำสวน หรืออะไรก็ได้ที่ชอบ', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '18:00', endTime: '19:30', category: 'พักผ่อน', recurring: 'daily', dayTypes: ['saturday', 'sunday'] },
+    { id: 'd-33', title: 'พักผ่อนเต็มที่ / งานอดิเรก', description: 'ดูหนัง เล่นเกม ทำสวน หรืออะไรก็ได้ที่ชอบ', priority: Priority.LOW, completed: false, category: 'พักผ่อน', dayTypes: ['saturday', 'sunday'], estimatedDuration: 90 },
 
-    // ===== ไม่ recurring (มี deadline) =====
-    // ⚡ งานด่วน
-    { id: 'd-19', title: 'จ่ายบิล / ค่าน้ำค่าไฟ', description: 'ตรวจสอบและชำระค่าใช้จ่ายรายเดือน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: '2026-02-28', startTime: '17:00', endTime: '17:30', category: 'งานด่วน', dayTypes: ['workday'] },
-    { id: 'd-20', title: 'นัดหมอ / ตรวจสุขภาพ', description: 'นัดพบแพทย์ประจำปี หรือตามนัด', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: '2026-03-15', startTime: '09:00', endTime: '10:00', category: 'งานด่วน', dayTypes: ['workday'] },
-    // 🏠 งานบ้าน — ซักผ้า (ทุกวัน แต่เวลาต่างกันตาม day type ก็ใช้ทุกวัน)
-    { id: 'd-10', title: 'ซักผ้า / ตากผ้า / พับผ้า', description: 'จัดการเสื้อผ้า', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '18:40', endTime: '19:00', category: 'งานบ้าน', recurring: 'daily' },
+    // ===== มี deadline (ไม่ recurring) =====
+    { id: 'd-19', title: 'จ่ายบิล / ค่าน้ำค่าไฟ', description: 'ตรวจสอบและชำระค่าใช้จ่ายรายเดือน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: '2026-02-28', category: 'งานด่วน', dayTypes: ['workday'], estimatedDuration: 30 },
+    { id: 'd-20', title: 'นัดหมอ / ตรวจสุขภาพ', description: 'นัดพบแพทย์ประจำปี หรือตามนัด', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: '2026-03-15', category: 'งานด่วน', dayTypes: ['workday'], estimatedDuration: 60 },
+    // 🏠 งานบ้าน — ซักผ้า (ทุกวัน)
+    { id: 'd-10', title: 'ซักผ้า / ตากผ้า / พับผ้า', description: 'จัดการเสื้อผ้า', priority: Priority.LOW, completed: false, category: 'งานบ้าน', estimatedDuration: 20 },
     // 🧠 พัฒนาตัวเอง — เขียนบันทึก (ทุกวัน)
-    { id: 'd-13', title: 'เขียนบันทึก / วางแผนเป้าหมาย', description: 'Journal สะท้อนตัวเอง ทบทวนเป้าหมาย', priority: Priority.LOW, completed: false, startDate: todayStr, endDate: todayStr, startTime: '21:00', endTime: '21:15', category: 'พัฒนาตัวเอง', recurring: 'daily' },
+    { id: 'd-13', title: 'เขียนบันทึก / วางแผนเป้าหมาย', description: 'Journal สะท้อนตัวเอง ทบทวนเป้าหมาย', priority: Priority.LOW, completed: false, category: 'พัฒนาตัวเอง', estimatedDuration: 15 },
     // 🔧 ธุระส่วนตัว — เอกสาร (มี deadline)
-    { id: 'd-24', title: 'จัดการเอกสาร / ธุระธนาคาร', description: 'เอกสารสำคัญ โอนเงิน หรือติดต่อหน่วยงาน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: '2026-02-28', startTime: '17:00', endTime: '18:00', category: 'ธุระส่วนตัว', dayTypes: ['workday'] },
+    { id: 'd-24', title: 'จัดการเอกสาร / ธุระธนาคาร', description: 'เอกสารสำคัญ โอนเงิน หรือติดต่อหน่วยงาน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: '2026-02-28', category: 'ธุระส่วนตัว', dayTypes: ['workday'], estimatedDuration: 60 },
   ];
 
   // ===== Data state (synced via Firestore) =====
@@ -540,16 +546,23 @@ const App: React.FC = () => {
     if (window.innerWidth < 1024) setIsSidebarOpen(false);
   };
 
+  // Pending slot: passed from Dashboard → Planner
+  const [pendingSlot, setPendingSlot] = useState<{ startTime: string; endTime: string } | null>(null);
+
+  const handleNavigateToPlanner = (startTime: string, endTime: string) => {
+    setPendingSlot({ startTime, endTime });
+    setActiveView('planner');
+  };
 
   const renderContent = () => {
     switch (activeView) {
-      case 'dashboard': return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} />;
-      case 'planner': return <DailyPlanner tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} />;
+      case 'dashboard': return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} onNavigateToPlanner={handleNavigateToPlanner} />;
+      case 'planner': return <DailyPlanner tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} pendingSlot={pendingSlot} onPendingSlotHandled={() => setPendingSlot(null)} />;
       case 'tasks': return <TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} />;
       case 'focus': return <FocusTimer />;
       case 'analytics': return <Analytics tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} totalRecordCount={totalRecordCount} userId={user!.uid} />;
       case 'ai-coach': return <AICoach tasks={tasks} />;
-      default: return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} />;
+      default: return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} onNavigateToPlanner={handleNavigateToPlanner} />;
     }
   };
 
@@ -604,11 +617,11 @@ const App: React.FC = () => {
           </div>
 
           <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto scrollbar-hide">
-            <NavItem icon={<CheckSquare />} label="Tasks" active={activeView === 'tasks'} onClick={() => handleNavItemClick('tasks')} />
-            <NavItem icon={<BookOpen />} label="Daily Planner" active={activeView === 'planner'} onClick={() => handleNavItemClick('planner')} />
             <NavItem icon={<Activity />} label="TODAY" active={activeView === 'dashboard'} onClick={() => handleNavItemClick('dashboard')} />
+            <NavItem icon={<BookOpen />} label="Planner" active={activeView === 'planner'} onClick={() => handleNavItemClick('planner')} />
+            <NavItem icon={<CheckSquare />} label="Tasks" active={activeView === 'tasks'} onClick={() => handleNavItemClick('tasks')} />
             <NavItem icon={<Timer />} label="Focus" active={activeView === 'focus'} onClick={() => handleNavItemClick('focus')} />
-            <NavItem icon={<BarChart3 />} label="Analytics" active={activeView === 'analytics'} onClick={() => handleNavItemClick('analytics')} />
+            <NavItem icon={<BarChart3 />} label="Analyst" active={activeView === 'analytics'} onClick={() => handleNavItemClick('analytics')} />
             <div className="pt-6 mt-6 border-t border-slate-100/60 px-2">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">AI Assistant</p>
               <NavItem icon={<Sparkles className="text-fuchsia-500" />} label="AI Life Coach" active={activeView === 'ai-coach'} onClick={() => handleNavItemClick('ai-coach')} isSpecial />

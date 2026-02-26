@@ -18,15 +18,14 @@ export interface Task {
   description: string;
   priority: Priority;
   completed: boolean;
-  startDate: string;    // YYYY-MM-DD
-  endDate: string;      // YYYY-MM-DD
-  startTime: string;    // HH:MM
-  endTime: string;      // HH:MM
+  startDate?: string;    // YYYY-MM-DD (optional — omit for recurring tasks)
+  endDate?: string;      // YYYY-MM-DD
   category: string;
   notes?: string;
   attachments?: TaskAttachment[];
-  recurring?: 'daily';
   dayTypes?: DayType[];   // e.g. ['workday'] = จ-ศ only, undefined = ทุกวัน
+  estimatedDuration?: number;  // minutes
+  completedAt?: string;        // ISO timestamp
 }
 
 export interface Milestone {
@@ -65,13 +64,13 @@ export function getDayType(date: Date): DayType {
 export function getTasksForDate(tasks: Task[], date: string): Task[] {
   const dayType = getDayType(new Date(date));
   return tasks.filter(t => {
-    // Check date match
-    const dateMatch = t.recurring === 'daily' || (t.startDate <= date && t.endDate >= date);
+    // Date range check: no dates = always active (recurring)
+    const dateMatch = !t.startDate || !t.endDate || (t.startDate <= date && t.endDate >= date);
     if (!dateMatch) return false;
-    // Check day type (undefined = all days)
+    // Day type check (undefined = all days)
     if (t.dayTypes && t.dayTypes.length > 0) return t.dayTypes.includes(dayType);
     return true;
-  }).sort((a, b) => a.startTime.localeCompare(b.startTime));
+  });
 }
 
 // ===== Daily Record (historical tracking) =====

@@ -33,7 +33,7 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, className = ''
         <select
           value={hour || '00'}
           onChange={(e) => handleHourChange(e.target.value)}
-          className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
         >
           {hours.map((h) => (
             <option key={h} value={h}>
@@ -42,17 +42,17 @@ const TimePicker: React.FC<TimePickerProps> = ({ value, onChange, className = ''
           ))}
         </select>
 
-        <span className="text-slate-400 font-bold text-lg self-center">:</span>
+        <span className="text-slate-400 font-bold text-sm self-center">:</span>
 
         {/* Minute Dropdown */}
         <select
           value={minute || '00'}
           onChange={(e) => handleMinuteChange(e.target.value)}
-          className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
         >
           {minutes.map((m) => (
             <option key={m} value={m}>
-              {m} นาที
+              {m} ม.
             </option>
           ))}
         </select>

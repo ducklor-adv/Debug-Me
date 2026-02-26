@@ -39,18 +39,20 @@ interface DailyPlannerProps {
   deletedDefaultTaskIds?: string[];
   setDeletedDefaultTaskIds?: React.Dispatch<React.SetStateAction<string[]>>;
   onImmediateSave?: (updatedTasks?: Task[], updatedDeletedIds?: string[]) => Promise<void>;
+  pendingSlot?: { startTime: string; endTime: string } | null;
+  onPendingSlotHandled?: () => void;
 }
 
 /** Get tasks matching a slot's groupKey for a given date */
 function getTasksForSlot(tasks: Task[], date: string, groupKey: string): Task[] {
   return getTasksForDate(tasks, date)
-    .filter(t => t.category === groupKey)
-    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+    .filter(t => t.category === groupKey);
 }
 
 const DailyPlanner: React.FC<DailyPlannerProps> = ({
   tasks, setTasks, taskGroups, milestones, scheduleTemplates, setScheduleTemplates, todayRecords = [], onSaveDailyRecord,
   deletedDefaultTaskIds = [], setDeletedDefaultTaskIds, onImmediateSave,
+  pendingSlot, onPendingSlotHandled,
 }) => {
   // Date navigation
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -76,22 +78,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   // Derive active schedule from template
   const schedule = scheduleTemplates[activeTab] || [];
 
-  // Standalone task IDs that should be displayed as slots (routine tasks)
-  const standaloneTaskIds = ['d-1', 'd-2', 'd-3', 'd-16', 'd-17', 'd-18', 'd-21', 'd-22']; // wake up, meals, meditation, family time, rest
-
-  // Get standalone tasks for the selected date
-  const standaloneTasks = getTasksForDate(tasks, selectedDateStr).filter(t => standaloneTaskIds.includes(t.id));
-
-  // Convert standalone tasks to TimeSlots
-  const standaloneSlots: TimeSlot[] = standaloneTasks.map(t => ({
-    id: `task-slot-${t.id}`,
-    startTime: t.startTime,
-    endTime: t.endTime,
-    groupKey: t.category,
-  }));
-
-  // Merge template schedule with standalone task slots and sort by time
-  const mergedSchedule = [...schedule, ...standaloneSlots].sort((a, b) => a.startTime.localeCompare(b.startTime));
+  // Use schedule template slots directly (tasks are grouped by category)
+  const mergedSchedule = [...schedule].sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   // Wrapper to update only the active tab's template
   const setScheduleForTab = useCallback((updater: (prev: TimeSlot[]) => TimeSlot[]) => {
@@ -124,7 +112,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
   // Task editor modal
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [taskEditForm, setTaskEditForm] = useState({ startTime: '', endTime: '' });
+  const [taskEditForm, setTaskEditForm] = useState({ estimatedDuration: 0 });
   const [slotForm, setSlotForm] = useState({ startTime: '09:00', endTime: '10:00', groupKey: '' });
 
   // Delete confirmation
@@ -144,7 +132,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     if (!isToday || todayRecords.length === 0) return;
     const checked = new Set<string>();
     todayRecords.forEach(r => {
-      const matchTask = dayTasks.find(t => t.title === r.taskTitle && t.startTime === r.timeStart);
+      const matchTask = dayTasks.find(t => t.title === r.taskTitle && t.category === r.category);
       if (matchTask) checked.add(matchTask.id);
     });
     if (checked.size > 0) setCheckedTasks(checked);
@@ -163,8 +151,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     }
   }, [isToday, activeTab]);
 
-  // Toggle check
-  const toggleCheck = useCallback((taskId: string) => {
+  // Toggle check (slotStart/slotEnd from the slot containing this task)
+  const toggleCheck = useCallback((taskId: string, slotStart?: string, slotEnd?: string) => {
     if (!isToday) return;
     setCheckedTasks(prev => {
       const next = new Set(prev);
@@ -182,8 +170,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               category: task.category,
               completed: true,
               completedAt: new Date().toISOString(),
-              timeStart: task.startTime,
-              timeEnd: task.endTime,
+              timeStart: slotStart,
+              timeEnd: slotEnd,
             });
           }
         }
@@ -191,6 +179,16 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       return next;
     });
   }, [isToday, dayTasks, todayStr, onSaveDailyRecord]);
+
+  // Auto-open slot form from Dashboard navigation
+  useEffect(() => {
+    if (pendingSlot) {
+      setSlotForm({ startTime: pendingSlot.startTime, endTime: pendingSlot.endTime, groupKey: taskGroups[0]?.key || '' });
+      setEditingSlot(null);
+      setIsAddingSlot(true);
+      onPendingSlotHandled?.();
+    }
+  }, [pendingSlot]);
 
   // Slot CRUD
   const openAddSlot = () => {
@@ -254,35 +252,22 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
   const confirmDeleteSlot = () => {
     if (!confirmDeleteSlotId) return;
-
-    const slotId = confirmDeleteSlotId;
-
-    // Check if this is a standalone task slot (from default tasks)
-    if (slotId.startsWith('task-slot-')) {
-      const taskId = slotId.replace('task-slot-', '');
-      // Delete the underlying task instead
-      setConfirmDeleteSlotId(null);
-      showDeleteTaskConfirm(taskId);
-    } else {
-      // Delete from schedule template
-      setScheduleForTab(prev => prev.filter(s => s.id !== slotId));
-      setConfirmDeleteSlotId(null);
-    }
+    setScheduleForTab(prev => prev.filter(s => s.id !== confirmDeleteSlotId));
+    setConfirmDeleteSlotId(null);
   };
 
   // Task editing handlers
   const openEditTask = (task: Task) => {
     setEditingTask(task);
-    setTaskEditForm({ startTime: task.startTime, endTime: task.endTime });
+    setTaskEditForm({ estimatedDuration: task.estimatedDuration || 0 });
   };
 
   const saveTaskEdit = () => {
     if (!editingTask || !setTasks) return;
-    if (!taskEditForm.startTime || !taskEditForm.endTime) return;
 
     setTasks(prev => prev.map(t =>
       t.id === editingTask.id
-        ? { ...t, startTime: taskEditForm.startTime, endTime: taskEditForm.endTime }
+        ? { ...t, estimatedDuration: taskEditForm.estimatedDuration || undefined }
         : t
     ));
     setEditingTask(null);
@@ -302,7 +287,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     const slotTasks = getTasksForSlot(tasks, selectedDateStr, slot.groupKey);
     const doneMins = slotTasks
       .filter(t => checkedTasks.has(t.id))
-      .reduce((s, t) => s + Math.max(0, getDurationMinutes(t.startTime, t.endTime)), 0);
+      .reduce((s, t) => s + (t.estimatedDuration || 0), 0);
     summaryMap.set(slot.groupKey, { totalMins: prev.totalMins + slotMins, doneMins: prev.doneMins + doneMins });
   });
 
@@ -497,22 +482,16 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                     ) : (
                       slotTasks.map(task => {
                         const checked = checkedTasks.has(task.id);
-                        const dur = getDurationMinutes(task.startTime, task.endTime);
-                        const [tsh, tsm] = task.startTime.split(':').map(Number);
-                        const taskStart = tsh * 60 + tsm;
-                        const [teh, tem] = task.endTime.split(':').map(Number);
-                        const taskEnd = teh * 60 + tem;
-                        const isNow = isToday && nowMinutes >= taskStart && nowMinutes < taskEnd;
 
                         return (
                           <div
                             key={task.id}
                             className={`flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all hover:bg-slate-50 ${
                               checked ? 'opacity-40' : ''
-                            } ${isNow ? 'bg-emerald-50' : ''}`}
+                            }`}
                           >
                             <div
-                              onClick={() => toggleCheck(task.id)}
+                              onClick={() => toggleCheck(task.id, slot.startTime, slot.endTime)}
                               className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
                             >
                               <div className="shrink-0">
@@ -525,12 +504,12 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                                 {task.title}
                               </span>
                             </div>
-                            {task.recurring === 'daily' && (
-                              <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1 rounded shrink-0">ทุกวัน</span>
+                            {!task.startDate && !task.endDate && (
+                              <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1 rounded shrink-0">ทำซ้ำ</span>
                             )}
-                            <span className="text-[10px] font-bold text-blue-500 shrink-0">{task.startTime}–{task.endTime}</span>
-                            {dur > 0 && <span className="text-[9px] text-slate-400 font-bold shrink-0">{formatDuration(dur)}</span>}
-                            {isNow && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />}
+                            {task.estimatedDuration && (
+                              <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration}น.</span>
+                            )}
                             {setTasks && (
                               <>
                                 <button
@@ -674,12 +653,12 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         </div>
       )}
 
-      {/* Task Time Editor Modal */}
+      {/* Task Duration Editor Modal */}
       {editingTask && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={closeTaskEdit}>
           <div className="bg-white rounded-2xl shadow-xl w-[90vw] max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black text-slate-800">แก้ไขเวลา Task</h3>
+              <h3 className="text-sm font-black text-slate-800">แก้ไข Task</h3>
               <button onClick={closeTaskEdit} className="p-1 rounded-lg hover:bg-slate-100">
                 <X className="w-4 h-4 text-slate-400" />
               </button>
@@ -693,30 +672,23 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               )}
             </div>
 
-            {/* Time inputs */}
-            <div className="flex gap-3">
-              <TimePicker
-                label="เวลาเริ่ม"
-                value={taskEditForm.startTime}
-                onChange={value => setTaskEditForm(f => ({ ...f, startTime: value }))}
-                className="flex-1"
+            {/* Duration input */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ระยะเวลาโดยประมาณ (นาที)</label>
+              <input
+                type="number"
+                min="0"
+                value={taskEditForm.estimatedDuration || ''}
+                onChange={e => setTaskEditForm(f => ({ ...f, estimatedDuration: parseInt(e.target.value) || 0 }))}
+                placeholder="เช่น 30"
+                className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 outline-none"
               />
-              <TimePicker
-                label="เวลาจบ"
-                value={taskEditForm.endTime}
-                onChange={value => setTaskEditForm(f => ({ ...f, endTime: value }))}
-                className="flex-1"
-              />
+              {taskEditForm.estimatedDuration > 0 && (
+                <p className="text-xs text-emerald-600 font-bold mt-1 text-center">
+                  {formatDuration(taskEditForm.estimatedDuration)}
+                </p>
+              )}
             </div>
-
-            {/* Duration display */}
-            {taskEditForm.startTime && taskEditForm.endTime && (
-              <div className="text-center text-xs text-slate-500">
-                ระยะเวลา: <span className="font-bold text-emerald-600">
-                  {formatDuration(getDurationMinutes(taskEditForm.startTime, taskEditForm.endTime))}
-                </span>
-              </div>
-            )}
 
             {/* Actions */}
             <div className="flex gap-2 pt-2">
@@ -728,8 +700,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               </button>
               <button
                 onClick={saveTaskEdit}
-                disabled={!taskEditForm.startTime || !taskEditForm.endTime}
-                className="flex-1 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors disabled:opacity-40"
+                className="flex-1 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors"
               >
                 บันทึก
               </button>

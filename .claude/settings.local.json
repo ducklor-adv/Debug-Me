@@ -15,7 +15,12 @@
       "Bash(gh repo view:*)",
       "Bash(netstat:*)",
       "Bash(taskkill:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(dir:*)",
+      "Bash(npm ls:*)",
+      "WebFetch(domain:lucide.dev)",
+      "Bash(node -e:*)",
+      "Bash(cd:*)"
     ]
   }
 }

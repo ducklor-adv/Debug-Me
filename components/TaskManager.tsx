@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Task, TaskAttachment, Priority, TaskGroup, GROUP_COLORS } from '../types';
-import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning, Handshake } from 'lucide-react';
 
 // Custom SVG icons (lucide style: 24x24 viewBox, stroke-based)
 const BroomIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -66,7 +66,7 @@ const FamilyIcon: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 import { getAIPrioritization } from '../services/geminiService';
-import TimePicker from './TimePicker';
+// TimePicker no longer needed (tasks don't have individual times)
 
 interface TaskManagerProps {
   tasks: Task[];
@@ -124,23 +124,18 @@ const GROUP_ICON_MAP: Record<string, React.ReactNode> = {
   bike: <Bike className="w-3.5 h-3.5" />,
   palette: <Palette className="w-3.5 h-3.5" />,
   rocket: <Rocket className="w-3.5 h-3.5" />,
+  handshake: <Handshake className="w-3.5 h-3.5" />,
 };
-
-const todayStr = new Date().toISOString().split('T')[0];
 
 const emptyForm = (): Omit<Task, 'id'> => ({
   title: '',
   description: '',
   priority: Priority.MEDIUM,
   completed: false,
-  startDate: todayStr,
-  endDate: todayStr,
-  startTime: '09:00',
-  endTime: '10:00',
   category: 'งานหลัก',
   notes: '',
   attachments: [],
-  recurring: undefined,
+  dayTypes: ['workday', 'saturday', 'sunday'],
 });
 
 const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups, deletedDefaultTaskIds, setDeletedDefaultTaskIds, onImmediateSave }) => {
@@ -207,12 +202,11 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
       completed: task.completed,
       startDate: task.startDate,
       endDate: task.endDate,
-      startTime: task.startTime,
-      endTime: task.endTime,
       category: task.category,
       notes: task.notes || '',
       attachments: task.attachments || [],
-      recurring: task.recurring,
+      dayTypes: task.dayTypes,
+      estimatedDuration: task.estimatedDuration,
     });
     setFormAttachments(task.attachments || []);
     setShowPhoneInput(false);
@@ -565,49 +559,47 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                 </div>
               </div>
 
-              {/* Date Range */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">วันเริ่ม</label>
-                  <input type="date" value={form.startDate} onChange={e => setForm({...form, startDate: e.target.value, endDate: e.target.value > form.endDate ? e.target.value : form.endDate})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">วันจบ</label>
-                  <input type="date" value={form.endDate} min={form.startDate} onChange={e => setForm({...form, endDate: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-              </div>
-
-              {/* Time Range */}
-              <div className="grid grid-cols-2 gap-3">
-                <TimePicker
-                  label="เวลาเริ่ม"
-                  value={form.startTime}
-                  onChange={value => setForm({...form, startTime: value})}
-                />
-                <TimePicker
-                  label="เวลาจบ"
-                  value={form.endTime}
-                  onChange={value => setForm({...form, endTime: value})}
-                />
-              </div>
-
-              {/* Recurring Toggle */}
+              {/* Day Types */}
               <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ทำซ้ำ (Recurring)</label>
-                <button
-                  onClick={() => setForm({ ...form, recurring: form.recurring === 'daily' ? undefined : 'daily' })}
-                  className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border-2 transition-all w-full ${
-                    form.recurring === 'daily'
-                      ? 'bg-emerald-50 border-emerald-400 text-emerald-700'
-                      : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100'
-                  }`}
-                >
-                  <RefreshCw className={`w-4 h-4 ${form.recurring === 'daily' ? 'text-emerald-500' : 'text-slate-300'}`} />
-                  <span className="text-sm font-bold">ทุกวัน (Daily)</span>
-                  {form.recurring === 'daily' && (
-                    <span className="ml-auto text-[10px] font-black bg-emerald-100 text-emerald-600 px-2 py-0.5 rounded-full">ON</span>
-                  )}
-                </button>
+                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ทำวันไหน</label>
+                <div className="flex gap-2">
+                  {([['workday', 'จ-ศ'], ['saturday', 'เสาร์'], ['sunday', 'อาทิตย์']] as [string, string][]).map(([key, label]) => {
+                    const isOn = !form.dayTypes || form.dayTypes.length === 0 || form.dayTypes.includes(key as any);
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => {
+                          const current = form.dayTypes || ['workday', 'saturday', 'sunday'];
+                          const next = isOn ? current.filter(d => d !== key) : [...current, key as any];
+                          setForm({ ...form, dayTypes: next.length > 0 ? next : undefined });
+                        }}
+                        className={`flex-1 py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${
+                          isOn
+                            ? 'bg-emerald-50 border-emerald-400 text-emerald-700'
+                            : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Date Range (optional — for deadline tasks) */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ช่วงวัน (ถ้ามี deadline)</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <input type="date" value={form.startDate || ''} onChange={e => setForm({...form, startDate: e.target.value || undefined, endDate: !form.endDate || (e.target.value > (form.endDate || '')) ? e.target.value || undefined : form.endDate})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  <input type="date" value={form.endDate || ''} min={form.startDate || ''} onChange={e => setForm({...form, endDate: e.target.value || undefined})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">เว้นว่างไว้ = ทำซ้ำทุกวัน (ตาม dayTypes)</p>
+              </div>
+
+              {/* Estimated Duration */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ระยะเวลาโดยประมาณ (นาที)</label>
+                <input type="number" min="0" step="5" value={form.estimatedDuration || ''} onChange={e => setForm({...form, estimatedDuration: e.target.value ? parseInt(e.target.value) : undefined})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="เช่น 30" />
               </div>
 
               {/* Notes */}
@@ -750,6 +742,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
             : type.icon === 'bike' ? Bike
             : type.icon === 'palette' ? Palette
             : type.icon === 'rocket' ? Rocket
+            : type.icon === 'handshake' ? Handshake
             : null;
 
           const groupData = taskGroups.find(g => g.key === type.key);
@@ -811,7 +804,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
       {selectedCat && (() => {
         const style = getTypeStyle(selectedCat);
         const group = tasks.filter(t => t.category === selectedCat)
-          .sort((a, b) => a.startDate.localeCompare(b.startDate) || a.endDate.localeCompare(b.endDate));
+          .sort((a, b) => a.title.localeCompare(b.title));
 
         // Icon mapping for modal
         const IconComponent = style.icon === 'sun' ? Sun
@@ -845,6 +838,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
           : style.icon === 'bike' ? Bike
           : style.icon === 'palette' ? Palette
           : style.icon === 'rocket' ? Rocket
+          : style.icon === 'handshake' ? Handshake
           : null;
 
         return (
@@ -906,22 +900,33 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
 
                           {/* Metadata Row */}
                           <div className="flex items-center gap-2 ml-7">
-                            {task.recurring === 'daily' && (
-                              <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded shrink-0">ทุกวัน</span>
+                            {!task.startDate && !task.endDate && (
+                              <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded shrink-0">ทำซ้ำ</span>
+                            )}
+                            {task.dayTypes && task.dayTypes.length > 0 && task.dayTypes.length < 3 && (
+                              <span className="text-[8px] font-black bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded shrink-0">
+                                {task.dayTypes.map(d => d === 'workday' ? 'จ-ศ' : d === 'saturday' ? 'ส.' : 'อา.').join(',')}
+                              </span>
                             )}
                             {(task.attachments?.length ?? 0) > 0 && (
                               <Paperclip className="w-3.5 h-3.5 text-slate-300 shrink-0" />
                             )}
-                            <span className="text-[10px] text-blue-500 font-bold shrink-0">{task.startTime}–{task.endTime}</span>
-                            <span className="text-[10px] text-slate-200 shrink-0">|</span>
-                            {task.startDate === task.endDate ? (
-                              <span className="text-[10px] text-emerald-500 font-bold shrink-0">{task.startDate}</span>
-                            ) : (
-                              <span className="text-[10px] font-bold shrink-0">
-                                <span className="text-emerald-500">{task.startDate}</span>
-                                <span className="text-slate-300">→</span>
-                                <span className="text-orange-500">{task.endDate}</span>
-                              </span>
+                            {task.estimatedDuration && (
+                              <span className="text-[10px] text-blue-500 font-bold shrink-0">{task.estimatedDuration}น.</span>
+                            )}
+                            {task.startDate && (
+                              <>
+                                <span className="text-[10px] text-slate-200 shrink-0">|</span>
+                                {task.startDate === task.endDate ? (
+                                  <span className="text-[10px] text-emerald-500 font-bold shrink-0">{task.startDate}</span>
+                                ) : (
+                                  <span className="text-[10px] font-bold shrink-0">
+                                    <span className="text-emerald-500">{task.startDate}</span>
+                                    <span className="text-slate-300">→</span>
+                                    <span className="text-orange-500">{task.endDate}</span>
+                                  </span>
+                                )}
+                              </>
                             )}
                             <div className="flex items-center shrink-0 ml-auto" onClick={(e) => e.stopPropagation()}>
                               <button onClick={() => openEditForm(task)} className="p-1 rounded text-slate-300 hover:text-blue-500 transition-colors" title="แก้ไข">
