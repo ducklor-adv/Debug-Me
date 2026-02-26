@@ -1,7 +1,70 @@
 
 import React, { useState, useRef } from 'react';
 import { Task, TaskAttachment, Priority, TaskGroup, GROUP_COLORS } from '../types';
-import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket } from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning } from 'lucide-react';
+
+// Custom SVG icons (lucide style: 24x24 viewBox, stroke-based)
+const BroomIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    {/* Handle */}
+    <line x1="12" y1="2" x2="12" y2="13" />
+    {/* Binding */}
+    <rect x="9.5" y="12.5" width="5" height="2" rx="0.5" />
+    {/* Bristles */}
+    <line x1="8" y1="14.5" x2="6" y2="22" />
+    <line x1="9.5" y1="14.5" x2="8.5" y2="22" />
+    <line x1="11" y1="14.5" x2="10.5" y2="22" />
+    <line x1="12" y1="14.5" x2="12" y2="22" />
+    <line x1="13" y1="14.5" x2="13.5" y2="22" />
+    <line x1="14.5" y1="14.5" x2="15.5" y2="22" />
+    <line x1="16" y1="14.5" x2="18" y2="22" />
+  </svg>
+);
+
+const FlexIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    {/* Arm: shoulder to elbow */}
+    <path d="M4 17 L10 13" />
+    {/* Arm: elbow to fist (flexed up) */}
+    <path d="M10 13 L7 5" />
+    {/* Bicep bulge */}
+    <path d="M7 8 Q5 10 8 12" />
+    {/* Fist */}
+    <circle cx="7" cy="4.5" r="1.5" fill="currentColor" />
+  </svg>
+);
+
+const BrainIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    {/* Left hemisphere outer */}
+    <path d="M12 4 Q2 4 3 12 Q2 18 6 20 Q9 22 12 20" />
+    {/* Right hemisphere outer */}
+    <path d="M12 4 Q22 4 21 12 Q22 18 18 20 Q15 22 12 20" />
+    {/* Center divide */}
+    <path d="M12 4 L12 20" />
+    {/* Left wrinkle */}
+    <path d="M5 10 Q8 9 9 12" />
+    <path d="M6 16 Q8 14 10 16" />
+    {/* Right wrinkle */}
+    <path d="M19 10 Q16 9 15 12" />
+    <path d="M18 16 Q16 14 14 16" />
+  </svg>
+);
+
+const FamilyIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="7" cy="5" r="2" />
+    <circle cx="17" cy="5" r="2" />
+    <circle cx="12" cy="9" r="1.5" />
+    <path d="M5 10c0 0-1 2-1 4h6" />
+    <path d="M19 10c0 0 1 2 1 4h-6" />
+    <path d="M10.5 12c0 0-.5 1.5-.5 3h4c0-1.5-.5-3-.5-3" />
+    <line x1="4" y1="14" x2="4" y2="20" />
+    <line x1="10" y1="14" x2="10" y2="20" />
+    <line x1="14" y1="15" x2="14" y2="20" />
+    <line x1="20" y1="14" x2="20" y2="20" />
+  </svg>
+);
 import { getAIPrioritization } from '../services/geminiService';
 import TimePicker from './TimePicker';
 
@@ -36,6 +99,31 @@ const GROUP_ICON_MAP: Record<string, React.ReactNode> = {
   wrench: <Wrench className="w-3.5 h-3.5" />,
   sun: <Sun className="w-3.5 h-3.5" />,
   moon: <Moon className="w-3.5 h-3.5" />,
+  lightning: <CloudLightning className="w-3.5 h-3.5" />,
+  broom: <BroomIcon className="w-3.5 h-3.5" />,
+  family: <FamilyIcon className="w-3.5 h-3.5" />,
+  flex: <FlexIcon className="w-3.5 h-3.5" />,
+  brain2: <BrainIcon className="w-3.5 h-3.5" />,
+  target: <Target className="w-3.5 h-3.5" />,
+  pencil: <Pencil className="w-3.5 h-3.5" />,
+  heart: <Heart className="w-3.5 h-3.5" />,
+  heartpulse: <HeartPulse className="w-3.5 h-3.5" />,
+  dumbbell: <Dumbbell className="w-3.5 h-3.5" />,
+  users: <Users className="w-3.5 h-3.5" />,
+  zap: <Zap className="w-3.5 h-3.5" />,
+  briefcase: <Briefcase className="w-3.5 h-3.5" />,
+  cart: <ShoppingCart className="w-3.5 h-3.5" />,
+  star: <Star className="w-3.5 h-3.5" />,
+  calendar: <Calendar className="w-3.5 h-3.5" />,
+  clock: <Clock className="w-3.5 h-3.5" />,
+  trending: <TrendingUp className="w-3.5 h-3.5" />,
+  lightbulb: <Lightbulb className="w-3.5 h-3.5" />,
+  music: <Music className="w-3.5 h-3.5" />,
+  game: <Gamepad2 className="w-3.5 h-3.5" />,
+  utensils: <Utensils className="w-3.5 h-3.5" />,
+  bike: <Bike className="w-3.5 h-3.5" />,
+  palette: <Palette className="w-3.5 h-3.5" />,
+  rocket: <Rocket className="w-3.5 h-3.5" />,
 };
 
 const todayStr = new Date().toISOString().split('T')[0];
@@ -66,6 +154,8 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   // Group form state
   const [groupFormOpen, setGroupFormOpen] = useState(false);
   const [groupForm, setGroupForm] = useState({ name: '', emoji: '📌', color: 'cyan', icon: 'code' });
+  const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
+  const [deleteGroupConfirm, setDeleteGroupConfirm] = useState<string | null>(null);
 
   // Form state
   const [formOpen, setFormOpen] = useState(false);
@@ -263,23 +353,47 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
 
   // Group CRUD
   const openGroupForm = () => {
+    setEditingGroupKey(null);
     setGroupForm({ name: '', emoji: '📌', color: 'cyan', icon: 'code' });
+    setGroupFormOpen(true);
+  };
+  const openEditGroup = (g: TaskGroup) => {
+    setEditingGroupKey(g.key);
+    setGroupForm({ name: g.label, emoji: g.emoji, color: g.color, icon: g.icon });
     setGroupFormOpen(true);
   };
   const saveGroup = () => {
     const name = groupForm.name.trim();
     if (!name) return;
-    if (taskGroups.some(g => g.key === name)) return; // duplicate
-    const newGroup: TaskGroup = {
-      key: name,
-      label: name,
-      emoji: groupForm.emoji,
-      color: groupForm.color,
-      icon: groupForm.icon,
-      size: 64,
-    };
-    setTaskGroups(prev => [...prev, newGroup]);
+
+    if (editingGroupKey) {
+      // Edit mode: update group and rename tasks' category
+      const oldKey = editingGroupKey;
+      setTaskGroups(prev => prev.map(g => g.key === oldKey ? { ...g, key: name, label: name, emoji: groupForm.emoji, color: groupForm.color, icon: groupForm.icon } : g));
+      if (name !== oldKey) {
+        setTasks(prev => prev.map(t => t.category === oldKey ? { ...t, category: name } : t));
+      }
+      setEditingGroupKey(null);
+    } else {
+      // Create mode
+      if (taskGroups.some(g => g.key === name)) return; // duplicate
+      const newGroup: TaskGroup = {
+        key: name,
+        label: name,
+        emoji: groupForm.emoji,
+        color: groupForm.color,
+        icon: groupForm.icon,
+        size: 64,
+      };
+      setTaskGroups(prev => [...prev, newGroup]);
+    }
     setGroupFormOpen(false);
+  };
+  const deleteGroup = (key: string) => {
+    setTaskGroups(prev => prev.filter(g => g.key !== key));
+    setTasks(prev => prev.filter(t => t.category !== key));
+    setDeleteGroupConfirm(null);
+    if (selectedCat === key) setSelectedCat(null);
   };
 
   return (
@@ -312,10 +426,10 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
 
       {/* ===== Group Form ===== */}
       {groupFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl animate-fadeIn overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 backdrop-blur-sm p-4 pt-20 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl animate-fadeIn overflow-hidden my-4">
             <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50">
-              <h3 className="font-bold text-slate-800 text-base">สร้าง Task Group ใหม่</h3>
+              <h3 className="font-bold text-slate-800 text-base">{editingGroupKey ? 'แก้ไข Task Group' : 'สร้าง Task Group ใหม่'}</h3>
               <button onClick={() => setGroupFormOpen(false)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
                 <X className="w-4 h-4" />
               </button>
@@ -380,13 +494,38 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
             </div>
             <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
               <button onClick={() => setGroupFormOpen(false)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-sm rounded-xl transition-colors">ยกเลิก</button>
-              <button onClick={saveGroup} disabled={!groupForm.name.trim() || taskGroups.some(g => g.key === groupForm.name.trim())} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-200 transition-colors disabled:opacity-40 flex items-center gap-2">
-                <Plus className="w-4 h-4" /> สร้างกลุ่ม
+              <button onClick={saveGroup} disabled={!groupForm.name.trim() || (!editingGroupKey && taskGroups.some(g => g.key === groupForm.name.trim())) || (!!editingGroupKey && groupForm.name.trim() !== editingGroupKey && taskGroups.some(g => g.key === groupForm.name.trim()))} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-200 transition-colors disabled:opacity-40 flex items-center gap-2">
+                {editingGroupKey ? <><Save className="w-4 h-4" /> บันทึก</> : <><Plus className="w-4 h-4" /> สร้างกลุ่ม</>}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* ===== Delete Group Confirm ===== */}
+      {deleteGroupConfirm && (() => {
+        const g = taskGroups.find(x => x.key === deleteGroupConfirm);
+        const count = tasks.filter(t => t.category === deleteGroupConfirm).length;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn p-6 text-center space-y-4">
+              <div className="w-14 h-14 rounded-full bg-rose-100 flex items-center justify-center mx-auto">
+                <Trash2 className="w-7 h-7 text-rose-500" />
+              </div>
+              <h3 className="font-black text-lg text-slate-800">ลบกลุ่ม "{g?.label}"?</h3>
+              {count > 0 && (
+                <p className="text-sm text-rose-500 font-bold">task ทั้งหมด {count} รายการในกลุ่มนี้จะถูกลบด้วย</p>
+              )}
+              <div className="flex gap-3 justify-center pt-2">
+                <button onClick={() => setDeleteGroupConfirm(null)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-sm rounded-xl transition-colors">ยกเลิก</button>
+                <button onClick={() => deleteGroup(deleteGroupConfirm)} className="px-5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-semibold text-sm rounded-xl transition-colors flex items-center gap-2">
+                  <Trash2 className="w-4 h-4" /> ลบเลย
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ===== Task Form (Add / Edit) ===== */}
       {formOpen && (
@@ -586,6 +725,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
             : type.icon === 'home' ? Home
             : type.icon === 'brain' ? Brain
             : type.icon === 'heart' ? Heart
+            : type.icon === 'heartpulse' ? HeartPulse
             : type.icon === 'dumbbell' ? Dumbbell
             : type.icon === 'users' ? Users
             : type.icon === 'user' ? UserIcon
@@ -593,12 +733,14 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
             : type.icon === 'coffee' ? Coffee
             : type.icon === 'wrench' ? Wrench
             : type.icon === 'zap' ? Zap
+            : type.icon === 'lightning' ? CloudLightning
             : type.icon === 'briefcase' ? Briefcase
             : type.icon === 'cart' ? ShoppingCart
             : type.icon === 'star' ? Star
             : type.icon === 'calendar' ? Calendar
             : type.icon === 'clock' ? Clock
             : type.icon === 'target' ? Target
+            : type.icon === 'pencil' ? Pencil
             : type.icon === 'trending' ? TrendingUp
             : type.icon === 'lightbulb' ? Lightbulb
             : type.icon === 'music' ? Music
@@ -608,36 +750,59 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
             : type.icon === 'bike' ? Bike
             : type.icon === 'palette' ? Palette
             : type.icon === 'rocket' ? Rocket
-            : Briefcase;
+            : null;
+
+          const groupData = taskGroups.find(g => g.key === type.key);
 
           return (
-            <button
-              key={type.key}
+            <div key={type.key} className={`relative group/card ${type.bg} border-2 ${type.border} rounded-xl p-2.5 transition-all duration-300 hover:shadow-md cursor-pointer ${
+              isActive ? `${type.ring} ring-2 ring-offset-1 shadow-md scale-105` : 'hover:scale-102'
+            }`}
               onClick={() => { setSelectedCat(isActive ? null : type.key); setExpandedId(null); }}
-              className={`${type.bg} border-2 ${type.border} rounded-xl p-2.5 transition-all duration-300 hover:shadow-md ${
-                isActive ? `${type.ring} ring-2 ring-offset-1 shadow-md scale-105` : 'hover:scale-102'
-              }`}
             >
-              <div className="flex flex-col items-center gap-1.5">
-                {/* Icon */}
-                <div className={`w-11 h-11 rounded-xl ${type.iconBg} flex items-center justify-center shadow-md`}>
-                  <IconComponent className="w-6 h-6 text-white" />
-                </div>
-
-                {/* Task count */}
-                <span className={`text-2xl font-black ${type.text} leading-none`}>{group.length}</span>
-
-                {/* Label */}
-                <span className={`text-[10px] font-bold ${type.text} text-center leading-tight`}>{type.label}</span>
-
-                {/* Done count */}
-                {doneCount > 0 && (
-                  <span className="text-[9px] font-black bg-white/50 px-1.5 py-0.5 rounded-full text-slate-600">
-                    ✓ {doneCount}
-                  </span>
-                )}
+              {/* Edit / Delete buttons */}
+              <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity z-10">
+                <button
+                  onClick={(e) => { e.stopPropagation(); if (groupData) openEditGroup(groupData); }}
+                  className="w-5 h-5 rounded bg-white/80 hover:bg-blue-100 flex items-center justify-center shadow-sm"
+                  title="แก้ไขกลุ่ม"
+                >
+                  <Pencil className="w-3 h-3 text-blue-500" />
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setDeleteGroupConfirm(type.key); }}
+                  className="w-5 h-5 rounded bg-white/80 hover:bg-rose-100 flex items-center justify-center shadow-sm"
+                  title="ลบกลุ่ม"
+                >
+                  <Trash2 className="w-3 h-3 text-rose-500" />
+                </button>
               </div>
-            </button>
+
+              <div className="flex flex-col items-center gap-1.5">
+                {/* Row 1: Label */}
+                <span className={`text-[11px] font-black ${type.text} text-center leading-tight`}>{type.label}</span>
+
+                {/* Row 2: Count + Icon */}
+                <div className="flex items-center justify-center gap-2">
+                  <div className="flex items-baseline gap-1">
+                    <span className={`text-2xl font-black ${type.text} leading-none`}>{group.length}</span>
+                    {doneCount > 0 && (
+                      <span className="text-[9px] font-black bg-white/50 px-1.5 py-0.5 rounded-full text-slate-600">
+                        ✓{doneCount}
+                      </span>
+                    )}
+                  </div>
+                  <div className={`w-9 h-9 rounded-lg ${type.iconBg} flex items-center justify-center shadow-md`}>
+                    {type.icon === 'broom' ? <BroomIcon className="w-5 h-5 text-white" />
+                    : type.icon === 'family' ? <FamilyIcon className="w-5 h-5 text-white" />
+                    : type.icon === 'flex' ? <FlexIcon className="w-5 h-5 text-white" />
+                    : type.icon === 'brain2' ? <BrainIcon className="w-5 h-5 text-white" />
+                    : IconComponent ? <IconComponent className="w-5 h-5 text-white" />
+                    : <Briefcase className="w-5 h-5 text-white" />}
+                  </div>
+                </div>
+              </div>
+            </div>
           );
         })}
       </div>
@@ -655,6 +820,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
           : style.icon === 'home' ? Home
           : style.icon === 'brain' ? Brain
           : style.icon === 'heart' ? Heart
+          : style.icon === 'heartpulse' ? HeartPulse
           : style.icon === 'dumbbell' ? Dumbbell
           : style.icon === 'users' ? Users
           : style.icon === 'user' ? UserIcon
@@ -662,12 +828,14 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
           : style.icon === 'coffee' ? Coffee
           : style.icon === 'wrench' ? Wrench
           : style.icon === 'zap' ? Zap
+          : style.icon === 'lightning' ? CloudLightning
           : style.icon === 'briefcase' ? Briefcase
           : style.icon === 'cart' ? ShoppingCart
           : style.icon === 'star' ? Star
           : style.icon === 'calendar' ? Calendar
           : style.icon === 'clock' ? Clock
           : style.icon === 'target' ? Target
+          : style.icon === 'pencil' ? Pencil
           : style.icon === 'trending' ? TrendingUp
           : style.icon === 'lightbulb' ? Lightbulb
           : style.icon === 'music' ? Music
@@ -677,7 +845,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
           : style.icon === 'bike' ? Bike
           : style.icon === 'palette' ? Palette
           : style.icon === 'rocket' ? Rocket
-          : Briefcase;
+          : null;
 
         return (
           <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 backdrop-blur-sm p-4 overflow-y-auto">
@@ -687,7 +855,12 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-xl ${style.iconBg} flex items-center justify-center shadow-sm`}>
-                      <IconComponent className="w-5 h-5 text-white" />
+                      {style.icon === 'broom' ? <BroomIcon className="w-5 h-5 text-white" />
+                        : style.icon === 'family' ? <FamilyIcon className="w-5 h-5 text-white" />
+                        : style.icon === 'flex' ? <FlexIcon className="w-5 h-5 text-white" />
+                        : style.icon === 'brain2' ? <BrainIcon className="w-5 h-5 text-white" />
+                        : IconComponent ? <IconComponent className="w-5 h-5 text-white" />
+                        : <Briefcase className="w-5 h-5 text-white" />}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">

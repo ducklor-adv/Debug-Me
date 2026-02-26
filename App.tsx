@@ -32,16 +32,16 @@ const VIEW_KEY = 'debugme-view';
 const DEFAULT_GROUPS: TaskGroup[] = [
   { key: 'กิจวัตร', label: 'กิจวัตร', emoji: '🌅', color: 'teal', icon: 'sun', size: 68 },
   { key: 'งานหลัก', label: 'งานหลัก', emoji: '💼', color: 'orange', icon: 'briefcase', size: 92 },
-  { key: 'งานบ้าน', label: 'งานบ้าน', emoji: '🏠', color: 'yellow', icon: 'home', size: 66 },
-  { key: 'พัฒนาตัวเอง', label: 'พัฒนาตัวเอง', emoji: '🧠', color: 'amber', icon: 'rocket', size: 72 },
-  { key: 'สุขภาพ', label: 'สุขภาพ', emoji: '💪', color: 'green', icon: 'dumbbell', size: 62 },
-  { key: 'ครอบครัว', label: 'ครอบครัว', emoji: '👨‍👩‍👧', color: 'violet', icon: 'users', size: 62 },
-  { key: 'งานด่วน', label: 'งานด่วน', emoji: '⚡', color: 'rose', icon: 'zap', size: 82 },
-  { key: 'พักผ่อน', label: 'พักผ่อน', emoji: '☕', color: 'cyan', icon: 'game', size: 56 },
+  { key: 'งานบ้าน', label: 'งานบ้าน', emoji: '🏠', color: 'yellow', icon: 'broom', size: 66 },
+  { key: 'พัฒนาตัวเอง', label: 'พัฒนาตัวเอง', emoji: '🧠', color: 'amber', icon: 'brain', size: 72 },
+  { key: 'สุขภาพ', label: 'สุขภาพ', emoji: '💪', color: 'green', icon: 'heartpulse', size: 62 },
+  { key: 'ครอบครัว', label: 'ครอบครัว', emoji: '👨‍👩‍👧', color: 'violet', icon: 'family', size: 62 },
+  { key: 'งานด่วน', label: 'งานด่วน', emoji: '⚡', color: 'rose', icon: 'lightning', size: 82 },
+  { key: 'พักผ่อน', label: 'พักผ่อน', emoji: '☕', color: 'cyan', icon: 'coffee', size: 56 },
   { key: 'ธุระส่วนตัว', label: 'ธุระส่วนตัว', emoji: '🔧', color: 'blue', icon: 'calendar', size: 62 },
   // Legacy groups (kept for existing users' tasks)
-  { key: 'งานรอง', label: 'งานรอง', emoji: '🏠', color: 'yellow', icon: 'home', size: 66 },
-  { key: 'เฉพาะกิจ', label: 'เฉพาะกิจ', emoji: '🔧', color: 'blue', icon: 'wrench', size: 62 },
+  { key: 'งานรอง', label: 'งานรอง', emoji: '📝', color: 'yellow', icon: 'pencil', size: 66 },
+  { key: 'เฉพาะกิจ', label: 'เฉพาะกิจ', emoji: '🎯', color: 'blue', icon: 'target', size: 62 },
 ];
 
 const DEFAULT_MILESTONES: Milestone[] = [
@@ -105,10 +105,21 @@ const NAV_ITEMS: { view: View; icon: string; label: string }[] = [
 ];
 
 // Merge any missing default groups into loaded groups
+// Icon overrides: force-update icons for default groups (when defaults change)
+const DEFAULT_ICON_MAP = new Map(DEFAULT_GROUPS.map(g => [g.key, g.icon]));
+
 const mergeDefaultGroups = (loaded: TaskGroup[]): TaskGroup[] => {
   const existingKeys = new Set(loaded.map(g => g.key));
   const missing = DEFAULT_GROUPS.filter(g => !existingKeys.has(g.key));
-  return missing.length > 0 ? [...loaded, ...missing] : loaded;
+  // Update icons of existing default groups to match latest defaults
+  const updated = loaded.map(g => {
+    const defaultIcon = DEFAULT_ICON_MAP.get(g.key);
+    if (defaultIcon && g.icon !== defaultIcon) {
+      return { ...g, icon: defaultIcon };
+    }
+    return g;
+  });
+  return missing.length > 0 ? [...updated, ...missing] : updated;
 };
 
 // Merge any missing default tasks into loaded tasks (by id prefix 'd-')
@@ -293,7 +304,18 @@ const App: React.FC = () => {
         const mergedTasks = mergeDefaultTasks(migratedTasks, defaultTasks, deletedIds);
         console.log('🔀 Merged tasks. Total:', mergedTasks.length, 'Deleted IDs:', deletedIds.length, 'Was remote update:', wasRemoteUpdate);
         setTasks(mergedTasks);
-        if (data.groups) setTaskGroups(mergeDefaultGroups(data.groups));
+        if (data.groups) {
+          const mergedGroups = mergeDefaultGroups(data.groups);
+          setTaskGroups(mergedGroups);
+          // Save back if any group icons were updated
+          const iconsChanged = data.groups.some((g: TaskGroup) => {
+            const def = DEFAULT_ICON_MAP.get(g.key);
+            return def && g.icon !== def;
+          });
+          if (iconsChanged && !wasRemoteUpdate) {
+            saveAppData(user.uid, { groups: mergedGroups });
+          }
+        }
         // Milestones: merge missing defaults + fix known timing issues
         if (data.milestones?.length) {
           let ms = data.milestones as Milestone[];
