@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Habit, GROUP_COLORS } from '../types';
-import { Check, Flame, Plus, X, Trash2, Pencil } from 'lucide-react';
+import { Check, Flame, Plus, X, Trash2, Pencil, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
+import { HABIT_TEMPLATES, HABIT_CATEGORIES, HabitTemplate } from '../data/habitTemplates';
 
 interface HabitTrackerProps {
   habits: Habit[];
@@ -56,6 +57,9 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habits, setHabits }) => {
   const [formFreq, setFormFreq] = useState<Habit['frequency']>('daily');
   const [formCustomDays, setFormCustomDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [libCategory, setLibCategory] = useState('health');
+  const [showYearlyHeatmap, setShowYearlyHeatmap] = useState(false);
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -112,6 +116,33 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habits, setHabits }) => {
     }));
   };
 
+  const selectTemplate = (tmpl: HabitTemplate) => {
+    setEditId(null);
+    setFormName(tmpl.name);
+    setFormDesc(tmpl.description);
+    setFormEmoji(tmpl.emoji);
+    setFormColor(tmpl.color);
+    setFormFreq(tmpl.frequency);
+    if (tmpl.customDays) setFormCustomDays(tmpl.customDays);
+    setShowLibrary(false);
+    setShowForm(true);
+  };
+
+  // Yearly heatmap data (last 365 days)
+  const yearlyData = useMemo(() => {
+    if (habits.length === 0) return [];
+    const days: { date: string; count: number; total: number; dow: number }[] = [];
+    const d = new Date();
+    for (let i = 364; i >= 0; i--) {
+      const dd = new Date(d);
+      dd.setDate(dd.getDate() - i);
+      const ds = dd.toISOString().split('T')[0];
+      const count = habits.filter(h => h.history[ds]).length;
+      days.push({ date: ds, count, total: habits.length, dow: dd.getDay() });
+    }
+    return days;
+  }, [habits]);
+
   // Last 7 days for mini heatmap
   const last7Days = useMemo(() => {
     const days: string[] = [];
@@ -161,9 +192,14 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habits, setHabits }) => {
           <h2 className="text-2xl font-black text-slate-800 tracking-tight">Habits</h2>
           <p className="text-xs text-slate-500 font-medium">สร้างนิสัยดี ทำทุกวัน</p>
         </div>
-        <button onClick={openNew} className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-200 transition-all active:scale-95">
-          <Plus className="w-4 h-4" /> เพิ่ม Habit
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowLibrary(true)} className="flex items-center gap-2 px-3 py-2.5 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded-xl font-bold text-sm transition-all active:scale-95">
+            <BookOpen className="w-4 h-4" /> คลัง
+          </button>
+          <button onClick={openNew} className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-200 transition-all active:scale-95">
+            <Plus className="w-4 h-4" /> เพิ่ม
+          </button>
+        </div>
       </div>
 
       {/* Habit Cards */}
@@ -267,6 +303,152 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habits, setHabits }) => {
             <div className="w-3 h-3 rounded bg-emerald-300" />
             <div className="w-3 h-3 rounded bg-emerald-500" />
             <span className="text-[8px] text-slate-400">มาก</span>
+          </div>
+        </div>
+      )}
+
+      {/* Yearly Heatmap */}
+      {habits.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+          <button
+            onClick={() => setShowYearlyHeatmap(!showYearlyHeatmap)}
+            className="flex items-center justify-between w-full text-left"
+          >
+            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">
+              Yearly Heatmap — 365 วัน
+            </h3>
+            {showYearlyHeatmap ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+          </button>
+          {showYearlyHeatmap && (
+            <div className="mt-3">
+              {/* Month labels */}
+              <div className="flex gap-0 mb-1 ml-6" style={{ fontSize: '8px' }}>
+                {(() => {
+                  const labels: { label: string; col: number }[] = [];
+                  let lastMonth = -1;
+                  yearlyData.forEach((d, i) => {
+                    const m = new Date(d.date).getMonth();
+                    if (m !== lastMonth) {
+                      lastMonth = m;
+                      const col = Math.floor(i / 7);
+                      labels.push({ label: ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][m], col });
+                    }
+                  });
+                  return labels.map((l, i) => (
+                    <span key={i} className="text-slate-400 font-medium" style={{ position: 'absolute', left: `${l.col * 11 + 24}px` }}>{l.label}</span>
+                  ));
+                })()}
+              </div>
+              <div className="relative mt-4 overflow-x-auto">
+                <div className="flex gap-0.5">
+                  {/* Day labels */}
+                  <div className="flex flex-col gap-0.5 mr-1 shrink-0">
+                    {['', 'จ', '', 'พ', '', 'ศ', ''].map((d, i) => (
+                      <div key={i} className="w-4 h-[10px] text-[7px] text-slate-400 font-medium flex items-center justify-end pr-0.5">{d}</div>
+                    ))}
+                  </div>
+                  {/* Grid: weeks as columns */}
+                  {(() => {
+                    const weeks: typeof yearlyData[number][][] = [];
+                    // Pad start to align with Monday (dow 1)
+                    const firstDow = yearlyData[0]?.dow || 0;
+                    const padStart = firstDow === 0 ? 6 : firstDow - 1;
+                    const padded = [...Array(padStart).fill(null), ...yearlyData];
+                    for (let i = 0; i < padded.length; i += 7) {
+                      weeks.push(padded.slice(i, i + 7));
+                    }
+                    return weeks.map((week, wi) => (
+                      <div key={wi} className="flex flex-col gap-0.5">
+                        {week.map((day, di) => {
+                          if (!day) return <div key={di} className="w-[10px] h-[10px]" />;
+                          const pct = day.total > 0 ? day.count / day.total : 0;
+                          const bg = day.count === 0 ? 'bg-slate-100'
+                            : pct <= 0.25 ? 'bg-emerald-200'
+                            : pct <= 0.5 ? 'bg-emerald-300'
+                            : pct <= 0.75 ? 'bg-emerald-400'
+                            : 'bg-emerald-600';
+                          const isToday = day.date === todayStr;
+                          return (
+                            <div
+                              key={di}
+                              title={`${day.date}: ${day.count}/${day.total} habits`}
+                              className={`w-[10px] h-[10px] rounded-[2px] ${bg} transition-colors ${isToday ? 'ring-1 ring-emerald-700' : ''}`}
+                            />
+                          );
+                        })}
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-1.5 mt-2">
+                <span className="text-[8px] text-slate-400">น้อย</span>
+                <div className="w-[10px] h-[10px] rounded-[2px] bg-slate-100" />
+                <div className="w-[10px] h-[10px] rounded-[2px] bg-emerald-200" />
+                <div className="w-[10px] h-[10px] rounded-[2px] bg-emerald-300" />
+                <div className="w-[10px] h-[10px] rounded-[2px] bg-emerald-400" />
+                <div className="w-[10px] h-[10px] rounded-[2px] bg-emerald-600" />
+                <span className="text-[8px] text-slate-400">มาก</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Habit Library Modal */}
+      {showLibrary && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl animate-fadeIn max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 shrink-0">
+              <h3 className="font-bold text-slate-800">คลัง Habit สำเร็จรูป</h3>
+              <button onClick={() => setShowLibrary(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400"><X className="w-4 h-4" /></button>
+            </div>
+            {/* Category tabs */}
+            <div className="flex gap-1.5 p-3 overflow-x-auto shrink-0 border-b border-slate-50">
+              {HABIT_CATEGORIES.map(cat => (
+                <button
+                  key={cat.key}
+                  onClick={() => setLibCategory(cat.key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                    libCategory === cat.key
+                      ? 'bg-violet-100 text-violet-700 border border-violet-200'
+                      : 'bg-slate-50 text-slate-500 border border-slate-100 hover:bg-slate-100'
+                  }`}
+                >
+                  {cat.emoji} {cat.label}
+                </button>
+              ))}
+            </div>
+            {/* Template cards */}
+            <div className="overflow-y-auto flex-1 p-3 space-y-2">
+              {HABIT_TEMPLATES.filter(t => t.category === libCategory).map((tmpl, i) => {
+                const alreadyAdded = habits.some(h => h.name === tmpl.name);
+                return (
+                  <button
+                    key={i}
+                    onClick={() => !alreadyAdded && selectTemplate(tmpl)}
+                    disabled={alreadyAdded}
+                    className={`w-full text-left p-3 rounded-xl border transition-all ${
+                      alreadyAdded
+                        ? 'bg-slate-50 border-slate-100 opacity-50 cursor-not-allowed'
+                        : 'bg-white border-slate-200 hover:border-violet-300 hover:bg-violet-50 active:scale-[0.98]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{tmpl.emoji}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold text-slate-800">{tmpl.name}</div>
+                        <div className="text-[11px] text-slate-400">{tmpl.description}</div>
+                        <div className="text-[10px] font-bold text-slate-400 mt-0.5">
+                          {tmpl.frequency === 'daily' ? 'ทุกวัน' : tmpl.frequency === 'weekdays' ? 'จ-ศ' : tmpl.frequency === 'weekends' ? 'ส-อา' : 'กำหนดเอง'}
+                        </div>
+                      </div>
+                      {alreadyAdded && <span className="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full">เพิ่มแล้ว</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

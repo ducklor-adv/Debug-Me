@@ -28,6 +28,17 @@ export interface Recurrence {
   monthDate?: { month: number; day: number }; // yearly
 }
 
+// LocationReminder — แจ้งเตือนตาม GPS
+export interface LocationReminder {
+  id: string;
+  latitude: number;
+  longitude: number;
+  radius: number;             // meters
+  label: string;              // e.g. "บ้าน", "ออฟฟิศ"
+  triggerOn: 'enter' | 'exit' | 'both';
+  enabled: boolean;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -44,6 +55,7 @@ export interface Task {
   completedAt?: string;        // ISO timestamp
   subtasks?: SubTask[];         // งานย่อย
   recurrence?: Recurrence;      // การทำซ้ำขั้นสูง
+  locationReminder?: LocationReminder;  // แจ้งเตือนตามพิกัด
 }
 
 export interface Milestone {
@@ -65,10 +77,18 @@ export interface TimeSlot {
 
 export type DayType = 'workday' | 'saturday' | 'sunday';
 
+export interface CustomScheduleTemplate {
+  id: string;
+  name: string;
+  emoji: string;
+  slots: TimeSlot[];
+}
+
 export interface ScheduleTemplates {
   workday: TimeSlot[];
   saturday: TimeSlot[];
   sunday: TimeSlot[];
+  customTemplates?: CustomScheduleTemplate[];
 }
 
 /** Determine the day type from a Date object */

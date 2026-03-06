@@ -22,7 +22,7 @@ import {
   Bell,
   WifiOff,
 } from 'lucide-react';
-import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates } from './types';
+import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, getDayType } from './types';
 import { subscribeAppData, saveAppData, addDailyRecordFS, getDailyRecordsByDate, getDailyRecordCount } from './lib/firestoreDB';
 import Dashboard from './components/Dashboard';
 import TaskManager from './components/TaskManager';
@@ -36,6 +36,9 @@ import CalendarView from './components/CalendarView';
 import UndoToast from './components/UndoToast';
 import Login from './components/Login';
 import { useNotificationScheduler } from './hooks/useNotificationScheduler';
+import { useLocationReminders } from './hooks/useLocationReminders';
+import { analyzeBehaviorPatterns, BehaviorPattern } from './services/behaviorAnalysis';
+import { getDailyRecordsInRange } from './lib/firestoreDB';
 import { useUndoStack, UndoAction } from './hooks/useUndoStack';
 
 const VIEW_KEY = 'debugme-view';
@@ -106,6 +109,7 @@ const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
     { id: 'sun-11', startTime: '19:00', endTime: '20:30', groupKey: 'พักผ่อน' },
     { id: 'sun-12', startTime: '20:30', endTime: '22:00', groupKey: 'กิจวัตร' },
   ],
+  customTemplates: [],
 };
 
 const NAV_ITEMS: { view: View; icon: string; label: string }[] = [
@@ -311,7 +315,38 @@ const App: React.FC = () => {
   });
   const [showNotifSettings, setShowNotifSettings] = useState(false);
 
-  useNotificationScheduler(scheduleTemplates, taskGroups, notificationsEnabled, reminderMinutes);
+  // Behavior patterns for smart reminders (cached in state)
+  const [behaviorPatterns, setBehaviorPatterns] = useState<Map<string, BehaviorPattern>>(new Map());
+
+  // Load behavior patterns (30 days of records) — once on login, recalculate weekly
+  useEffect(() => {
+    if (!user || firestoreLoading) return;
+    const cacheKey = 'debugme-behavior-patterns-date';
+    const lastCalc = localStorage.getItem(cacheKey);
+    const now = new Date().toISOString().split('T')[0];
+    // Only recalculate weekly
+    if (lastCalc && lastCalc > new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]) return;
+
+    (async () => {
+      try {
+        const end = new Date();
+        const start = new Date(Date.now() - 30 * 86400000);
+        const records = await getDailyRecordsInRange(user.uid, start.toISOString().split('T')[0], end.toISOString().split('T')[0]);
+        const dayType = getDayType(new Date());
+        const slots = scheduleTemplates[dayType] || [];
+        const patterns = analyzeBehaviorPatterns(records, slots);
+        setBehaviorPatterns(patterns);
+        localStorage.setItem(cacheKey, now);
+      } catch (err) {
+        console.error('Failed to analyze behavior patterns:', err);
+      }
+    })();
+  }, [user, firestoreLoading]);
+
+  useNotificationScheduler(scheduleTemplates, taskGroups, notificationsEnabled, reminderMinutes, behaviorPatterns);
+
+  // Location-based reminders
+  useLocationReminders(tasks, notificationsEnabled);
 
   // Load today's daily records from Firestore
   const loadTodayRecords = useCallback(async () => {
@@ -414,6 +449,7 @@ const App: React.FC = () => {
             workday: vWork.length >= 3 ? vWork : DEFAULT_SCHEDULE_TEMPLATES.workday,
             saturday: vSat.length >= 3 ? vSat : DEFAULT_SCHEDULE_TEMPLATES.saturday,
             sunday: vSun.length >= 3 ? vSun : DEFAULT_SCHEDULE_TEMPLATES.sunday,
+            customTemplates: Array.isArray(tpl.customTemplates) ? tpl.customTemplates : [],
           };
           setScheduleTemplates(fixed);
           if (vWork.length < 3 || vSat.length < 3 || vSun.length < 3) {
@@ -425,6 +461,7 @@ const App: React.FC = () => {
             workday: validOldSchedule.length > 0 ? validOldSchedule : DEFAULT_SCHEDULE_TEMPLATES.workday,
             saturday: DEFAULT_SCHEDULE_TEMPLATES.saturday,
             sunday: DEFAULT_SCHEDULE_TEMPLATES.sunday,
+            customTemplates: [],
           };
           setScheduleTemplates(migrated);
           saveBack.scheduleTemplates = migrated;
@@ -629,7 +666,7 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (activeView) {
-      case 'dashboard': return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onNavigateToPlanner={handleNavigateToPlanner} />;
+      case 'dashboard': return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} habits={habits} onSaveDailyRecord={handleSaveDailyRecord} onNavigateToPlanner={handleNavigateToPlanner} />;
       case 'planner': return <DailyPlanner tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} pendingSlot={pendingSlot} onPendingSlotHandled={() => setPendingSlot(null)} />;
       case 'tasks': return <TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} />;
       case 'focus': return <FocusTimer />;
@@ -638,7 +675,7 @@ const App: React.FC = () => {
       case 'habits': return <HabitTracker habits={habits} setHabits={setHabits} />;
       case 'search': return <SearchView tasks={tasks} taskGroups={taskGroups} />;
       case 'calendar': return <CalendarView tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} userId={user!.uid} />;
-      default: return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onNavigateToPlanner={handleNavigateToPlanner} />;
+      default: return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} habits={habits} onSaveDailyRecord={handleSaveDailyRecord} onNavigateToPlanner={handleNavigateToPlanner} />;
     }
   };
 

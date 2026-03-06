@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Task, SubTask, Milestone, TaskGroup, GROUP_COLORS, getTasksForDate, getDayType, ScheduleTemplates, TimeSlot, DailyRecord } from '../types';
+import { Task, SubTask, Milestone, TaskGroup, GROUP_COLORS, getTasksForDate, getDayType, ScheduleTemplates, TimeSlot, DailyRecord, Habit } from '../types';
 import { CheckCircle2, Circle, Trophy, Zap, Flame, CheckCircle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, ChevronRight, Trash2, Square, Image, Coffee, Code, Sun, Moon, Dumbbell, BookOpen, Brain, FileText, Play, Pause, RotateCcw, Volume2, VolumeX, Target, SkipForward, AlertTriangle, Plus, Handshake, RefreshCw } from 'lucide-react';
+import AISuggestions from './AISuggestions';
+import AIDailyDigest from './AIDailyDigest';
 
 interface Attachment {
   type: 'photo' | 'video' | 'audio' | 'phone' | 'contact' | 'gps';
@@ -15,11 +17,12 @@ interface DashboardProps {
   taskGroups: TaskGroup[];
   scheduleTemplates: ScheduleTemplates;
   todayRecords?: DailyRecord[];
+  habits?: Habit[];
   onSaveDailyRecord?: (record: DailyRecord) => void;
   onNavigateToPlanner?: (startTime: string, endTime: string) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, scheduleTemplates, todayRecords = [], onSaveDailyRecord, onNavigateToPlanner }) => {
+const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, scheduleTemplates, todayRecords = [], habits = [], onSaveDailyRecord, onNavigateToPlanner }) => {
   const [showDoneModal, setShowDoneModal] = useState(false);
   const [showEditView, setShowEditView] = useState(false);
   const [notes, setNotes] = useState('');
@@ -610,6 +613,12 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ===== AI Cards ===== */}
+      <div className="px-4 pt-4 max-w-lg mx-auto space-y-3">
+        <AISuggestions tasks={tasks} checkedTaskIds={checkedTasks} />
+        <AIDailyDigest todayRecords={todayRecords} tasks={todayTasks} habits={habits} />
       </div>
 
       {/* ===== Upcoming Slots ===== */}

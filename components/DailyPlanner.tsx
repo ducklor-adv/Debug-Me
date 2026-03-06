@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Task, SubTask, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType } from '../types';
-import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown, RefreshCw, GripVertical } from 'lucide-react';
+import { Task, SubTask, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, CustomScheduleTemplate, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType } from '../types';
+import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown, RefreshCw, GripVertical, Sparkles, Loader2, Save } from 'lucide-react';
 import TimePicker from './TimePicker';
+import { generateSmartSchedule } from '../services/geminiService';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -69,9 +70,9 @@ const SortableSlotWrapper: React.FC<{ id: string; children: React.ReactNode }> =
     zIndex: isDragging ? 50 : undefined,
   };
   return (
-    <div ref={setNodeRef} style={style} {...attributes} className="flex items-stretch">
-      <div {...listeners} className="w-6 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors">
-        <GripVertical className="w-4 h-4" />
+    <div ref={setNodeRef} style={style} {...attributes} className={`flex items-stretch transition-shadow ${isDragging ? 'shadow-lg rounded-xl ring-2 ring-emerald-300 bg-white' : ''}`}>
+      <div {...listeners} className="w-10 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-emerald-500 active:text-emerald-600 transition-colors touch-none">
+        <GripVertical className="w-5 h-5" />
       </div>
       <div className="flex-1 min-w-0">{children}</div>
     </div>
@@ -88,9 +89,9 @@ const SortableTaskItem: React.FC<{ id: string; children: React.ReactNode }> = ({
     zIndex: isDragging ? 30 : undefined,
   };
   return (
-    <div ref={setNodeRef} style={style} {...attributes} className="flex items-stretch">
-      <div {...listeners} className="w-5 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors">
-        <GripVertical className="w-3.5 h-3.5" />
+    <div ref={setNodeRef} style={style} {...attributes} className={`flex items-stretch transition-shadow ${isDragging ? 'shadow-md rounded-lg ring-2 ring-emerald-300 bg-white' : ''}`}>
+      <div {...listeners} className="w-8 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-emerald-500 active:text-emerald-600 transition-colors touch-none">
+        <GripVertical className="w-4 h-4" />
       </div>
       <div className="flex-1 min-w-0">{children}</div>
     </div>
@@ -114,28 +115,94 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const nextDay = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; });
   const goToday = () => setSelectedDate(new Date());
 
-  // Day type detection & active tab
+  // Day type detection & active tab (string to support custom template IDs)
   const autoDayType = getDayType(selectedDate);
-  const [activeTab, setActiveTab] = useState<DayType>(autoDayType);
+  const [activeTab, setActiveTab] = useState<string>(autoDayType);
 
   // Auto-switch tab when date changes
   useEffect(() => {
     setActiveTab(getDayType(selectedDate));
   }, [selectedDate]);
 
+  // Custom template state
+  const customTemplates = scheduleTemplates.customTemplates || [];
+  const [customFormOpen, setCustomFormOpen] = useState(false);
+  const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
+  const [customForm, setCustomForm] = useState({ name: '', emoji: '📋' });
+  const [deleteCustomConfirm, setDeleteCustomConfirm] = useState<string | null>(null);
+
+  const isCustomTab = !['workday', 'saturday', 'sunday'].includes(activeTab);
+  const activeCustomTemplate = isCustomTab ? customTemplates.find(t => t.id === activeTab) : null;
+
   // Derive active schedule from template
-  const schedule = scheduleTemplates[activeTab] || [];
+  const schedule = isCustomTab
+    ? (activeCustomTemplate?.slots || [])
+    : (scheduleTemplates[activeTab as DayType] || []);
 
   // Use schedule template slots directly (tasks are grouped by category)
   const mergedSchedule = [...schedule].sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   // Wrapper to update only the active tab's template
   const setScheduleForTab = useCallback((updater: (prev: TimeSlot[]) => TimeSlot[]) => {
+    if (isCustomTab) {
+      setScheduleTemplates(prev => ({
+        ...prev,
+        customTemplates: (prev.customTemplates || []).map(t =>
+          t.id === activeTab ? { ...t, slots: updater(t.slots) } : t
+        ),
+      }));
+    } else {
+      setScheduleTemplates(prev => ({
+        ...prev,
+        [activeTab]: updater(prev[activeTab as DayType] || []),
+      }));
+    }
+  }, [activeTab, isCustomTab, setScheduleTemplates]);
+
+  // Custom template CRUD
+  const openCustomForm = () => {
+    setEditingCustomId(null);
+    setCustomForm({ name: '', emoji: '📋' });
+    setCustomFormOpen(true);
+  };
+  const openEditCustom = (ct: CustomScheduleTemplate) => {
+    setEditingCustomId(ct.id);
+    setCustomForm({ name: ct.name, emoji: ct.emoji });
+    setCustomFormOpen(true);
+  };
+  const saveCustomTemplate = () => {
+    const name = customForm.name.trim();
+    if (!name) return;
+    if (editingCustomId) {
+      setScheduleTemplates(prev => ({
+        ...prev,
+        customTemplates: (prev.customTemplates || []).map(t =>
+          t.id === editingCustomId ? { ...t, name, emoji: customForm.emoji } : t
+        ),
+      }));
+    } else {
+      const newTemplate: CustomScheduleTemplate = {
+        id: `custom-${Date.now()}`,
+        name,
+        emoji: customForm.emoji,
+        slots: [],
+      };
+      setScheduleTemplates(prev => ({
+        ...prev,
+        customTemplates: [...(prev.customTemplates || []), newTemplate],
+      }));
+      setActiveTab(newTemplate.id);
+    }
+    setCustomFormOpen(false);
+  };
+  const deleteCustomTemplate = (id: string) => {
     setScheduleTemplates(prev => ({
       ...prev,
-      [activeTab]: updater(prev[activeTab] || []),
+      customTemplates: (prev.customTemplates || []).filter(t => t.id !== id),
     }));
-  }, [activeTab, setScheduleTemplates]);
+    if (activeTab === id) setActiveTab(autoDayType);
+    setDeleteCustomConfirm(null);
+  };
 
   // Current time for "now" indicator
   const now = new Date();
@@ -166,6 +233,11 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   // Delete confirmation
   const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<{ taskId: string; slotId: string } | null>(null);
   const [confirmDeleteSlotId, setConfirmDeleteSlotId] = useState<string | null>(null);
+
+  // AI Auto-Schedule
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiProposal, setAiProposal] = useState<TimeSlot[] | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // Task Picker for adding tasks to a slot
   const [pickerSlot, setPickerSlot] = useState<TimeSlot | null>(null);
@@ -392,8 +464,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
   // DnD: swap groupKeys between slots when reordered
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 100, tolerance: 8 } }),
   );
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -415,7 +487,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   // DnD: reorder tasks within a slot
   const taskSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 100, tolerance: 8 } }),
   );
 
   const handleTaskDragEnd = (event: DragEndEvent) => {
@@ -428,6 +500,37 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       if (oldIndex === -1 || newIndex === -1) return prev;
       return arrayMove(prev, oldIndex, newIndex);
     });
+  };
+
+  // AI Auto-Schedule handler
+  const handleAISchedule = async () => {
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const result = await generateSmartSchedule(dayTasks, taskGroups, schedule);
+      if (Array.isArray(result)) {
+        const proposed = result.map((s: any, i: number) => ({
+          id: `ai-${activeTab}-${Date.now()}-${i}`,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          groupKey: s.groupKey,
+          assignedTaskIds: s.assignedTaskIds,
+        }));
+        setAiProposal(proposed);
+      } else {
+        setAiError('AI ไม่สามารถสร้างตารางได้ ลองอีกครั้ง');
+      }
+    } catch {
+      setAiError('ไม่สามารถเชื่อมต่อ AI ได้');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const acceptAISchedule = () => {
+    if (!aiProposal) return;
+    setScheduleForTab(() => aiProposal);
+    setAiProposal(null);
   };
 
   // Merge milestones and slots
@@ -494,30 +597,73 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       </div>
 
       {/* Schedule Template Tabs */}
-      <div className="bg-white rounded-xl border border-slate-200 p-1 flex gap-1">
-        {TAB_CONFIG.map(tab => {
-          const isActive = activeTab === tab.key;
-          const isAutoMatch = autoDayType === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all ${
-                isActive
-                  ? 'bg-emerald-500 text-white shadow-sm'
-                  : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'
-              }`}
-            >
-              <span>{tab.emoji}</span>
-              <span className="hidden sm:inline">{tab.label}</span>
-              <span className="sm:hidden">{tab.key === 'workday' ? 'จ-ศ' : tab.key === 'saturday' ? 'ส.' : 'อา.'}</span>
-              {isAutoMatch && !isActive && (
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              )}
-            </button>
-          );
-        })}
+      <div className="bg-white rounded-xl border border-slate-200 p-1">
+        <div className="flex gap-1 overflow-x-auto scrollbar-hide">
+          {TAB_CONFIG.map(tab => {
+            const isActive = activeTab === tab.key;
+            const isAutoMatch = autoDayType === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex-1 min-w-0 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                  isActive
+                    ? 'bg-emerald-500 text-white shadow-sm'
+                    : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'
+                }`}
+              >
+                <span>{tab.emoji}</span>
+                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="sm:hidden">{tab.key === 'workday' ? 'จ-ศ' : tab.key === 'saturday' ? 'ส.' : 'อา.'}</span>
+                {isAutoMatch && !isActive && (
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                )}
+              </button>
+            );
+          })}
+          {customTemplates.map(ct => {
+            const isActive = activeTab === ct.id;
+            return (
+              <button
+                key={ct.id}
+                onClick={() => setActiveTab(ct.id)}
+                className={`shrink-0 flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+                  isActive
+                    ? 'bg-emerald-500 text-white shadow-sm'
+                    : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'
+                }`}
+              >
+                <span>{ct.emoji}</span>
+                <span className="max-w-[60px] truncate">{ct.name}</span>
+              </button>
+            );
+          })}
+          <button
+            onClick={openCustomForm}
+            className="shrink-0 flex items-center justify-center w-8 py-2 rounded-lg text-slate-300 hover:bg-emerald-50 hover:text-emerald-500 transition-all"
+            title="เพิ่ม template"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
       </div>
+
+      {/* Custom tab edit/delete buttons */}
+      {isCustomTab && activeCustomTemplate && (
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-bold text-slate-600">
+            {activeCustomTemplate.emoji} {activeCustomTemplate.name}
+          </span>
+          <div className="flex gap-1.5">
+            <button onClick={() => openEditCustom(activeCustomTemplate)} className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-400 hover:text-blue-500 hover:border-blue-200 transition-colors">
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => setDeleteCustomConfirm(activeCustomTemplate.id)} className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-400 hover:text-rose-500 hover:border-rose-200 transition-colors">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Progress (today only) */}
       {isToday && dayTasks.length > 0 && (
@@ -699,13 +845,29 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
             </SortableContext>
           </DndContext>
 
-          {/* Add Slot Button */}
-          <button
-            onClick={openAddSlot}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-emerald-300 hover:text-emerald-500 hover:bg-emerald-50/50 transition-all text-xs font-bold"
-          >
-            <Plus className="w-4 h-4" /> เพิ่ม Slot
-          </button>
+          {/* Add Slot + AI Schedule Buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={openAddSlot}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-emerald-300 hover:text-emerald-500 hover:bg-emerald-50/50 transition-all text-xs font-bold"
+            >
+              <Plus className="w-4 h-4" /> เพิ่ม Slot
+            </button>
+            <button
+              onClick={handleAISchedule}
+              disabled={aiLoading}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border-2 border-dashed border-fuchsia-200 text-fuchsia-500 hover:border-fuchsia-300 hover:bg-fuchsia-50/50 transition-all text-xs font-bold disabled:opacity-50"
+            >
+              {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              AI จัดตาราง
+            </button>
+          </div>
+          {aiError && (
+            <div className="text-center py-2">
+              <p className="text-xs text-rose-500 font-medium">{aiError}</p>
+              <button onClick={handleAISchedule} className="text-xs text-fuchsia-500 font-bold mt-1 hover:underline">ลองอีกครั้ง</button>
+            </div>
+          )}
         </div>
 
         {/* Right: Summary */}
@@ -1008,6 +1170,120 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
           </div>
         </div>
       )}
+
+      {/* AI Schedule Proposal Modal */}
+      {aiProposal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setAiProposal(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-[90vw] max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-fuchsia-50 px-5 py-4 flex items-center justify-between border-b border-fuchsia-100">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-fuchsia-500" />
+                <h3 className="text-sm font-black text-fuchsia-700">AI แนะนำตาราง</h3>
+              </div>
+              <button onClick={() => setAiProposal(null)} className="p-1 rounded-lg hover:bg-fuchsia-100">
+                <X className="w-4 h-4 text-fuchsia-400" />
+              </button>
+            </div>
+            <div className="max-h-[50vh] overflow-y-auto p-4 space-y-1.5">
+              {aiProposal.map((slot, i) => {
+                const g = groupMap.get(slot.groupKey);
+                const c = GROUP_COLORS[g?.color || 'orange'] || GROUP_COLORS.orange;
+                return (
+                  <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-xl ${c.plannerBg} border ${c.plannerBorder}`}>
+                    <span className="text-xs font-black text-slate-500">{slot.startTime}–{slot.endTime}</span>
+                    <div className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+                    <span className={`text-xs font-bold ${c.plannerText}`}>{g?.emoji} {g?.label || slot.groupKey}</span>
+                    <span className="text-[10px] text-slate-400 font-bold ml-auto">{getDurationMinutes(slot.startTime, slot.endTime) > 0 ? formatDuration(getDurationMinutes(slot.startTime, slot.endTime)) : ''}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="px-5 py-3 border-t border-slate-100 flex gap-2">
+              <button onClick={() => setAiProposal(null)} className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50">
+                ยกเลิก
+              </button>
+              <button onClick={acceptAISchedule} className="flex-1 py-2 rounded-xl bg-fuchsia-500 text-white text-xs font-bold hover:bg-fuchsia-600">
+                ใช้ตารางนี้
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Template Form Modal */}
+      {customFormOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50">
+              <h3 className="font-bold text-slate-800 text-base">{editingCustomId ? 'แก้ไข Template' : 'สร้าง Template ใหม่'}</h3>
+              <button onClick={() => setCustomFormOpen(false)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ชื่อ Template</label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={customForm.name}
+                  onChange={e => setCustomForm({ ...customForm, name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="เช่น วัน WFH, วันลา, วันพิเศษ..."
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">Emoji</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {['📋', '🏠', '💻', '🎉', '🏖️', '📚', '🏃', '🧘', '🎯', '⚡', '🌙', '🔥', '🎨', '🎮', '🛫', '✨'].map(em => (
+                    <button
+                      key={em}
+                      onClick={() => setCustomForm({ ...customForm, emoji: em })}
+                      className={`w-10 h-10 rounded-xl border-2 text-lg flex items-center justify-center transition-all ${
+                        customForm.emoji === em ? 'border-emerald-400 bg-emerald-50 scale-110' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                      }`}
+                    >
+                      {em}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
+              <button onClick={() => setCustomFormOpen(false)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-sm rounded-xl transition-colors">ยกเลิก</button>
+              <button
+                onClick={saveCustomTemplate}
+                disabled={!customForm.name.trim()}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-200 transition-colors disabled:opacity-40 flex items-center gap-2"
+              >
+                {editingCustomId ? <><Save className="w-4 h-4" /> บันทึก</> : <><Plus className="w-4 h-4" /> สร้าง</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Custom Template Confirm */}
+      {deleteCustomConfirm && (() => {
+        const ct = customTemplates.find(t => t.id === deleteCustomConfirm);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn p-6 text-center space-y-4">
+              <div className="w-14 h-14 rounded-full bg-rose-100 flex items-center justify-center mx-auto">
+                <Trash2 className="w-7 h-7 text-rose-500" />
+              </div>
+              <h3 className="font-black text-lg text-slate-800">ลบ template "{ct?.emoji} {ct?.name}"?</h3>
+              <p className="text-sm text-slate-500">Slot ทั้งหมดใน template นี้จะถูกลบด้วย</p>
+              <div className="flex gap-3 justify-center pt-2">
+                <button onClick={() => setDeleteCustomConfirm(null)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-sm rounded-xl transition-colors">ยกเลิก</button>
+                <button onClick={() => deleteCustomTemplate(deleteCustomConfirm)} className="px-5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-semibold text-sm rounded-xl transition-colors flex items-center gap-2">
+                  <Trash2 className="w-4 h-4" /> ลบเลย
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

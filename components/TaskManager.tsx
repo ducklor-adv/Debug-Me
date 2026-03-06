@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { Task, TaskAttachment, SubTask, Recurrence, Priority, TaskGroup, GROUP_COLORS } from '../types';
+import { Task, TaskAttachment, SubTask, Recurrence, Priority, TaskGroup, GROUP_COLORS, LocationReminder } from '../types';
 import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning, Handshake, GripVertical } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -140,9 +140,9 @@ const SortableTaskItem: React.FC<{ id: string; children: React.ReactNode }> = ({
     opacity: isDragging ? 0.5 : 1,
   };
   return (
-    <div ref={setNodeRef} style={style} {...attributes} className="flex items-stretch">
-      <div {...listeners} className="w-6 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors">
-        <GripVertical className="w-3.5 h-3.5" />
+    <div ref={setNodeRef} style={style} {...attributes} className={`flex items-stretch transition-shadow ${isDragging ? 'shadow-lg rounded-xl ring-2 ring-emerald-300 bg-white' : ''}`}>
+      <div {...listeners} className="w-10 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-emerald-500 active:text-emerald-600 transition-colors touch-none">
+        <GripVertical className="w-5 h-5" />
       </div>
       <div className="flex-1 min-w-0">{children}</div>
     </div>
@@ -166,8 +166,8 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
 
   // DnD sensors for task reordering
   const dndSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 100, tolerance: 8 } }),
   );
 
   const handleTaskDragEnd = (event: DragEndEvent) => {
@@ -200,6 +200,8 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   const [formSubtasks, setFormSubtasks] = useState<SubTask[]>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [formRecurrence, setFormRecurrence] = useState<Recurrence | undefined>(undefined);
+  const [formLocationReminder, setFormLocationReminder] = useState<LocationReminder | undefined>(undefined);
+  const [locationLoading, setLocationLoading] = useState(false);
 
   // Attachment helpers
   const [isRecording, setIsRecording] = useState(false);
@@ -225,6 +227,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setFormSubtasks([]);
     setNewSubtaskTitle('');
     setFormRecurrence(undefined);
+    setFormLocationReminder(undefined);
     setShowPhoneInput(false);
     setShowContactInput(false);
     setFormOpen(true);
@@ -237,6 +240,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setFormSubtasks([]);
     setNewSubtaskTitle('');
     setFormRecurrence(undefined);
+    setFormLocationReminder(undefined);
     setShowPhoneInput(false);
     setShowContactInput(false);
     setFormOpen(true);
@@ -261,6 +265,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setFormSubtasks(task.subtasks || []);
     setNewSubtaskTitle('');
     setFormRecurrence(task.recurrence);
+    setFormLocationReminder(task.locationReminder);
     setShowPhoneInput(false);
     setShowContactInput(false);
     setFormOpen(true);
@@ -274,6 +279,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setFormSubtasks([]);
     setNewSubtaskTitle('');
     setFormRecurrence(undefined);
+    setFormLocationReminder(undefined);
     setShowPhoneInput(false);
     setShowContactInput(false);
   };
@@ -282,10 +288,11 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     if (!form.title.trim()) return;
     const subtasks = formSubtasks.length > 0 ? formSubtasks : undefined;
     const recurrence = formRecurrence;
+    const locationReminder = formLocationReminder;
     if (editId) {
-      setTasks(prev => prev.map(t => t.id === editId ? { ...t, ...form, attachments: formAttachments, subtasks, recurrence } : t));
+      setTasks(prev => prev.map(t => t.id === editId ? { ...t, ...form, attachments: formAttachments, subtasks, recurrence, locationReminder } : t));
     } else {
-      const newTask: Task = { id: Date.now().toString(), ...form, attachments: formAttachments, subtasks, recurrence };
+      const newTask: Task = { id: Date.now().toString(), ...form, attachments: formAttachments, subtasks, recurrence, locationReminder };
       setTasks(prev => [newTask, ...prev]);
     }
     closeForm();
@@ -825,6 +832,88 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                 )}
               </div>
 
+              {/* Location Reminder */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">แจ้งเตือนตามตำแหน่ง (GPS)</label>
+                {!formLocationReminder ? (
+                  <button
+                    onClick={() => {
+                      setLocationLoading(true);
+                      if (!navigator.geolocation) { alert('เบราว์เซอร์ไม่รองรับ GPS'); setLocationLoading(false); return; }
+                      navigator.geolocation.getCurrentPosition(
+                        (pos) => {
+                          setFormLocationReminder({
+                            id: `loc-${Date.now()}`,
+                            latitude: pos.coords.latitude,
+                            longitude: pos.coords.longitude,
+                            radius: 200,
+                            label: '',
+                            triggerOn: 'enter',
+                            enabled: true,
+                          });
+                          setLocationLoading(false);
+                        },
+                        () => { alert('ไม่สามารถดึงพิกัดได้'); setLocationLoading(false); },
+                        { enableHighAccuracy: true, timeout: 10000 }
+                      );
+                    }}
+                    disabled={locationLoading}
+                    className="w-full py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-emerald-300 hover:text-emerald-500 hover:bg-emerald-50/50 transition-all text-xs font-bold flex items-center justify-center gap-2"
+                  >
+                    <MapPin className={`w-4 h-4 ${locationLoading ? 'animate-pulse' : ''}`} />
+                    {locationLoading ? 'กำลังดึงพิกัด...' : 'เพิ่มแจ้งเตือนตามตำแหน่ง'}
+                  </button>
+                ) : (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <MapPin className="w-4 h-4 text-amber-500" />
+                        <span className="text-xs font-bold text-amber-700">Location Reminder</span>
+                      </div>
+                      <button onClick={() => setFormLocationReminder(undefined)} className="p-1 hover:bg-amber-100 rounded text-amber-400 hover:text-rose-500">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={formLocationReminder.label}
+                      onChange={e => setFormLocationReminder({ ...formLocationReminder, label: e.target.value })}
+                      placeholder="ชื่อสถานที่ เช่น บ้าน, ออฟฟิศ..."
+                      className="w-full bg-white border border-amber-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <span className="text-[10px] text-amber-600 font-bold block mb-1">รัศมี (เมตร)</span>
+                        <input
+                          type="number"
+                          min="50"
+                          max="5000"
+                          step="50"
+                          value={formLocationReminder.radius}
+                          onChange={e => setFormLocationReminder({ ...formLocationReminder, radius: parseInt(e.target.value) || 200 })}
+                          className="w-full bg-white border border-amber-200 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <span className="text-[10px] text-amber-600 font-bold block mb-1">แจ้งเมื่อ</span>
+                        <select
+                          value={formLocationReminder.triggerOn}
+                          onChange={e => setFormLocationReminder({ ...formLocationReminder, triggerOn: e.target.value as 'enter' | 'exit' | 'both' })}
+                          className="w-full bg-white border border-amber-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        >
+                          <option value="enter">เข้าพื้นที่</option>
+                          <option value="exit">ออกจากพื้นที่</option>
+                          <option value="both">ทั้งเข้า-ออก</option>
+                        </select>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-amber-500">
+                      พิกัด: {formLocationReminder.latitude.toFixed(4)}, {formLocationReminder.longitude.toFixed(4)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {/* Quick Attachments */}
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-2 block">Quick Attachments</label>
@@ -1058,10 +1147,10 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
           : null;
 
         return (
-          <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 backdrop-blur-sm p-4 overflow-y-auto">
-            <div className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl animate-fadeIn my-8">
+          <div className="fixed inset-0 z-[70] flex flex-col bg-emerald-50 sm:bg-slate-900/50 sm:backdrop-blur-sm sm:p-4 sm:overflow-y-auto sm:items-start sm:justify-center sm:flex-row">
+            <div className="bg-transparent sm:bg-white sm:rounded-2xl w-full sm:max-w-3xl sm:shadow-2xl animate-fadeIn flex flex-col flex-1 sm:flex-initial sm:my-8">
               {/* Modal Header */}
-              <div className={`${style.bg} border-b-2 ${style.border} p-4 rounded-t-2xl`}>
+              <div className={`${style.bg} border-b-2 ${style.border} p-3 sm:p-4 sm:rounded-t-2xl shrink-0`}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className={`w-10 h-10 rounded-xl ${style.iconBg} flex items-center justify-center shadow-sm`}>
@@ -1092,7 +1181,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
               </div>
 
               {/* Modal Body */}
-              <div className="p-4 max-h-[60vh] overflow-y-auto">
+              <div className="px-2 py-3 sm:p-4 flex-1 overflow-y-auto sm:max-h-[60vh]">
                 {group.length === 0 ? (
                   <p className="text-center text-sm text-slate-400 py-12">ยังไม่มี task ในหมวดนี้</p>
                 ) : (
