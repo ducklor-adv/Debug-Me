@@ -271,18 +271,6 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     setCheckedTasks(checked);
   }, [todayRecords]);
 
-  // Auto-expand current slot
-  useEffect(() => {
-    if (!isToday) return;
-    const currentSlot = sortedSchedule.find(s => {
-      const [sh, sm] = s.startTime.split(':').map(Number);
-      const [eh, em] = s.endTime.split(':').map(Number);
-      return nowMinutes >= sh * 60 + sm && nowMinutes < eh * 60 + em;
-    });
-    if (currentSlot) {
-      setExpandedSlots(prev => new Set(prev).add(currentSlot.id));
-    }
-  }, [isToday, activeTab]);
 
   // Toggle check (slotStart/slotEnd from the slot containing this task)
   const toggleCheck = useCallback((taskId: string, slotStart?: string, slotEnd?: string) => {

@@ -29,7 +29,15 @@
 <script type="module" src="/index.tsx"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js');
+    if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+      // Dev mode: unregister SW to prevent stale cache
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(r => r.unregister());
+      });
+      caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+    } else {
+      navigator.serviceWorker.register('/sw.js');
+    }
   }
 </script>
 </body>

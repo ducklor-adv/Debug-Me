@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth } from './firebase';
 import {
@@ -25,14 +25,6 @@ import {
 import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, getDayType } from './types';
 import { subscribeAppData, saveAppData, addDailyRecordFS, getDailyRecordsByDate, getDailyRecordCount } from './lib/firestoreDB';
 import Dashboard from './components/Dashboard';
-import TaskManager from './components/TaskManager';
-import FocusTimer from './components/FocusTimer';
-import Analytics from './components/Analytics';
-import AICoach from './components/AICoach';
-import DailyPlanner from './components/DailyPlanner';
-import HabitTracker from './components/HabitTracker';
-import SearchView from './components/SearchView';
-import CalendarView from './components/CalendarView';
 import UndoToast from './components/UndoToast';
 import Login from './components/Login';
 import { useNotificationScheduler } from './hooks/useNotificationScheduler';
@@ -40,6 +32,22 @@ import { useLocationReminders } from './hooks/useLocationReminders';
 import { analyzeBehaviorPatterns, BehaviorPattern } from './services/behaviorAnalysis';
 import { getDailyRecordsInRange } from './lib/firestoreDB';
 import { useUndoStack, UndoAction } from './hooks/useUndoStack';
+
+// Lazy-load non-dashboard views for faster initial load
+const TaskManager = lazy(() => import('./components/TaskManager'));
+const FocusTimer = lazy(() => import('./components/FocusTimer'));
+const Analytics = lazy(() => import('./components/Analytics'));
+const AICoach = lazy(() => import('./components/AICoach'));
+const DailyPlanner = lazy(() => import('./components/DailyPlanner'));
+const HabitTracker = lazy(() => import('./components/HabitTracker'));
+const SearchView = lazy(() => import('./components/SearchView'));
+const CalendarView = lazy(() => import('./components/CalendarView'));
+
+const LazyFallback = () => (
+  <div className="flex items-center justify-center py-20">
+    <div className="w-8 h-8 border-3 border-emerald-200 border-t-emerald-500 rounded-full animate-spin"></div>
+  </div>
+);
 
 const VIEW_KEY = 'debugme-view';
 
@@ -667,14 +675,14 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} habits={habits} onSaveDailyRecord={handleSaveDailyRecord} onNavigateToPlanner={handleNavigateToPlanner} />;
-      case 'planner': return <DailyPlanner tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} pendingSlot={pendingSlot} onPendingSlotHandled={() => setPendingSlot(null)} />;
-      case 'tasks': return <TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} />;
-      case 'focus': return <FocusTimer />;
-      case 'analytics': return <Analytics tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} totalRecordCount={totalRecordCount} userId={user!.uid} />;
-      case 'ai-coach': return <AICoach tasks={tasks} />;
-      case 'habits': return <HabitTracker habits={habits} setHabits={setHabits} />;
-      case 'search': return <SearchView tasks={tasks} taskGroups={taskGroups} />;
-      case 'calendar': return <CalendarView tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} userId={user!.uid} />;
+      case 'planner': return <Suspense fallback={<LazyFallback />}><DailyPlanner tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} pendingSlot={pendingSlot} onPendingSlotHandled={() => setPendingSlot(null)} /></Suspense>;
+      case 'tasks': return <Suspense fallback={<LazyFallback />}><TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} /></Suspense>;
+      case 'focus': return <Suspense fallback={<LazyFallback />}><FocusTimer /></Suspense>;
+      case 'analytics': return <Suspense fallback={<LazyFallback />}><Analytics tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} totalRecordCount={totalRecordCount} userId={user!.uid} /></Suspense>;
+      case 'ai-coach': return <Suspense fallback={<LazyFallback />}><AICoach tasks={tasks} /></Suspense>;
+      case 'habits': return <Suspense fallback={<LazyFallback />}><HabitTracker habits={habits} setHabits={setHabits} /></Suspense>;
+      case 'search': return <Suspense fallback={<LazyFallback />}><SearchView tasks={tasks} taskGroups={taskGroups} /></Suspense>;
+      case 'calendar': return <Suspense fallback={<LazyFallback />}><CalendarView tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} userId={user!.uid} /></Suspense>;
       default: return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} habits={habits} onSaveDailyRecord={handleSaveDailyRecord} onNavigateToPlanner={handleNavigateToPlanner} />;
     }
   };
