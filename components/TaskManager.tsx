@@ -1,5 +1,6 @@
 
 import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Task, TaskAttachment, SubTask, Recurrence, Priority, TaskGroup, GROUP_COLORS, LocationReminder } from '../types';
 import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning, Handshake, GripVertical } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
@@ -471,7 +472,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   };
 
   return (
-    <div className="space-y-6 animate-fadeIn pb-10">
+    <div className="space-y-6 pb-10">
 
       {/* Header - Add Group Button */}
       <div className="flex justify-end">
@@ -499,7 +500,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
       )}
 
       {/* ===== Group Form ===== */}
-      {groupFormOpen && (
+      {groupFormOpen && createPortal(
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 backdrop-blur-sm p-4 pt-20 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl animate-fadeIn overflow-hidden my-4">
             <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50">
@@ -574,10 +575,10 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* ===== Delete Group Confirm ===== */}
-      {deleteGroupConfirm && (() => {
+      {deleteGroupConfirm && createPortal((() => {
         const g = taskGroups.find(x => x.key === deleteGroupConfirm);
         const count = tasks.filter(t => t.category === deleteGroupConfirm).length;
         return (
@@ -599,11 +600,11 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
             </div>
           </div>
         );
-      })()}
+      })(), document.body)}
 
       {/* ===== Task Form (Add / Edit) ===== */}
-      {formOpen && (
-        <div className="fixed inset-0 z-[60] flex items-start justify-center bg-slate-900/50 backdrop-blur-sm p-4 pt-16 overflow-y-auto">
+      {formOpen && createPortal(
+        <div style={{ zIndex: 9000 }} className="fixed inset-0 flex items-start justify-center bg-slate-900/50 backdrop-blur-sm p-4 pt-16 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl animate-fadeIn overflow-hidden flex flex-col max-h-[85vh]">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50 shrink-0">
@@ -1007,10 +1008,10 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
 
       {/* ===== Grid Cards Overview ===== */}
-      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 animate-fadeIn">
         {groupStyles.map((type) => {
           const group = tasks.filter(t => t.category === type.key);
           const doneCount = group.filter(t => t.completed).length;
@@ -1107,7 +1108,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
       </div>
 
       {/* ===== Selected Category Modal ===== */}
-      {selectedCat && (() => {
+      {selectedCat && createPortal((() => {
         const style = getTypeStyle(selectedCat);
         const group = tasks.filter(t => t.category === selectedCat);
 
@@ -1147,7 +1148,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
           : null;
 
         return (
-          <div className="fixed inset-0 z-[70] flex flex-col bg-emerald-50 sm:bg-slate-900/50 sm:backdrop-blur-sm sm:p-4 sm:overflow-y-auto sm:items-start sm:justify-center sm:flex-row">
+          <div style={{ zIndex: 8000 }} className="fixed inset-0 flex flex-col bg-emerald-50 sm:bg-slate-900/50 sm:backdrop-blur-sm sm:p-4 sm:overflow-y-auto sm:items-start sm:justify-center sm:flex-row">
             <div className="bg-transparent sm:bg-white sm:rounded-2xl w-full sm:max-w-3xl sm:shadow-2xl animate-fadeIn flex flex-col flex-1 sm:flex-initial sm:my-8">
               {/* Modal Header */}
               <div className={`${style.bg} border-b-2 ${style.border} p-3 sm:p-4 sm:rounded-t-2xl shrink-0`}>
@@ -1312,11 +1313,11 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
             </div>
           </div>
         );
-      })()}
+      })(), document.body)}
 
       {/* Delete Confirmation Dialog */}
-      {confirmDeleteId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+      {confirmDeleteId && createPortal(
+        <div style={{ zIndex: 9500 }} className="fixed inset-0 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn overflow-hidden">
             <div className="p-6 text-center">
               <div className="w-14 h-14 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1337,7 +1338,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
     </div>
   );
 };
