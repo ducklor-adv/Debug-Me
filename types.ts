@@ -193,6 +193,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { key: 'relationship', label: 'ความสัมพันธ์', emoji: '❤️' },
   { key: 'mind', label: 'จิตใจ', emoji: '🧠' },
   { key: 'break', label: 'คั่นเวลา', emoji: '⏸️' },
+  { key: 'sleep', label: 'นอน', emoji: '🌙' },
 ];
 
 // ===== Task Group (กลุ่มงาน) =====

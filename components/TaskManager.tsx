@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Task, TaskAttachment, SubTask, Recurrence, Priority, TaskGroup, GROUP_COLORS, LocationReminder, DEFAULT_CATEGORIES, Category } from '../types';
+import { Task, TaskAttachment, SubTask, Recurrence, Priority, TaskGroup, GROUP_COLORS, LocationReminder, DEFAULT_CATEGORIES, Category, getTasksForDate } from '../types';
 import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning, Handshake, GripVertical, ListTodo } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -206,6 +206,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   const [locationLoading, setLocationLoading] = useState(false);
   const [expandedSubtaskId, setExpandedSubtaskId] = useState<string | null>(null);
   const [activeFormTab, setActiveFormTab] = useState<'time' | 'plan' | 'detail'>('time');
+  const [activeQuickTab, setActiveQuickTab] = useState<string | null>(null);
 
   // Attachment helpers
   const [isRecording, setIsRecording] = useState(false);
@@ -304,18 +305,24 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     }
   };
 
-  const saveForm = () => {
+  const saveForm = async () => {
     if (!form.title.trim()) return;
     const subtasks = formSubtasks.length > 0 ? formSubtasks : undefined;
     const recurrence = formRecurrence;
     const locationReminder = formLocationReminder;
+    let updatedTasks: Task[];
     if (editId) {
-      setTasks(prev => prev.map(t => t.id === editId ? { ...t, ...form, attachments: formAttachments, subtasks, recurrence, locationReminder } : t));
+      updatedTasks = tasks.map(t => t.id === editId ? { ...t, ...form, attachments: formAttachments, subtasks, recurrence, locationReminder } : t);
     } else {
       const newTask: Task = { id: Date.now().toString(), ...form, attachments: formAttachments, subtasks, recurrence, locationReminder };
-      setTasks(prev => [newTask, ...prev]);
+      updatedTasks = [newTask, ...tasks];
     }
+    setTasks(updatedTasks);
     closeForm();
+    // Immediately save to Firestore (don't rely on auto-save debounce)
+    if (onImmediateSave) {
+      await onImmediateSave(updatedTasks);
+    }
   };
 
   // Subtask helpers
@@ -995,8 +1002,157 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
         </div>
       , document.body)}
 
-      {/* ===== Category Sections with Group Cards ===== */}
-      <div className="space-y-3 animate-fadeIn">
+      {/* ===== งานด่วน & นัดหมาย — File Folder Tabs ===== */}
+      {(() => {
+        const uncatGroups = taskGroups.filter(g => !g.categoryKey);
+        if (uncatGroups.length === 0) return null;
+
+        // Default to first tab if nothing selected yet
+        const effectiveTab = activeQuickTab || uncatGroups[0]?.key || null;
+        const activeGroup = effectiveTab ? uncatGroups.find(g => g.key === effectiveTab) : null;
+        const activeColor = activeGroup ? (GROUP_COLORS[activeGroup.color] || GROUP_COLORS.rose) : null;
+        const activeGroupTasks = activeGroup ? tasks.filter(t => t.category === activeGroup.key) : [];
+
+        // Thai date helpers
+        const thaiDayNames = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
+        const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const tomorrowDate = new Date(); tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+        const tomorrowStr = tomorrowDate.toISOString().slice(0, 10);
+
+        const formatThaiDate = (dateStr: string) => {
+          const d = new Date(dateStr);
+          const day = d.getDate();
+          const month = thaiMonths[d.getMonth()];
+          const dow = thaiDayNames[d.getDay()];
+          if (dateStr === todayStr) return `วันนี้ — ${dow} ${day} ${month}`;
+          if (dateStr === tomorrowStr) return `พรุ่งนี้ — ${dow} ${day} ${month}`;
+          return `${dow} ${day} ${month}`;
+        };
+
+        // Group tasks by startDate
+        const dateMap: Record<string, Task[]> = {};
+        const noDateTasks: Task[] = [];
+        activeGroupTasks.forEach(t => {
+          if (!t.startDate) { noDateTasks.push(t); return; }
+          if (!dateMap[t.startDate]) dateMap[t.startDate] = [];
+          dateMap[t.startDate].push(t);
+        });
+        const dateGroups = Object.entries(dateMap).sort(([a], [b]) => a.localeCompare(b));
+
+        const renderTask = (t: Task) => (
+          <div
+            key={t.id}
+            onClick={() => { setSelectedCat(t.category); setExpandedId(null); }}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-white/80 border cursor-pointer hover:shadow-sm transition-all ${
+              t.completed ? 'border-slate-100 opacity-60' : activeColor!.border
+            }`}
+          >
+            {t.completed
+              ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              : <Circle className={`w-4 h-4 shrink-0 ${activeColor!.text}`} />
+            }
+            <div className="flex-1 min-w-0">
+              <span className={`text-sm font-bold block truncate ${t.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                {t.title}
+              </span>
+              {t.startTime && (
+                <span className="text-[10px] text-slate-400 flex items-center gap-0.5 mt-0.5">
+                  <Clock className="w-3 h-3" />
+                  {t.startTime}{t.endTime ? `–${t.endTime}` : ''}
+                  {t.estimatedDuration ? ` (${t.estimatedDuration} นาที)` : ''}
+                </span>
+              )}
+            </div>
+            {t.priority === Priority.HIGH && (
+              <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            )}
+          </div>
+        );
+
+        return (
+          <div className="mb-3 animate-fadeIn">
+            {/* Tabs */}
+            <div className="flex items-end gap-0.5 px-1">
+              {uncatGroups.map(g => {
+                const c = GROUP_COLORS[g.color] || GROUP_COLORS.rose;
+                const isActive = effectiveTab === g.key;
+                const count = tasks.filter(t => t.category === g.key).length;
+
+                return (
+                  <button
+                    key={g.key}
+                    onClick={() => setActiveQuickTab(g.key)}
+                    className={`flex items-center gap-1.5 px-3 pt-2 pb-2 rounded-t-xl border border-b-0 text-xs font-black transition-all ${
+                      isActive
+                        ? `${c.bg} ${c.border} ${c.text} relative z-10 -mb-px pb-2.5`
+                        : `bg-slate-100/60 border-slate-200/60 text-slate-400 hover:text-slate-500 scale-[0.97] origin-bottom`
+                    }`}
+                  >
+                    <span className="text-sm">{g.emoji}</span>
+                    {g.label}
+                    {count > 0 && (
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? c.badge : 'bg-slate-200 text-slate-500'}`}>
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Content */}
+            {activeGroup && activeColor && (
+              <div className={`rounded-b-xl border p-3 ${activeColor.bg} ${activeColor.border} ${
+                effectiveTab === uncatGroups[0]?.key ? 'rounded-tr-xl' : 'rounded-t-xl'
+              }`}>
+                {activeGroupTasks.length > 0 ? (
+                  <div className="space-y-2">
+                    {dateGroups.map(([dateKey, dateTasks]) => (
+                      <div key={dateKey}>
+                        {/* Date separator */}
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <Calendar className={`w-3 h-3 ${activeColor.text}`} />
+                          <span className={`text-[11px] font-black ${activeColor.text}`}>{formatThaiDate(dateKey)}</span>
+                          <div className={`flex-1 h-px ${activeColor.border} border-t border-dashed`} />
+                        </div>
+                        <div className="space-y-1.5 ml-1">
+                          {dateTasks.map(renderTask)}
+                        </div>
+                      </div>
+                    ))}
+                    {noDateTasks.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <Clock className={`w-3 h-3 ${activeColor.text}`} />
+                          <span className={`text-[11px] font-black ${activeColor.text}`}>ไม่ระบุวัน</span>
+                          <div className={`flex-1 h-px ${activeColor.border} border-t border-dashed`} />
+                        </div>
+                        <div className="space-y-1.5 ml-1">
+                          {noDateTasks.map(renderTask)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 text-center py-3">ยังไม่มีรายการ</p>
+                )}
+
+                {/* Add button */}
+                <button
+                  onClick={() => openNewFormWithCategory(activeGroup.key)}
+                  className={`mt-2 w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border-2 border-dashed text-xs font-bold transition-all hover:shadow-sm ${activeColor.border} ${activeColor.text} hover:bg-white/60`}
+                >
+                  <Plus className="w-3.5 h-3.5" /> เพิ่มรายการ
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ===== Category Cards with Group Icons ===== */}
+      <div className="grid grid-cols-2 gap-2.5 animate-fadeIn">
         {DEFAULT_CATEGORIES.map(cat => {
           const catGroups = groupStyles.filter(g => {
             const tg = taskGroups.find(t => t.key === g.key);
@@ -1005,90 +1161,99 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
           if (catGroups.length === 0) return null;
 
           return (
-            <div key={cat.key} className="flex items-center gap-2 flex-wrap">
-              {/* Category label */}
-              <span className="text-xs font-black text-slate-400 w-16 shrink-0 truncate">{cat.emoji} {cat.label}</span>
+            <div key={cat.key} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              {/* Category header */}
+              <div className="px-3 py-2 bg-slate-50 border-b border-slate-100">
+                <span className="text-sm font-black text-slate-600">{cat.emoji} {cat.label}</span>
+              </div>
 
-              {/* Group chips */}
-              {catGroups.map((type) => {
-                const isActive = selectedCat === type.key;
-                const groupData = taskGroups.find(g => g.key === type.key);
+              {/* Group chips inside card */}
+              <div className="p-2 flex flex-wrap gap-1.5">
+                {catGroups.map((type) => {
+                  const isActive = selectedCat === type.key;
+                  const groupData = taskGroups.find(g => g.key === type.key);
+                  const taskCount = tasks.filter(t => t.category === type.key).length;
 
-                // Icon mapping
-                const IconComponent = type.icon === 'sun' ? Sun
-                  : type.icon === 'moon' ? Moon
-                  : type.icon === 'code' ? Code
-                  : type.icon === 'home' ? Home
-                  : type.icon === 'brain' ? Brain
-                  : type.icon === 'heart' ? Heart
-                  : type.icon === 'heartpulse' ? HeartPulse
-                  : type.icon === 'dumbbell' ? Dumbbell
-                  : type.icon === 'users' ? Users
-                  : type.icon === 'user' ? UserIcon
-                  : type.icon === 'file' ? FileText
-                  : type.icon === 'coffee' ? Coffee
-                  : type.icon === 'wrench' ? Wrench
-                  : type.icon === 'zap' ? Zap
-                  : type.icon === 'lightning' ? CloudLightning
-                  : type.icon === 'briefcase' ? Briefcase
-                  : type.icon === 'cart' ? ShoppingCart
-                  : type.icon === 'star' ? Star
-                  : type.icon === 'calendar' ? Calendar
-                  : type.icon === 'clock' ? Clock
-                  : type.icon === 'target' ? Target
-                  : type.icon === 'pencil' ? Pencil
-                  : type.icon === 'trending' ? TrendingUp
-                  : type.icon === 'lightbulb' ? Lightbulb
-                  : type.icon === 'music' ? Music
-                  : type.icon === 'game' ? Gamepad2
-                  : type.icon === 'book' ? Book
-                  : type.icon === 'utensils' ? Utensils
-                  : type.icon === 'bike' ? Bike
-                  : type.icon === 'palette' ? Palette
-                  : type.icon === 'rocket' ? Rocket
-                  : type.icon === 'handshake' ? Handshake
-                  : null;
+                  // Icon mapping
+                  const IconComponent = type.icon === 'sun' ? Sun
+                    : type.icon === 'moon' ? Moon
+                    : type.icon === 'code' ? Code
+                    : type.icon === 'home' ? Home
+                    : type.icon === 'brain' ? Brain
+                    : type.icon === 'heart' ? Heart
+                    : type.icon === 'heartpulse' ? HeartPulse
+                    : type.icon === 'dumbbell' ? Dumbbell
+                    : type.icon === 'users' ? Users
+                    : type.icon === 'user' ? UserIcon
+                    : type.icon === 'file' ? FileText
+                    : type.icon === 'coffee' ? Coffee
+                    : type.icon === 'wrench' ? Wrench
+                    : type.icon === 'zap' ? Zap
+                    : type.icon === 'lightning' ? CloudLightning
+                    : type.icon === 'briefcase' ? Briefcase
+                    : type.icon === 'cart' ? ShoppingCart
+                    : type.icon === 'star' ? Star
+                    : type.icon === 'calendar' ? Calendar
+                    : type.icon === 'clock' ? Clock
+                    : type.icon === 'target' ? Target
+                    : type.icon === 'pencil' ? Pencil
+                    : type.icon === 'trending' ? TrendingUp
+                    : type.icon === 'lightbulb' ? Lightbulb
+                    : type.icon === 'music' ? Music
+                    : type.icon === 'game' ? Gamepad2
+                    : type.icon === 'book' ? Book
+                    : type.icon === 'utensils' ? Utensils
+                    : type.icon === 'bike' ? Bike
+                    : type.icon === 'palette' ? Palette
+                    : type.icon === 'rocket' ? Rocket
+                    : type.icon === 'handshake' ? Handshake
+                    : null;
 
-                return (
-                  <div key={type.key} className={`group/card relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all ${
-                    isActive ? `${type.bg} ${type.border} border shadow-sm` : 'hover:bg-slate-100'
-                  }`}
-                    onClick={() => { setSelectedCat(isActive ? null : type.key); setExpandedId(null); }}
-                  >
-                    <div className={`w-6 h-6 rounded-md ${type.iconBg} flex items-center justify-center`}>
-                      {type.icon === 'broom' ? <BroomIcon className="w-3.5 h-3.5 text-white" />
-                      : type.icon === 'family' ? <FamilyIcon className="w-3.5 h-3.5 text-white" />
-                      : type.icon === 'flex' ? <FlexIcon className="w-3.5 h-3.5 text-white" />
-                      : type.icon === 'brain2' ? <BrainIcon className="w-3.5 h-3.5 text-white" />
-                      : IconComponent ? <IconComponent className="w-3.5 h-3.5 text-white" />
-                      : <Briefcase className="w-3.5 h-3.5 text-white" />}
+                  return (
+                    <div key={type.key} className={`group/card relative flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer transition-all ${
+                      isActive ? `${type.bg} ${type.border} border shadow-sm` : 'hover:bg-slate-50 border border-transparent'
+                    }`}
+                      onClick={() => { setSelectedCat(isActive ? null : type.key); setExpandedId(null); }}
+                    >
+                      <div className={`w-6 h-6 rounded-md ${type.iconBg} flex items-center justify-center`}>
+                        {type.icon === 'broom' ? <BroomIcon className="w-3.5 h-3.5 text-white" />
+                        : type.icon === 'family' ? <FamilyIcon className="w-3.5 h-3.5 text-white" />
+                        : type.icon === 'flex' ? <FlexIcon className="w-3.5 h-3.5 text-white" />
+                        : type.icon === 'brain2' ? <BrainIcon className="w-3.5 h-3.5 text-white" />
+                        : IconComponent ? <IconComponent className="w-3.5 h-3.5 text-white" />
+                        : <Briefcase className="w-3.5 h-3.5 text-white" />}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-slate-600 leading-tight">{type.label}</span>
+                        {taskCount > 0 && <span className="text-[10px] text-slate-400 leading-tight">{taskCount} งาน</span>}
+                      </div>
+
+                      {/* Edit / Delete on hover */}
+                      <div className="hidden group-hover/card:flex gap-0.5 ml-auto">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (groupData) openEditGroup(groupData); }}
+                          className="w-4 h-4 rounded bg-white/80 hover:bg-blue-100 flex items-center justify-center"
+                          title="แก้ไขกลุ่ม"
+                        >
+                          <Pencil className="w-2.5 h-2.5 text-blue-500" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteGroupConfirm(type.key); }}
+                          className="w-4 h-4 rounded bg-white/80 hover:bg-rose-100 flex items-center justify-center"
+                          title="ลบกลุ่ม"
+                        >
+                          <Trash2 className="w-2.5 h-2.5 text-rose-500" />
+                        </button>
+                      </div>
                     </div>
-                    <span className="text-xs font-bold text-slate-600">{type.label}</span>
-
-                    {/* Edit / Delete on hover */}
-                    <div className="hidden group-hover/card:flex gap-0.5 ml-0.5">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); if (groupData) openEditGroup(groupData); }}
-                        className="w-4 h-4 rounded bg-white/80 hover:bg-blue-100 flex items-center justify-center"
-                        title="แก้ไขกลุ่ม"
-                      >
-                        <Pencil className="w-2.5 h-2.5 text-blue-500" />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setDeleteGroupConfirm(type.key); }}
-                        className="w-4 h-4 rounded bg-white/80 hover:bg-rose-100 flex items-center justify-center"
-                        title="ลบกลุ่ม"
-                      >
-                        <Trash2 className="w-2.5 h-2.5 text-rose-500" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           );
         })}
       </div>
+
 
       {/* ===== Selected Category Modal ===== */}
       {selectedCat && createPortal((() => {

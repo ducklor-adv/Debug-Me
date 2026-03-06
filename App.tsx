@@ -22,7 +22,7 @@ import {
   Bell,
   WifiOff,
 } from 'lucide-react';
-import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, getDayType } from './types';
+import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, getDayType, DEFAULT_CATEGORIES } from './types';
 import { subscribeAppData, saveAppData, addDailyRecordFS, getDailyRecordsByDate, getDailyRecordCount } from './lib/firestoreDB';
 import Dashboard from './components/Dashboard';
 import UndoToast from './components/UndoToast';
@@ -85,45 +85,44 @@ const DEFAULT_MILESTONES: Milestone[] = [
 
 const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
   workday: [
-    { id: 'wd-1',  startTime: '05:00', endTime: '06:00', groupKey: 'กิจวัตร' },
-    { id: 'wd-2',  startTime: '06:00', endTime: '07:00', groupKey: 'สุขภาพ' },
-    { id: 'wd-3',  startTime: '07:00', endTime: '08:00', groupKey: 'กิจวัตร' },
-    { id: 'wd-4',  startTime: '08:00', endTime: '12:00', groupKey: 'งานหลัก' },
-    { id: 'wd-5',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },
-    { id: 'wd-6',  startTime: '13:00', endTime: '17:00', groupKey: 'งานหลัก' },
-    { id: 'wd-7',  startTime: '17:00', endTime: '18:00', groupKey: 'ธุระส่วนตัว' },
-    { id: 'wd-8',  startTime: '18:00', endTime: '19:00', groupKey: 'งานบ้าน' },
-    { id: 'wd-9',  startTime: '19:00', endTime: '20:00', groupKey: 'ครอบครัว' },
-    { id: 'wd-10', startTime: '20:00', endTime: '21:00', groupKey: 'พัฒนาตัวเอง' },
-    { id: 'wd-11', startTime: '21:00', endTime: '22:00', groupKey: 'พักผ่อน' },
+    { id: 'wd-0',  startTime: '00:00', endTime: '05:00', groupKey: 'sleep' },
+    { id: 'wd-1',  startTime: '05:00', endTime: '07:00', groupKey: 'home' },
+    { id: 'wd-2',  startTime: '07:00', endTime: '08:00', groupKey: 'health' },
+    { id: 'wd-3',  startTime: '08:00', endTime: '12:00', groupKey: 'career' },
+    { id: 'wd-4',  startTime: '12:00', endTime: '13:00', groupKey: 'break' },
+    { id: 'wd-5',  startTime: '13:00', endTime: '17:00', groupKey: 'career' },
+    { id: 'wd-6',  startTime: '17:00', endTime: '19:00', groupKey: 'home' },
+    { id: 'wd-7',  startTime: '19:00', endTime: '20:00', groupKey: 'relationship' },
+    { id: 'wd-8',  startTime: '20:00', endTime: '21:00', groupKey: 'mind' },
+    { id: 'wd-9',  startTime: '21:00', endTime: '22:00', groupKey: 'break' },
+    { id: 'wd-10', startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
   ],
   saturday: [
-    { id: 'sat-1',  startTime: '05:00', endTime: '06:30', groupKey: 'กิจวัตร' },
-    { id: 'sat-2',  startTime: '06:30', endTime: '07:30', groupKey: 'สุขภาพ' },
-    { id: 'sat-3',  startTime: '07:30', endTime: '08:30', groupKey: 'กิจวัตร' },
-    { id: 'sat-4',  startTime: '08:30', endTime: '10:30', groupKey: 'งานบ้าน' },
-    { id: 'sat-5',  startTime: '10:30', endTime: '12:00', groupKey: 'ธุระส่วนตัว' },
-    { id: 'sat-6',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },
-    { id: 'sat-7',  startTime: '13:00', endTime: '15:00', groupKey: 'พัฒนาตัวเอง' },
-    { id: 'sat-8',  startTime: '15:00', endTime: '17:00', groupKey: 'ครอบครัว' },
-    { id: 'sat-9',  startTime: '17:00', endTime: '18:00', groupKey: 'สุขภาพ' },
-    { id: 'sat-10', startTime: '18:00', endTime: '19:30', groupKey: 'พักผ่อน' },
-    { id: 'sat-11', startTime: '19:30', endTime: '21:00', groupKey: 'พักผ่อน' },
-    { id: 'sat-12', startTime: '21:00', endTime: '22:00', groupKey: 'กิจวัตร' },
+    { id: 'sat-0',  startTime: '00:00', endTime: '05:00', groupKey: 'sleep' },
+    { id: 'sat-1',  startTime: '05:00', endTime: '07:00', groupKey: 'home' },
+    { id: 'sat-2',  startTime: '07:00', endTime: '08:00', groupKey: 'health' },
+    { id: 'sat-3',  startTime: '08:00', endTime: '10:00', groupKey: 'home' },
+    { id: 'sat-4',  startTime: '10:00', endTime: '12:00', groupKey: 'mind' },
+    { id: 'sat-5',  startTime: '12:00', endTime: '13:00', groupKey: 'break' },
+    { id: 'sat-6',  startTime: '13:00', endTime: '15:00', groupKey: 'relationship' },
+    { id: 'sat-7',  startTime: '15:00', endTime: '17:00', groupKey: 'home' },
+    { id: 'sat-8',  startTime: '17:00', endTime: '18:00', groupKey: 'health' },
+    { id: 'sat-9',  startTime: '18:00', endTime: '20:00', groupKey: 'relationship' },
+    { id: 'sat-10', startTime: '20:00', endTime: '22:00', groupKey: 'break' },
+    { id: 'sat-11', startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
   ],
   sunday: [
-    { id: 'sun-1',  startTime: '05:00', endTime: '07:00', groupKey: 'กิจวัตร' },
-    { id: 'sun-2',  startTime: '07:00', endTime: '08:00', groupKey: 'สุขภาพ' },
-    { id: 'sun-3',  startTime: '08:00', endTime: '09:00', groupKey: 'กิจวัตร' },
-    { id: 'sun-4',  startTime: '09:00', endTime: '11:00', groupKey: 'ครอบครัว' },
-    { id: 'sun-5',  startTime: '11:00', endTime: '12:00', groupKey: 'ธุระส่วนตัว' },
-    { id: 'sun-6',  startTime: '12:00', endTime: '13:30', groupKey: 'พักผ่อน' },
-    { id: 'sun-7',  startTime: '13:30', endTime: '15:00', groupKey: 'พักผ่อน' },
-    { id: 'sun-8',  startTime: '15:00', endTime: '17:00', groupKey: 'พัฒนาตัวเอง' },
-    { id: 'sun-9',  startTime: '17:00', endTime: '18:00', groupKey: 'ครอบครัว' },
-    { id: 'sun-10', startTime: '18:00', endTime: '19:00', groupKey: 'กิจวัตร' },
-    { id: 'sun-11', startTime: '19:00', endTime: '20:30', groupKey: 'พักผ่อน' },
-    { id: 'sun-12', startTime: '20:30', endTime: '22:00', groupKey: 'กิจวัตร' },
+    { id: 'sun-0',  startTime: '00:00', endTime: '06:00', groupKey: 'sleep' },
+    { id: 'sun-1',  startTime: '06:00', endTime: '08:00', groupKey: 'home' },
+    { id: 'sun-2',  startTime: '08:00', endTime: '09:00', groupKey: 'health' },
+    { id: 'sun-3',  startTime: '09:00', endTime: '12:00', groupKey: 'relationship' },
+    { id: 'sun-4',  startTime: '12:00', endTime: '13:00', groupKey: 'break' },
+    { id: 'sun-5',  startTime: '13:00', endTime: '15:00', groupKey: 'mind' },
+    { id: 'sun-6',  startTime: '15:00', endTime: '17:00', groupKey: 'relationship' },
+    { id: 'sun-7',  startTime: '17:00', endTime: '19:00', groupKey: 'home' },
+    { id: 'sun-8',  startTime: '19:00', endTime: '21:00', groupKey: 'break' },
+    { id: 'sun-9',  startTime: '21:00', endTime: '22:00', groupKey: 'mind' },
+    { id: 'sun-10', startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
   ],
   customTemplates: [],
 };
@@ -463,32 +462,46 @@ const App: React.FC = () => {
         }
 
         // Schedule templates migration
+        // Detect old group-key-based slots (Thai names) and reset to category-based defaults
+        const CATEGORY_KEYS = new Set(DEFAULT_CATEGORIES.map(c => c.key));
+        const hasOldGroupKeys = (slots: any[]) =>
+          (slots || []).some((s: any) => s.groupKey && !CATEGORY_KEYS.has(s.groupKey));
+
         if (data.scheduleTemplates) {
           const tpl = data.scheduleTemplates;
           const validSlots = (arr: any[]) => (arr || []).filter((s: any) => s.startTime && s.endTime && s.groupKey);
           const vWork = validSlots(tpl.workday);
           const vSat = validSlots(tpl.saturday);
           const vSun = validSlots(tpl.sunday);
-          const fixed: ScheduleTemplates = {
-            workday: vWork.length >= 3 ? vWork : DEFAULT_SCHEDULE_TEMPLATES.workday,
-            saturday: vSat.length >= 3 ? vSat : DEFAULT_SCHEDULE_TEMPLATES.saturday,
-            sunday: vSun.length >= 3 ? vSun : DEFAULT_SCHEDULE_TEMPLATES.sunday,
-            customTemplates: Array.isArray(tpl.customTemplates) ? tpl.customTemplates : [],
-          };
-          setScheduleTemplates(fixed);
-          if (vWork.length < 3 || vSat.length < 3 || vSun.length < 3) {
-            saveBack.scheduleTemplates = fixed;
+
+          // If any day uses old group keys, reset all to new category-based defaults
+          // Reset to defaults if: old group keys, not enough slots, or missing 24h coverage (no 00:00 start)
+          const needs24hReset = (slots: any[]) =>
+            slots.length < 3 || !slots.some((s: any) => s.startTime === '00:00');
+
+          if (
+            hasOldGroupKeys(vWork) || hasOldGroupKeys(vSat) || hasOldGroupKeys(vSun) ||
+            needs24hReset(vWork) || needs24hReset(vSat) || needs24hReset(vSun)
+          ) {
+            const migrated: ScheduleTemplates = {
+              ...DEFAULT_SCHEDULE_TEMPLATES,
+              customTemplates: Array.isArray(tpl.customTemplates) ? tpl.customTemplates : [],
+            };
+            setScheduleTemplates(migrated);
+            saveBack.scheduleTemplates = migrated;
+          } else {
+            const fixed: ScheduleTemplates = {
+              workday: vWork,
+              saturday: vSat,
+              sunday: vSun,
+              customTemplates: Array.isArray(tpl.customTemplates) ? tpl.customTemplates : [],
+            };
+            setScheduleTemplates(fixed);
           }
         } else if (data.schedule && data.schedule.length > 0) {
-          const validOldSchedule = data.schedule.filter((s: any) => s.startTime && s.endTime && s.groupKey);
-          const migrated: ScheduleTemplates = {
-            workday: validOldSchedule.length > 0 ? validOldSchedule : DEFAULT_SCHEDULE_TEMPLATES.workday,
-            saturday: DEFAULT_SCHEDULE_TEMPLATES.saturday,
-            sunday: DEFAULT_SCHEDULE_TEMPLATES.sunday,
-            customTemplates: [],
-          };
-          setScheduleTemplates(migrated);
-          saveBack.scheduleTemplates = migrated;
+          // Legacy: single schedule array → reset to new defaults
+          setScheduleTemplates(DEFAULT_SCHEDULE_TEMPLATES);
+          saveBack.scheduleTemplates = DEFAULT_SCHEDULE_TEMPLATES;
         } else {
           setScheduleTemplates(DEFAULT_SCHEDULE_TEMPLATES);
         }

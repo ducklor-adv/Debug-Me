@@ -1,9 +1,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Task, SubTask, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, CustomScheduleTemplate, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType } from '../types';
-import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown, RefreshCw, GripVertical, Sparkles, Loader2, Save } from 'lucide-react';
+import { Task, SubTask, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, CustomScheduleTemplate, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType, DEFAULT_CATEGORIES, Category } from '../types';
+import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown, RefreshCw, GripVertical, Save } from 'lucide-react';
 import TimePicker from './TimePicker';
-import { generateSmartSchedule } from '../services/geminiService';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -234,10 +233,6 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<{ taskId: string; slotId: string } | null>(null);
   const [confirmDeleteSlotId, setConfirmDeleteSlotId] = useState<string | null>(null);
 
-  // AI Auto-Schedule
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiProposal, setAiProposal] = useState<TimeSlot[] | null>(null);
-  const [aiError, setAiError] = useState<string | null>(null);
 
   // Task Picker for adding tasks to a slot
   const [pickerSlot, setPickerSlot] = useState<TimeSlot | null>(null);
@@ -304,7 +299,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   // Auto-open slot form from Dashboard navigation
   useEffect(() => {
     if (pendingSlot) {
-      setSlotForm({ startTime: pendingSlot.startTime, endTime: pendingSlot.endTime, groupKey: taskGroups[0]?.key || '' });
+      setSlotForm({ startTime: pendingSlot.startTime, endTime: pendingSlot.endTime, groupKey: DEFAULT_CATEGORIES[0]?.key || '' });
       setEditingSlot(null);
       setIsAddingSlot(true);
       onPendingSlotHandled?.();
@@ -313,7 +308,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
   // Slot CRUD
   const openAddSlot = () => {
-    setSlotForm({ startTime: '09:00', endTime: '10:00', groupKey: taskGroups[0]?.key || '' });
+    setSlotForm({ startTime: '09:00', endTime: '10:00', groupKey: DEFAULT_CATEGORIES[0]?.key || '' });
     setEditingSlot(null);
     setIsAddingSlot(true);
   };
@@ -347,11 +342,12 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     setPickerSelected(new Set());
   };
 
-  // Task Picker: get available tasks for the picker (same group, not already assigned)
+  // Task Picker: get available tasks for the picker (matching group/category, not already assigned)
   const getPickerTasks = (slot: TimeSlot): Task[] => {
     const assigned = new Set(slot.assignedTaskIds || []);
+    const matchKeys = new Set(getGroupKeysForSlot(slot.groupKey));
     return getTasksForDate(tasks, selectedDateStr)
-      .filter(t => t.category === slot.groupKey && !assigned.has(t.id));
+      .filter(t => matchKeys.has(t.category) && !assigned.has(t.id));
   };
 
   // Task Picker: confirm selection
@@ -426,8 +422,36 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     setEditingTask(null);
   };
 
-  // Summary: time per group from schedule slots
+  // Maps for resolving slot groupKey (can be a category key or a group key)
   const groupMap = new Map<string, TaskGroup>(taskGroups.map(g => [g.key, g]));
+  const categoryMap = new Map<string, Category>(DEFAULT_CATEGORIES.map(c => [c.key, c]));
+
+  // Fallback colors for categories without task groups
+  const categoryColorMap: Record<string, string> = { break: 'cyan', sleep: 'indigo' };
+
+  // Resolve a slot's groupKey to display info { label, emoji, color }
+  const resolveSlotInfo = (key: string): { label: string; emoji: string; color: string } => {
+    // Check category first
+    const cat = categoryMap.get(key);
+    if (cat) {
+      const firstGroup = taskGroups.find(g => g.categoryKey === key);
+      return { label: cat.label, emoji: cat.emoji, color: firstGroup?.color || categoryColorMap[key] || 'orange' };
+    }
+    // Fallback to group (backward compat + uncategorized groups like งานด่วน/นัดหมาย)
+    const g = groupMap.get(key);
+    if (g) return { label: g.label, emoji: g.emoji, color: g.color };
+    return { label: key, emoji: '', color: 'orange' };
+  };
+
+  // Get group keys that belong to a category (or just the key itself if it's a group)
+  const getGroupKeysForSlot = (key: string): string[] => {
+    if (categoryMap.has(key)) {
+      return taskGroups.filter(g => g.categoryKey === key).map(g => g.key);
+    }
+    return [key];
+  };
+
+  // Summary: time per group from schedule slots
   const summaryMap = new Map<string, { totalMins: number; doneMins: number }>();
 
   sortedSchedule.forEach(slot => {
@@ -442,8 +466,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
   const slotSummary: { key: string; label: string; emoji: string; color: string; totalMins: number; doneMins: number }[] = [];
   summaryMap.forEach((val, key) => {
-    const g = groupMap.get(key);
-    if (g) slotSummary.push({ key, label: g.label, emoji: g.emoji, color: g.color, ...val });
+    const info = resolveSlotInfo(key);
+    slotSummary.push({ key, ...info, ...val });
   });
 
   const totalAllMins = slotSummary.reduce((s, c) => s + c.totalMins, 0);
@@ -488,37 +512,6 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       if (oldIndex === -1 || newIndex === -1) return prev;
       return arrayMove(prev, oldIndex, newIndex);
     });
-  };
-
-  // AI Auto-Schedule handler
-  const handleAISchedule = async () => {
-    setAiLoading(true);
-    setAiError(null);
-    try {
-      const result = await generateSmartSchedule(dayTasks, taskGroups, schedule);
-      if (Array.isArray(result)) {
-        const proposed = result.map((s: any, i: number) => ({
-          id: `ai-${activeTab}-${Date.now()}-${i}`,
-          startTime: s.startTime,
-          endTime: s.endTime,
-          groupKey: s.groupKey,
-          assignedTaskIds: s.assignedTaskIds,
-        }));
-        setAiProposal(proposed);
-      } else {
-        setAiError('AI ไม่สามารถสร้างตารางได้ ลองอีกครั้ง');
-      }
-    } catch {
-      setAiError('ไม่สามารถเชื่อมต่อ AI ได้');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  const acceptAISchedule = () => {
-    if (!aiProposal) return;
-    setScheduleForTab(() => aiProposal);
-    setAiProposal(null);
   };
 
   // Merge milestones and slots
@@ -684,8 +677,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
             }
 
             const slot = item.data as TimeSlot;
-            const group = groupMap.get(slot.groupKey);
-            const colors = GROUP_COLORS[group?.color || 'orange'] || GROUP_COLORS.orange;
+            const slotInfo = resolveSlotInfo(slot.groupKey);
+            const colors = GROUP_COLORS[slotInfo.color] || GROUP_COLORS.orange;
             const slotTasks = getTasksForSlot(tasks, slot);
             const checkedCount = slotTasks.filter(t => checkedTasks.has(t.id)).length;
             const slotDur = getDurationMinutes(slot.startTime, slot.endTime);
@@ -714,7 +707,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                   <span className="text-xs font-black text-slate-500">{slot.startTime}–{slot.endTime}</span>
                   <div className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
                   <span className={`text-xs font-black ${colors.plannerText}`}>
-                    {group?.emoji} {group?.label || slot.groupKey}
+                    {slotInfo.emoji} {slotInfo.label}
                   </span>
                   <span className="text-[10px] text-slate-400 font-bold">
                     {slotDur > 0 && formatDuration(slotDur)}
@@ -833,29 +826,13 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
             </SortableContext>
           </DndContext>
 
-          {/* Add Slot + AI Schedule Buttons */}
-          <div className="flex gap-2">
-            <button
-              onClick={openAddSlot}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-emerald-300 hover:text-emerald-500 hover:bg-emerald-50/50 transition-all text-xs font-bold"
-            >
-              <Plus className="w-4 h-4" /> เพิ่ม Slot
-            </button>
-            <button
-              onClick={handleAISchedule}
-              disabled={aiLoading}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border-2 border-dashed border-fuchsia-200 text-fuchsia-500 hover:border-fuchsia-300 hover:bg-fuchsia-50/50 transition-all text-xs font-bold disabled:opacity-50"
-            >
-              {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              AI จัดตาราง
-            </button>
-          </div>
-          {aiError && (
-            <div className="text-center py-2">
-              <p className="text-xs text-rose-500 font-medium">{aiError}</p>
-              <button onClick={handleAISchedule} className="text-xs text-fuchsia-500 font-bold mt-1 hover:underline">ลองอีกครั้ง</button>
-            </div>
-          )}
+          {/* Add Slot Button */}
+          <button
+            onClick={openAddSlot}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-emerald-300 hover:text-emerald-500 hover:bg-emerald-50/50 transition-all text-xs font-bold"
+          >
+            <Plus className="w-4 h-4" /> เพิ่ม Slot
+          </button>
         </div>
 
         {/* Right: Summary */}
@@ -922,11 +899,31 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               />
             </div>
 
-            {/* Group selector */}
+            {/* Category selector */}
             <div>
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ประเภทกิจกรรม</label>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">หมวดหมู่</label>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {taskGroups.map(g => {
+                {/* DEFAULT_CATEGORIES */}
+                {DEFAULT_CATEGORIES.map(cat => {
+                  const firstGroup = taskGroups.find(g => g.categoryKey === cat.key);
+                  const clr = GROUP_COLORS[firstGroup?.color || categoryColorMap[cat.key] || 'orange'] || GROUP_COLORS.orange;
+                  const isActive = slotForm.groupKey === cat.key;
+                  return (
+                    <button
+                      key={cat.key}
+                      onClick={() => setSlotForm(f => ({ ...f, groupKey: cat.key }))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                        isActive
+                          ? `${clr.bg} ${clr.border} ${clr.text} ring-2 ${clr.ring}`
+                          : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {cat.emoji} {cat.label}
+                    </button>
+                  );
+                })}
+                {/* Uncategorized groups (งานด่วน, นัดหมาย, etc.) */}
+                {taskGroups.filter(g => !g.categoryKey).map(g => {
                   const clr = GROUP_COLORS[g.color] || GROUP_COLORS.orange;
                   const isActive = slotForm.groupKey === g.key;
                   return (
@@ -1048,8 +1045,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
       {/* Task Picker Modal */}
       {pickerSlot && (() => {
-        const pGroup = groupMap.get(pickerSlot.groupKey);
-        const pColors = GROUP_COLORS[pGroup?.color || 'orange'] || GROUP_COLORS.orange;
+        const pInfo = resolveSlotInfo(pickerSlot.groupKey);
+        const pColors = GROUP_COLORS[pInfo.color] || GROUP_COLORS.orange;
         const available = getPickerTasks(pickerSlot);
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setPickerSlot(null)}>
@@ -1060,7 +1057,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                     เพิ่ม Task ใน Slot
                   </h3>
                   <p className="text-[11px] text-slate-500 font-bold mt-0.5">
-                    {pGroup?.emoji} {pGroup?.label} • {pickerSlot.startTime}–{pickerSlot.endTime}
+                    {pInfo.emoji} {pInfo.label} • {pickerSlot.startTime}–{pickerSlot.endTime}
                   </p>
                 </div>
                 <button onClick={() => setPickerSlot(null)} className="p-1 rounded-lg hover:bg-white/60">
@@ -1071,7 +1068,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               <div className="max-h-[50vh] overflow-y-auto p-3 space-y-1">
                 {available.length === 0 ? (
                   <p className="text-xs text-slate-400 italic text-center py-6">
-                    ไม่มี Task ในกลุ่ม "{pGroup?.label}" ที่ยังไม่ได้เพิ่ม
+                    ไม่มี Task ในหมวด "{pInfo.label}" ที่ยังไม่ได้เพิ่ม
                     <br/>
                     <span className="text-[10px]">สร้าง Task ใหม่ได้ที่หน้า Task Manager</span>
                   </p>
@@ -1153,45 +1150,6 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                 className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white font-bold text-sm rounded-xl transition-colors"
               >
                 ลบ
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* AI Schedule Proposal Modal */}
-      {aiProposal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setAiProposal(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-[90vw] max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="bg-fuchsia-50 px-5 py-4 flex items-center justify-between border-b border-fuchsia-100">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-fuchsia-500" />
-                <h3 className="text-sm font-black text-fuchsia-700">AI แนะนำตาราง</h3>
-              </div>
-              <button onClick={() => setAiProposal(null)} className="p-1 rounded-lg hover:bg-fuchsia-100">
-                <X className="w-4 h-4 text-fuchsia-400" />
-              </button>
-            </div>
-            <div className="max-h-[50vh] overflow-y-auto p-4 space-y-1.5">
-              {aiProposal.map((slot, i) => {
-                const g = groupMap.get(slot.groupKey);
-                const c = GROUP_COLORS[g?.color || 'orange'] || GROUP_COLORS.orange;
-                return (
-                  <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-xl ${c.plannerBg} border ${c.plannerBorder}`}>
-                    <span className="text-xs font-black text-slate-500">{slot.startTime}–{slot.endTime}</span>
-                    <div className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
-                    <span className={`text-xs font-bold ${c.plannerText}`}>{g?.emoji} {g?.label || slot.groupKey}</span>
-                    <span className="text-[10px] text-slate-400 font-bold ml-auto">{getDurationMinutes(slot.startTime, slot.endTime) > 0 ? formatDuration(getDurationMinutes(slot.startTime, slot.endTime)) : ''}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="px-5 py-3 border-t border-slate-100 flex gap-2">
-              <button onClick={() => setAiProposal(null)} className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50">
-                ยกเลิก
-              </button>
-              <button onClick={acceptAISchedule} className="flex-1 py-2 rounded-xl bg-fuchsia-500 text-white text-xs font-bold hover:bg-fuchsia-600">
-                ใช้ตารางนี้
               </button>
             </div>
           </div>
