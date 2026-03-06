@@ -12,11 +12,12 @@ export interface TaskAttachment {
   preview?: string;
 }
 
-// SubTask — งานย่อยภายใน Task
+// SubTask — รายการย่อยภายใน Task (todo list)
 export interface SubTask {
   id: string;
   title: string;
   completed: boolean;
+  note?: string;  // per-item detail/note
 }
 
 // Recurrence — การทำซ้ำขั้นสูง
@@ -51,6 +52,8 @@ export interface Task {
   notes?: string;
   attachments?: TaskAttachment[];
   dayTypes?: DayType[];   // e.g. ['workday'] = จ-ศ only, undefined = ทุกวัน
+  startTime?: string;    // HH:MM — for calendar scheduling
+  endTime?: string;      // HH:MM
   estimatedDuration?: number;  // minutes
   completedAt?: string;        // ISO timestamp
   subtasks?: SubTask[];         // งานย่อย
@@ -176,7 +179,23 @@ export interface TimeEntry {
 
 export type View = 'dashboard' | 'tasks' | 'focus' | 'analytics' | 'ai-coach' | 'planner' | 'habits' | 'calendar' | 'search';
 
-// ===== Task Group (category) =====
+// ===== Life Category (หมวดหมู่ชีวิต) =====
+export interface Category {
+  key: string;
+  label: string;
+  emoji: string;
+}
+
+export const DEFAULT_CATEGORIES: Category[] = [
+  { key: 'career', label: 'อาชีพ', emoji: '💼' },
+  { key: 'health', label: 'สุขภาพ', emoji: '💪' },
+  { key: 'home', label: 'ดูแลบ้าน/ชีวิต', emoji: '🏠' },
+  { key: 'relationship', label: 'ความสัมพันธ์', emoji: '❤️' },
+  { key: 'mind', label: 'จิตใจ', emoji: '🧠' },
+  { key: 'break', label: 'คั่นเวลา', emoji: '⏸️' },
+];
+
+// ===== Task Group (กลุ่มงาน) =====
 export interface TaskGroup {
   key: string;
   label: string;
@@ -184,6 +203,7 @@ export interface TaskGroup {
   color: string;   // key into GROUP_COLORS
   icon: string;    // icon key for planner ('code','home', etc.)
   size: number;    // circle size in TaskManager (px)
+  categoryKey?: string; // references Category.key
 }
 
 export const GROUP_COLORS: Record<string, {

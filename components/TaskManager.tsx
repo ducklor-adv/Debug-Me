@@ -1,8 +1,8 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Task, TaskAttachment, SubTask, Recurrence, Priority, TaskGroup, GROUP_COLORS, LocationReminder } from '../types';
-import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning, Handshake, GripVertical } from 'lucide-react';
+import { Task, TaskAttachment, SubTask, Recurrence, Priority, TaskGroup, GROUP_COLORS, LocationReminder, DEFAULT_CATEGORIES, Category } from '../types';
+import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning, Handshake, GripVertical, ListTodo } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -81,6 +81,7 @@ interface TaskManagerProps {
   deletedDefaultTaskIds: string[];
   setDeletedDefaultTaskIds: React.Dispatch<React.SetStateAction<string[]>>;
   onImmediateSave?: (updatedTasks?: Task[], updatedDeletedIds?: string[]) => Promise<void>;
+  initialGroupKey?: string | null;
 }
 
 // Derive style from a TaskGroup using GROUP_COLORS
@@ -161,7 +162,7 @@ const emptyForm = (): Omit<Task, 'id'> => ({
   dayTypes: ['workday', 'saturday', 'sunday'],
 });
 
-const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups, deletedDefaultTaskIds, setDeletedDefaultTaskIds, onImmediateSave }) => {
+const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups, deletedDefaultTaskIds, setDeletedDefaultTaskIds, onImmediateSave, initialGroupKey }) => {
   const [aiInsight, setAiInsight] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -189,7 +190,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
 
   // Group form state
   const [groupFormOpen, setGroupFormOpen] = useState(false);
-  const [groupForm, setGroupForm] = useState({ name: '', emoji: '📌', color: 'cyan', icon: 'code' });
+  const [groupForm, setGroupForm] = useState({ name: '', emoji: '📌', color: 'cyan', icon: 'code', categoryKey: 'career' });
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
   const [deleteGroupConfirm, setDeleteGroupConfirm] = useState<string | null>(null);
 
@@ -203,6 +204,8 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   const [formRecurrence, setFormRecurrence] = useState<Recurrence | undefined>(undefined);
   const [formLocationReminder, setFormLocationReminder] = useState<LocationReminder | undefined>(undefined);
   const [locationLoading, setLocationLoading] = useState(false);
+  const [expandedSubtaskId, setExpandedSubtaskId] = useState<string | null>(null);
+  const [activeFormTab, setActiveFormTab] = useState<'time' | 'plan' | 'detail'>('time');
 
   // Attachment helpers
   const [isRecording, setIsRecording] = useState(false);
@@ -249,6 +252,11 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setShowContactInput(false);
     setFormOpen(true);
   };
+
+  // Auto-open add-task form when navigated from Dashboard
+  useEffect(() => {
+    if (initialGroupKey) openNewForm();
+  }, [initialGroupKey]);
 
   const openEditForm = (task: Task) => {
     // Hide category modal while editing, restore on close
@@ -324,6 +332,10 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
 
   const removeSubtask = (id: string) => {
     setFormSubtasks(prev => prev.filter(s => s.id !== id));
+  };
+
+  const updateSubtaskNote = (id: string, note: string) => {
+    setFormSubtasks(prev => prev.map(s => s.id === id ? { ...s, note: note || undefined } : s));
   };
 
   const toggleTask = (id: string) => {
@@ -440,12 +452,12 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   // Group CRUD
   const openGroupForm = () => {
     setEditingGroupKey(null);
-    setGroupForm({ name: '', emoji: '📌', color: 'cyan', icon: 'code' });
+    setGroupForm({ name: '', emoji: '📌', color: 'cyan', icon: 'code', categoryKey: 'career' });
     setGroupFormOpen(true);
   };
   const openEditGroup = (g: TaskGroup) => {
     setEditingGroupKey(g.key);
-    setGroupForm({ name: g.label, emoji: g.emoji, color: g.color, icon: g.icon });
+    setGroupForm({ name: g.label, emoji: g.emoji, color: g.color, icon: g.icon, categoryKey: g.categoryKey || 'career' });
     setGroupFormOpen(true);
   };
   const saveGroup = () => {
@@ -455,7 +467,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     if (editingGroupKey) {
       // Edit mode: update group and rename tasks' category
       const oldKey = editingGroupKey;
-      setTaskGroups(prev => prev.map(g => g.key === oldKey ? { ...g, key: name, label: name, emoji: groupForm.emoji, color: groupForm.color, icon: groupForm.icon } : g));
+      setTaskGroups(prev => prev.map(g => g.key === oldKey ? { ...g, key: name, label: name, emoji: groupForm.emoji, color: groupForm.color, icon: groupForm.icon, categoryKey: groupForm.categoryKey } : g));
       if (name !== oldKey) {
         setTasks(prev => prev.map(t => t.category === oldKey ? { ...t, category: name } : t));
       }
@@ -470,6 +482,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
         color: groupForm.color,
         icon: groupForm.icon,
         size: 64,
+        categoryKey: groupForm.categoryKey,
       };
       setTaskGroups(prev => [...prev, newGroup]);
     }
@@ -525,6 +538,18 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ชื่อกลุ่ม</label>
                 <input type="text" autoFocus value={groupForm.name} onChange={e => setGroupForm({ ...groupForm, name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="เช่น ครอบครัว, การกุศล..." />
+              </div>
+
+              {/* Category picker */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">หมวดหมู่</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {DEFAULT_CATEGORIES.map(cat => (
+                    <button key={cat.key} onClick={() => setGroupForm({ ...groupForm, categoryKey: cat.key })} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-bold transition-all ${groupForm.categoryKey === cat.key ? 'bg-emerald-100 border-emerald-400 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}>
+                      <span>{cat.emoji}</span> {cat.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Emoji picker */}
@@ -625,25 +650,22 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
               </button>
             </div>
 
+            {/* Sticky Title */}
+            <div className="px-5 pt-4 pb-2 border-b border-slate-100 shrink-0 bg-white">
+              <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ชื่อ Task</label>
+              <input type="text" autoFocus value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="What needs to be done?" />
+            </div>
+
             {/* Scrollable body */}
             <div className="p-5 overflow-y-auto flex-1 space-y-4">
-              {/* Title */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ชื่อ Task</label>
-                <input type="text" autoFocus value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="What needs to be done?" />
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">รายละเอียด</label>
-                <textarea value={form.description} onChange={e => setForm({...form, description: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 h-20 resize-none" placeholder="รายละเอียดเพิ่มเติม..." />
-              </div>
-
-              {/* ประเภทกิจกรรม */}
+              {/* ประเภทกิจกรรม — only groups with categoryKey (exclude งานด่วน/นัดหมาย) */}
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ประเภท</label>
                 <div className="flex flex-wrap gap-1.5">
-                  {groupStyles.map(t => (
+                  {groupStyles.filter(t => {
+                    const tg = taskGroups.find(g => g.key === t.key);
+                    return tg?.categoryKey;
+                  }).map(t => (
                     <button key={t.key} onClick={() => setForm({...form, category: t.key})} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center gap-1.5 ${form.category === t.key ? `${t.bg} ${t.border} ${t.text}` : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'}`}>
                       <span className={`inline-flex items-center justify-center w-5 h-5 rounded ${form.category === t.key ? t.iconBg : 'bg-slate-300'} text-white`}>{GROUP_ICON_MAP[t.icon] || t.emoji}</span>
                       {t.label}
@@ -652,350 +674,302 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                 </div>
               </div>
 
-              {/* Day Types */}
+              {/* ═══════ Folder Tabs ═══════ */}
               <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ทำวันไหน</label>
-                <div className="flex gap-2">
-                  {([['workday', 'จ-ศ'], ['saturday', 'เสาร์'], ['sunday', 'อาทิตย์']] as [string, string][]).map(([key, label]) => {
-                    const isOn = !form.dayTypes || form.dayTypes.length === 0 || form.dayTypes.includes(key as any);
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => {
-                          const current = form.dayTypes || ['workday', 'saturday', 'sunday'];
-                          const next = isOn ? current.filter(d => d !== key) : [...current, key as any];
-                          setForm({ ...form, dayTypes: next.length > 0 ? next : undefined });
-                        }}
-                        className={`flex-1 py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${
-                          isOn
-                            ? 'bg-emerald-50 border-emerald-400 text-emerald-700'
-                            : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Date Range (optional — for deadline tasks) */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ช่วงวัน (ถ้ามี deadline)</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <input type="date" value={form.startDate || ''} onChange={e => setForm({...form, startDate: e.target.value || undefined, endDate: !form.endDate || (e.target.value > (form.endDate || '')) ? e.target.value || undefined : form.endDate})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                  <input type="date" value={form.endDate || ''} min={form.startDate || ''} onChange={e => setForm({...form, endDate: e.target.value || undefined})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1">เว้นว่างไว้ = ทำซ้ำทุกวัน (ตาม dayTypes)</p>
-              </div>
-
-              {/* Estimated Duration */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ระยะเวลาโดยประมาณ (นาที)</label>
-                <input type="number" min="0" step="5" value={form.estimatedDuration || ''} onChange={e => setForm({...form, estimatedDuration: e.target.value ? parseInt(e.target.value) : undefined})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="เช่น 30" />
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">Notes / บันทึกเพิ่มเติม</label>
-                <textarea value={form.notes || ''} onChange={e => setForm({...form, notes: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 h-24 resize-none shadow-inner" placeholder="พิมพ์บันทึก..." />
-              </div>
-
-              {/* Subtasks */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">งานย่อย ({formSubtasks.length})</label>
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    value={newSubtaskTitle}
-                    onChange={e => setNewSubtaskTitle(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addSubtask())}
-                    placeholder="เพิ่มงานย่อย..."
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                  <button onClick={addSubtask} disabled={!newSubtaskTitle.trim()} className="px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-40 active:scale-95">
-                    <Plus className="w-4 h-4" />
+                {/* Tab handles — file folder style */}
+                <div className="flex items-end gap-0.5 px-1">
+                  {/* Tab: จัดการเวลา (blue) */}
+                  <button onClick={() => setActiveFormTab('time')} className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold transition-all rounded-t-xl border border-b-0 ${activeFormTab === 'time' ? 'bg-blue-50 border-blue-300 text-blue-700 relative z-10 -mb-px pb-2.5' : 'bg-blue-100/60 border-blue-200/60 text-blue-400 hover:bg-blue-100 hover:text-blue-500 -mb-px pb-1.5 scale-[0.97] origin-bottom'}`}>
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>จัดการเวลา</span>
                   </button>
-                </div>
-                {formSubtasks.length > 0 && (
-                  <div className="space-y-1">
-                    {formSubtasks.map(sub => (
-                      <div key={sub.id} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                        <button onClick={() => toggleSubtask(sub.id)} className="shrink-0 active:scale-90">
-                          {sub.completed
-                            ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                            : <Circle className="w-4 h-4 text-slate-300" />}
-                        </button>
-                        <span className={`text-sm flex-1 ${sub.completed ? 'line-through text-slate-400' : 'text-slate-700'}`}>{sub.title}</span>
-                        <button onClick={() => removeSubtask(sub.id)} className="p-1 hover:bg-rose-50 rounded text-slate-300 hover:text-rose-500 transition-colors shrink-0">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Recurrence */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">การทำซ้ำ</label>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {([
-                    { key: undefined, label: 'ไม่ซ้ำ' },
-                    { key: 'daily', label: 'ทุกวัน' },
-                    { key: 'every_x_days', label: 'ทุก X วัน' },
-                    { key: 'weekly', label: 'รายสัปดาห์' },
-                    { key: 'monthly', label: 'รายเดือน' },
-                    { key: 'yearly', label: 'รายปี' },
-                  ] as { key: Recurrence['pattern'] | undefined; label: string }[]).map(opt => (
-                    <button
-                      key={opt.label}
-                      onClick={() => setFormRecurrence(opt.key ? { pattern: opt.key } : undefined)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                        (formRecurrence?.pattern || undefined) === opt.key
-                          ? 'bg-violet-100 text-violet-700 border-violet-300'
-                          : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Conditional inputs based on pattern */}
-                {formRecurrence?.pattern === 'every_x_days' && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-sm text-slate-500 font-bold">ทุก</span>
-                    <input
-                      type="number"
-                      min="2"
-                      max="365"
-                      value={formRecurrence.interval || 2}
-                      onChange={e => setFormRecurrence({ ...formRecurrence, interval: parseInt(e.target.value) || 2 })}
-                      className="w-20 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    />
-                    <span className="text-sm text-slate-500 font-bold">วัน</span>
-                  </div>
-                )}
-
-                {formRecurrence?.pattern === 'weekly' && (
-                  <div className="mt-2">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">เลือกวัน</span>
-                    <div className="flex gap-1.5">
-                      {['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((d, i) => {
-                        const isOn = (formRecurrence.weekDays || []).includes(i);
-                        return (
-                          <button
-                            key={i}
-                            onClick={() => {
-                              const days = formRecurrence.weekDays || [];
-                              const next = isOn ? days.filter(x => x !== i) : [...days, i];
-                              setFormRecurrence({ ...formRecurrence, weekDays: next });
-                            }}
-                            className={`w-9 h-9 rounded-lg text-xs font-bold transition-all ${
-                              isOn ? 'bg-violet-500 text-white' : 'bg-slate-50 text-slate-400 border border-slate-200 hover:bg-slate-100'
-                            }`}
-                          >
-                            {d}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {formRecurrence?.pattern === 'monthly' && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-sm text-slate-500 font-bold">ทุกวันที่</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="31"
-                      value={formRecurrence.monthDay || 1}
-                      onChange={e => setFormRecurrence({ ...formRecurrence, monthDay: parseInt(e.target.value) || 1 })}
-                      className="w-20 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    />
-                    <span className="text-sm text-slate-500 font-bold">ของเดือน</span>
-                  </div>
-                )}
-
-                {formRecurrence?.pattern === 'yearly' && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-sm text-slate-500 font-bold">เดือน</span>
-                    <select
-                      value={formRecurrence.monthDate?.month || 1}
-                      onChange={e => setFormRecurrence({ ...formRecurrence, monthDate: { month: parseInt(e.target.value), day: formRecurrence.monthDate?.day || 1 } })}
-                      className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    >
-                      {['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'].map((m, i) => (
-                        <option key={i} value={i + 1}>{m}</option>
-                      ))}
-                    </select>
-                    <span className="text-sm text-slate-500 font-bold">วันที่</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="31"
-                      value={formRecurrence.monthDate?.day || 1}
-                      onChange={e => setFormRecurrence({ ...formRecurrence, monthDate: { month: formRecurrence.monthDate?.month || 1, day: parseInt(e.target.value) || 1 } })}
-                      className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-sm text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Location Reminder */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">แจ้งเตือนตามตำแหน่ง (GPS)</label>
-                {!formLocationReminder ? (
-                  <button
-                    onClick={() => {
-                      setLocationLoading(true);
-                      if (!navigator.geolocation) { alert('เบราว์เซอร์ไม่รองรับ GPS'); setLocationLoading(false); return; }
-                      navigator.geolocation.getCurrentPosition(
-                        (pos) => {
-                          setFormLocationReminder({
-                            id: `loc-${Date.now()}`,
-                            latitude: pos.coords.latitude,
-                            longitude: pos.coords.longitude,
-                            radius: 200,
-                            label: '',
-                            triggerOn: 'enter',
-                            enabled: true,
-                          });
-                          setLocationLoading(false);
-                        },
-                        () => { alert('ไม่สามารถดึงพิกัดได้'); setLocationLoading(false); },
-                        { enableHighAccuracy: true, timeout: 10000 }
-                      );
-                    }}
-                    disabled={locationLoading}
-                    className="w-full py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-emerald-300 hover:text-emerald-500 hover:bg-emerald-50/50 transition-all text-xs font-bold flex items-center justify-center gap-2"
-                  >
-                    <MapPin className={`w-4 h-4 ${locationLoading ? 'animate-pulse' : ''}`} />
-                    {locationLoading ? 'กำลังดึงพิกัด...' : 'เพิ่มแจ้งเตือนตามตำแหน่ง'}
+                  {/* Tab: แผนงาน (amber) */}
+                  <button onClick={() => setActiveFormTab('plan')} className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold transition-all rounded-t-xl border border-b-0 ${activeFormTab === 'plan' ? 'bg-amber-50 border-amber-300 text-amber-700 relative z-10 -mb-px pb-2.5' : 'bg-amber-100/60 border-amber-200/60 text-amber-400 hover:bg-amber-100 hover:text-amber-500 -mb-px pb-1.5 scale-[0.97] origin-bottom'}`}>
+                    <ListTodo className="w-3.5 h-3.5" />
+                    <span>แผนงาน</span>
+                    {formSubtasks.length > 0 && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${activeFormTab === 'plan' ? 'bg-amber-200 text-amber-700' : 'bg-amber-200/60 text-amber-500'}`}>{formSubtasks.length}</span>}
                   </button>
-                ) : (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <MapPin className="w-4 h-4 text-amber-500" />
-                        <span className="text-xs font-bold text-amber-700">Location Reminder</span>
-                      </div>
-                      <button onClick={() => setFormLocationReminder(undefined)} className="p-1 hover:bg-amber-100 rounded text-amber-400 hover:text-rose-500">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      value={formLocationReminder.label}
-                      onChange={e => setFormLocationReminder({ ...formLocationReminder, label: e.target.value })}
-                      placeholder="ชื่อสถานที่ เช่น บ้าน, ออฟฟิศ..."
-                      className="w-full bg-white border border-amber-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    />
-                    <div className="flex gap-2">
-                      <div className="flex-1">
-                        <span className="text-[10px] text-amber-600 font-bold block mb-1">รัศมี (เมตร)</span>
-                        <input
-                          type="number"
-                          min="50"
-                          max="5000"
-                          step="50"
-                          value={formLocationReminder.radius}
-                          onChange={e => setFormLocationReminder({ ...formLocationReminder, radius: parseInt(e.target.value) || 200 })}
-                          className="w-full bg-white border border-amber-200 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-amber-400"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <span className="text-[10px] text-amber-600 font-bold block mb-1">แจ้งเมื่อ</span>
-                        <select
-                          value={formLocationReminder.triggerOn}
-                          onChange={e => setFormLocationReminder({ ...formLocationReminder, triggerOn: e.target.value as 'enter' | 'exit' | 'both' })}
-                          className="w-full bg-white border border-amber-200 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                        >
-                          <option value="enter">เข้าพื้นที่</option>
-                          <option value="exit">ออกจากพื้นที่</option>
-                          <option value="both">ทั้งเข้า-ออก</option>
-                        </select>
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-amber-500">
-                      พิกัด: {formLocationReminder.latitude.toFixed(4)}, {formLocationReminder.longitude.toFixed(4)}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Quick Attachments */}
-              <div>
-                <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-2 block">Quick Attachments</label>
-                <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => handleFileSelect(e, 'photo')} />
-                <input ref={videoInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={e => handleFileSelect(e, 'video')} />
-
-                <div className="grid grid-cols-3 gap-2">
-                  <button onClick={() => photoInputRef.current?.click()} className="flex flex-col items-center justify-center gap-1.5 py-3 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-200 text-blue-500 hover:text-emerald-600 rounded-xl border border-emerald-100 transition-all active:scale-95">
-                    <Camera className="w-5 h-5" /> <span className="text-[10px] font-bold">ถ่ายรูป</span>
-                  </button>
-                  <button onClick={isRecording ? handleStopRecording : handleStartRecording} className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border transition-all active:scale-95 ${isRecording ? 'bg-rose-100 border-rose-300 text-rose-600 animate-pulse' : 'bg-slate-50 hover:bg-rose-50 hover:border-rose-200 text-blue-500 hover:text-rose-600 border-emerald-100'}`}>
-                    {isRecording ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                    <span className="text-[10px] font-bold">{isRecording ? 'หยุดอัด' : 'อัดเสียง'}</span>
-                  </button>
-                  <button onClick={() => videoInputRef.current?.click()} className="flex flex-col items-center justify-center gap-1.5 py-3 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-200 text-blue-500 hover:text-emerald-600 rounded-xl border border-emerald-100 transition-all active:scale-95">
-                    <Video className="w-5 h-5" /> <span className="text-[10px] font-bold">วิดีโอ</span>
-                  </button>
-                  <button onClick={() => setShowPhoneInput(!showPhoneInput)} className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border transition-all active:scale-95 ${showPhoneInput ? 'bg-sky-50 border-sky-300 text-sky-600' : 'bg-slate-50 hover:bg-sky-50 hover:border-sky-200 text-blue-500 hover:text-sky-600 border-emerald-100'}`}>
-                    <Phone className="w-5 h-5" /> <span className="text-[10px] font-bold">เบอร์โทร</span>
-                  </button>
-                  <button onClick={() => setShowContactInput(!showContactInput)} className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border transition-all active:scale-95 ${showContactInput ? 'bg-violet-50 border-violet-300 text-violet-600' : 'bg-slate-50 hover:bg-violet-50 hover:border-violet-200 text-blue-500 hover:text-violet-600 border-emerald-100'}`}>
-                    <UserIcon className="w-5 h-5" /> <span className="text-[10px] font-bold">ผู้ติดต่อ</span>
-                  </button>
-                  <button onClick={handleGetGPS} disabled={gpsLoading} className={`flex flex-col items-center justify-center gap-1.5 py-3 bg-slate-50 hover:bg-amber-50 hover:border-amber-200 text-blue-500 hover:text-amber-600 rounded-xl border border-emerald-100 transition-all active:scale-95 ${gpsLoading ? 'opacity-50' : ''}`}>
-                    <MapPin className={`w-5 h-5 ${gpsLoading ? 'animate-pulse' : ''}`} /> <span className="text-[10px] font-bold">{gpsLoading ? 'กำลังหา...' : 'พิกัด GPS'}</span>
+                  {/* Tab: รายละเอียด (emerald) */}
+                  <button onClick={() => setActiveFormTab('detail')} className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold transition-all rounded-t-xl border border-b-0 ${activeFormTab === 'detail' ? 'bg-emerald-50 border-emerald-300 text-emerald-700 relative z-10 -mb-px pb-2.5' : 'bg-emerald-100/60 border-emerald-200/60 text-emerald-400 hover:bg-emerald-100 hover:text-emerald-500 -mb-px pb-1.5 scale-[0.97] origin-bottom'}`}>
+                    <Paperclip className="w-3.5 h-3.5" />
+                    <span>รายละเอียด</span>
+                    {formAttachments.length > 0 && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${activeFormTab === 'detail' ? 'bg-emerald-200 text-emerald-700' : 'bg-emerald-200/60 text-emerald-500'}`}>{formAttachments.length}</span>}
                   </button>
                 </div>
 
-                {showPhoneInput && (
-                  <div className="mt-2 flex gap-2">
-                    <input type="tel" value={phoneValue} onChange={e => setPhoneValue(e.target.value)} placeholder="0812345678" className="flex-1 bg-slate-50 border border-sky-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" onKeyDown={e => e.key === 'Enter' && handleAddPhone()} />
-                    <button onClick={handleAddPhone} className="px-3 py-2 bg-sky-500 text-white rounded-xl text-sm font-bold active:scale-95">เพิ่ม</button>
-                  </div>
-                )}
-
-                {showContactInput && (
-                  <div className="mt-2 flex gap-2">
-                    <input type="text" value={contactValue} onChange={e => setContactValue(e.target.value)} placeholder="ชื่อผู้ติดต่อ" className="flex-1 bg-slate-50 border border-violet-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" onKeyDown={e => e.key === 'Enter' && handleAddContact()} />
-                    <button onClick={handleAddContact} className="px-3 py-2 bg-violet-500 text-white rounded-xl text-sm font-bold active:scale-95">เพิ่ม</button>
-                  </div>
-                )}
-              </div>
-
-              {/* Attachment List */}
-              {formAttachments.length > 0 && (
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-2 block">ไฟล์แนบ ({formAttachments.length})</label>
-                  <div className="space-y-1.5">
-                    {formAttachments.map((att, i) => (
-                      <div key={i} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${att.type === 'photo' ? 'bg-emerald-100 text-emerald-600' : att.type === 'audio' ? 'bg-rose-100 text-rose-600' : att.type === 'video' ? 'bg-emerald-100 text-emerald-600' : att.type === 'phone' ? 'bg-sky-100 text-sky-600' : att.type === 'contact' ? 'bg-violet-100 text-violet-600' : 'bg-amber-100 text-amber-600'}`}>
-                          {att.type === 'photo' && <Image className="w-3.5 h-3.5" />}
-                          {att.type === 'audio' && <Mic className="w-3.5 h-3.5" />}
-                          {att.type === 'video' && <Video className="w-3.5 h-3.5" />}
-                          {att.type === 'phone' && <Phone className="w-3.5 h-3.5" />}
-                          {att.type === 'contact' && <UserIcon className="w-3.5 h-3.5" />}
-                          {att.type === 'gps' && <MapPin className="w-3.5 h-3.5" />}
+                {/* Tab Content — folder body */}
+                <div className={`p-4 rounded-b-xl rounded-tr-xl border ${activeFormTab === 'time' ? 'bg-blue-50/40 border-blue-300' : activeFormTab === 'plan' ? 'bg-amber-50/40 border-amber-300' : 'bg-emerald-50/40 border-emerald-300'}`}>
+                  {/* ── Tab: จัดการเวลา ── */}
+                  {activeFormTab === 'time' && (
+                    <div className="space-y-4">
+                      {/* Recurrence */}
+                      <div>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">การทำซ้ำ</label>
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {([
+                            { key: undefined, label: 'ไม่ซ้ำ' },
+                            { key: 'daily', label: 'ทุกวัน' },
+                            { key: 'every_x_days', label: 'ทุก X วัน' },
+                            { key: 'weekly', label: 'รายสัปดาห์' },
+                            { key: 'monthly', label: 'รายเดือน' },
+                            { key: 'yearly', label: 'รายปี' },
+                          ] as { key: Recurrence['pattern'] | undefined; label: string }[]).map(opt => (
+                            <button
+                              key={opt.label}
+                              onClick={() => setFormRecurrence(opt.key ? { pattern: opt.key } : undefined)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                                (formRecurrence?.pattern || undefined) === opt.key
+                                  ? 'bg-violet-100 text-violet-700 border-violet-300'
+                                  : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
                         </div>
-                        {att.preview && <img src={att.preview} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />}
-                        {att.type === 'audio' && <audio src={att.value} controls className="h-7 flex-1 min-w-0" />}
-                        <span className="text-xs text-blue-600 font-medium truncate flex-1">{att.label}</span>
-                        {att.type === 'gps' && <a href={`https://maps.google.com/?q=${att.value}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-emerald-600 font-bold shrink-0">แผนที่</a>}
-                        <button onClick={() => removeAttachment(i)} className="p-1 hover:bg-rose-50 rounded-lg text-blue-400 hover:text-rose-500 transition-colors shrink-0">
-                          <Trash2 className="w-3.5 h-3.5" />
+
+                        {formRecurrence?.pattern === 'every_x_days' && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-sm text-slate-500 font-bold">ทุก</span>
+                            <input type="number" min="2" max="365" value={formRecurrence.interval || 2} onChange={e => setFormRecurrence({ ...formRecurrence, interval: parseInt(e.target.value) || 2 })} className="w-20 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                            <span className="text-sm text-slate-500 font-bold">วัน</span>
+                          </div>
+                        )}
+
+                        {formRecurrence?.pattern === 'weekly' && (
+                          <div className="mt-2">
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-1.5">เลือกวัน</span>
+                            <div className="flex gap-1.5">
+                              {['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((d, i) => {
+                                const isOn = (formRecurrence.weekDays || []).includes(i);
+                                return (
+                                  <button
+                                    key={i}
+                                    onClick={() => {
+                                      const days = formRecurrence.weekDays || [];
+                                      const next = isOn ? days.filter(x => x !== i) : [...days, i];
+                                      setFormRecurrence({ ...formRecurrence, weekDays: next });
+                                    }}
+                                    className={`w-9 h-9 rounded-lg text-xs font-bold transition-all ${
+                                      isOn ? 'bg-violet-500 text-white' : 'bg-slate-50 text-slate-400 border border-slate-200 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    {d}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {formRecurrence?.pattern === 'monthly' && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-sm text-slate-500 font-bold">ทุกวันที่</span>
+                            <input type="number" min="1" max="31" value={formRecurrence.monthDay || 1} onChange={e => setFormRecurrence({ ...formRecurrence, monthDay: parseInt(e.target.value) || 1 })} className="w-20 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                            <span className="text-sm text-slate-500 font-bold">ของเดือน</span>
+                          </div>
+                        )}
+
+                        {formRecurrence?.pattern === 'yearly' && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-sm text-slate-500 font-bold">เดือน</span>
+                            <select value={formRecurrence.monthDate?.month || 1} onChange={e => setFormRecurrence({ ...formRecurrence, monthDate: { month: parseInt(e.target.value), day: formRecurrence.monthDate?.day || 1 } })} className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-violet-400">
+                              {['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'].map((m, i) => (
+                                <option key={i} value={i + 1}>{m}</option>
+                              ))}
+                            </select>
+                            <span className="text-sm text-slate-500 font-bold">วันที่</span>
+                            <input type="number" min="1" max="31" value={formRecurrence.monthDate?.day || 1} onChange={e => setFormRecurrence({ ...formRecurrence, monthDate: { month: formRecurrence.monthDate?.month || 1, day: parseInt(e.target.value) || 1 } })} className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-sm text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Estimated Duration */}
+                      <div>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">ระยะเวลาโดยประมาณ (นาที)</label>
+                        <input type="number" min="0" step="5" value={form.estimatedDuration || ''} onChange={e => setForm({...form, estimatedDuration: e.target.value ? parseInt(e.target.value) : undefined})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="เช่น 30" />
+                      </div>
+
+                      {/* Day Types */}
+                      <div>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">ทำวันไหน</label>
+                        <div className="flex gap-2">
+                          {([['workday', 'จ-ศ'], ['saturday', 'เสาร์'], ['sunday', 'อาทิตย์']] as [string, string][]).map(([key, label]) => {
+                            const isOn = !form.dayTypes || form.dayTypes.length === 0 || form.dayTypes.includes(key as any);
+                            return (
+                              <button
+                                key={key}
+                                onClick={() => {
+                                  const current = form.dayTypes || ['workday', 'saturday', 'sunday'];
+                                  const next = isOn ? current.filter(d => d !== key) : [...current, key as any];
+                                  setForm({ ...form, dayTypes: next.length > 0 ? next : undefined });
+                                }}
+                                className={`flex-1 py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${
+                                  isOn
+                                    ? 'bg-emerald-50 border-emerald-400 text-emerald-700'
+                                    : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100'
+                                }`}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Date Range */}
+                      <div>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">ช่วงวัน (ถ้ามี deadline)</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <input type="date" value={form.startDate || ''} onChange={e => setForm({...form, startDate: e.target.value || undefined, endDate: !form.endDate || (e.target.value > (form.endDate || '')) ? e.target.value || undefined : form.endDate})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                          <input type="date" value={form.endDate || ''} min={form.startDate || ''} onChange={e => setForm({...form, endDate: e.target.value || undefined})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">เว้นว่างไว้ = ทำซ้ำทุกวัน (ตาม dayTypes)</p>
+                      </div>
+
+                      {/* Time */}
+                      <div>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">กำหนดเวลา</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold block mb-1">เริ่ม</span>
+                            <input type="time" value={form.startTime || ''} onChange={e => setForm({...form, startTime: e.target.value || undefined})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold block mb-1">ถึง</span>
+                            <input type="time" value={form.endTime || ''} onChange={e => setForm({...form, endTime: e.target.value || undefined})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">เว้นว่าง = ไม่กำหนดเวลา</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Tab: แผนงาน ── */}
+                  {activeFormTab === 'plan' && (
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">To do List ({formSubtasks.length})</label>
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={newSubtaskTitle}
+                          onChange={e => setNewSubtaskTitle(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addSubtask())}
+                          placeholder="เพิ่มรายการ..."
+                          className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                        <button onClick={addSubtask} disabled={!newSubtaskTitle.trim()} className="px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-40 active:scale-95">
+                          <Plus className="w-4 h-4" />
                         </button>
                       </div>
-                    ))}
-                  </div>
+                      {formSubtasks.length > 0 && (
+                        <div className="space-y-1.5">
+                          {formSubtasks.map(sub => (
+                            <div key={sub.id} className="bg-slate-50 border border-slate-200 rounded-lg overflow-hidden">
+                              <div className="flex items-center gap-2 px-3 py-2">
+                                <button onClick={() => toggleSubtask(sub.id)} className="shrink-0 active:scale-90">
+                                  {sub.completed
+                                    ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                    : <Circle className="w-4 h-4 text-slate-300" />}
+                                </button>
+                                <span className={`text-sm flex-1 ${sub.completed ? 'line-through text-slate-400' : 'text-slate-700'}`}>{sub.title}</span>
+                                <button onClick={() => setExpandedSubtaskId(expandedSubtaskId === sub.id ? null : sub.id)} className={`p-1 rounded transition-colors shrink-0 ${expandedSubtaskId === sub.id || sub.note ? 'text-amber-500 hover:bg-amber-50' : 'text-slate-300 hover:bg-slate-100 hover:text-slate-500'}`}>
+                                  <FileText className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => removeSubtask(sub.id)} className="p-1 hover:bg-rose-50 rounded text-slate-300 hover:text-rose-500 transition-colors shrink-0">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              {expandedSubtaskId === sub.id && (
+                                <div className="px-3 pb-2 pt-0">
+                                  <textarea
+                                    value={sub.note || ''}
+                                    onChange={e => updateSubtaskNote(sub.id, e.target.value)}
+                                    placeholder="รายละเอียดเพิ่มเติม..."
+                                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-400 h-16 resize-none"
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Tab: รายละเอียด ── */}
+                  {activeFormTab === 'detail' && (
+                    <div className="space-y-3">
+                      <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => handleFileSelect(e, 'photo')} />
+                      <input ref={videoInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={e => handleFileSelect(e, 'video')} />
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <button onClick={() => photoInputRef.current?.click()} className="flex flex-col items-center justify-center gap-1.5 py-3 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-200 text-blue-500 hover:text-emerald-600 rounded-xl border border-emerald-100 transition-all active:scale-95">
+                          <Camera className="w-5 h-5" /> <span className="text-[10px] font-bold">ถ่ายรูป</span>
+                        </button>
+                        <button onClick={isRecording ? handleStopRecording : handleStartRecording} className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border transition-all active:scale-95 ${isRecording ? 'bg-rose-100 border-rose-300 text-rose-600 animate-pulse' : 'bg-slate-50 hover:bg-rose-50 hover:border-rose-200 text-blue-500 hover:text-rose-600 border-emerald-100'}`}>
+                          {isRecording ? <Square className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                          <span className="text-[10px] font-bold">{isRecording ? 'หยุดอัด' : 'อัดเสียง'}</span>
+                        </button>
+                        <button onClick={() => videoInputRef.current?.click()} className="flex flex-col items-center justify-center gap-1.5 py-3 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-200 text-blue-500 hover:text-emerald-600 rounded-xl border border-emerald-100 transition-all active:scale-95">
+                          <Video className="w-5 h-5" /> <span className="text-[10px] font-bold">วิดีโอ</span>
+                        </button>
+                        <button onClick={() => setShowPhoneInput(!showPhoneInput)} className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border transition-all active:scale-95 ${showPhoneInput ? 'bg-sky-50 border-sky-300 text-sky-600' : 'bg-slate-50 hover:bg-sky-50 hover:border-sky-200 text-blue-500 hover:text-sky-600 border-emerald-100'}`}>
+                          <Phone className="w-5 h-5" /> <span className="text-[10px] font-bold">เบอร์โทร</span>
+                        </button>
+                        <button onClick={() => setShowContactInput(!showContactInput)} className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border transition-all active:scale-95 ${showContactInput ? 'bg-violet-50 border-violet-300 text-violet-600' : 'bg-slate-50 hover:bg-violet-50 hover:border-violet-200 text-blue-500 hover:text-violet-600 border-emerald-100'}`}>
+                          <UserIcon className="w-5 h-5" /> <span className="text-[10px] font-bold">ผู้ติดต่อ</span>
+                        </button>
+                        <button onClick={handleGetGPS} disabled={gpsLoading} className={`flex flex-col items-center justify-center gap-1.5 py-3 bg-slate-50 hover:bg-amber-50 hover:border-amber-200 text-blue-500 hover:text-amber-600 rounded-xl border border-emerald-100 transition-all active:scale-95 ${gpsLoading ? 'opacity-50' : ''}`}>
+                          <MapPin className={`w-5 h-5 ${gpsLoading ? 'animate-pulse' : ''}`} /> <span className="text-[10px] font-bold">{gpsLoading ? 'กำลังหา...' : 'พิกัด GPS'}</span>
+                        </button>
+                      </div>
+
+                      {showPhoneInput && (
+                        <div className="mt-2 flex gap-2">
+                          <input type="tel" value={phoneValue} onChange={e => setPhoneValue(e.target.value)} placeholder="0812345678" className="flex-1 bg-slate-50 border border-sky-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400" onKeyDown={e => e.key === 'Enter' && handleAddPhone()} />
+                          <button onClick={handleAddPhone} className="px-3 py-2 bg-sky-500 text-white rounded-xl text-sm font-bold active:scale-95">เพิ่ม</button>
+                        </div>
+                      )}
+
+                      {showContactInput && (
+                        <div className="mt-2 flex gap-2">
+                          <input type="text" value={contactValue} onChange={e => setContactValue(e.target.value)} placeholder="ชื่อผู้ติดต่อ" className="flex-1 bg-slate-50 border border-violet-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" onKeyDown={e => e.key === 'Enter' && handleAddContact()} />
+                          <button onClick={handleAddContact} className="px-3 py-2 bg-violet-500 text-white rounded-xl text-sm font-bold active:scale-95">เพิ่ม</button>
+                        </div>
+                      )}
+
+                      {/* Attachment List */}
+                      {formAttachments.length > 0 && (
+                        <div>
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2 block">ไฟล์แนบ ({formAttachments.length})</label>
+                          <div className="space-y-1.5">
+                            {formAttachments.map((att, i) => (
+                              <div key={i} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${att.type === 'photo' ? 'bg-emerald-100 text-emerald-600' : att.type === 'audio' ? 'bg-rose-100 text-rose-600' : att.type === 'video' ? 'bg-emerald-100 text-emerald-600' : att.type === 'phone' ? 'bg-sky-100 text-sky-600' : att.type === 'contact' ? 'bg-violet-100 text-violet-600' : 'bg-amber-100 text-amber-600'}`}>
+                                  {att.type === 'photo' && <Image className="w-3.5 h-3.5" />}
+                                  {att.type === 'audio' && <Mic className="w-3.5 h-3.5" />}
+                                  {att.type === 'video' && <Video className="w-3.5 h-3.5" />}
+                                  {att.type === 'phone' && <Phone className="w-3.5 h-3.5" />}
+                                  {att.type === 'contact' && <UserIcon className="w-3.5 h-3.5" />}
+                                  {att.type === 'gps' && <MapPin className="w-3.5 h-3.5" />}
+                                </div>
+                                {att.preview && <img src={att.preview} alt="" className="w-8 h-8 rounded-lg object-cover shrink-0" />}
+                                {att.type === 'audio' && <audio src={att.value} controls className="h-7 flex-1 min-w-0" />}
+                                <span className="text-xs text-blue-600 font-medium truncate flex-1">{att.label}</span>
+                                {att.type === 'gps' && <a href={`https://maps.google.com/?q=${att.value}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-emerald-600 font-bold shrink-0">แผนที่</a>}
+                                <button onClick={() => removeAttachment(i)} className="p-1 hover:bg-rose-50 rounded-lg text-blue-400 hover:text-rose-500 transition-colors shrink-0">
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
               {/* Action buttons */}
               <div className="flex justify-between gap-3 pt-2">
                 {editId && (
@@ -1021,98 +995,96 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
         </div>
       , document.body)}
 
-      {/* ===== Grid Cards Overview ===== */}
-      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 animate-fadeIn">
-        {groupStyles.map((type) => {
-          const group = tasks.filter(t => t.category === type.key);
-          const doneCount = group.filter(t => t.completed).length;
-          const isActive = selectedCat === type.key;
-
-          // Icon mapping
-          const IconComponent = type.icon === 'sun' ? Sun
-            : type.icon === 'moon' ? Moon
-            : type.icon === 'code' ? Code
-            : type.icon === 'home' ? Home
-            : type.icon === 'brain' ? Brain
-            : type.icon === 'heart' ? Heart
-            : type.icon === 'heartpulse' ? HeartPulse
-            : type.icon === 'dumbbell' ? Dumbbell
-            : type.icon === 'users' ? Users
-            : type.icon === 'user' ? UserIcon
-            : type.icon === 'file' ? FileText
-            : type.icon === 'coffee' ? Coffee
-            : type.icon === 'wrench' ? Wrench
-            : type.icon === 'zap' ? Zap
-            : type.icon === 'lightning' ? CloudLightning
-            : type.icon === 'briefcase' ? Briefcase
-            : type.icon === 'cart' ? ShoppingCart
-            : type.icon === 'star' ? Star
-            : type.icon === 'calendar' ? Calendar
-            : type.icon === 'clock' ? Clock
-            : type.icon === 'target' ? Target
-            : type.icon === 'pencil' ? Pencil
-            : type.icon === 'trending' ? TrendingUp
-            : type.icon === 'lightbulb' ? Lightbulb
-            : type.icon === 'music' ? Music
-            : type.icon === 'game' ? Gamepad2
-            : type.icon === 'book' ? Book
-            : type.icon === 'utensils' ? Utensils
-            : type.icon === 'bike' ? Bike
-            : type.icon === 'palette' ? Palette
-            : type.icon === 'rocket' ? Rocket
-            : type.icon === 'handshake' ? Handshake
-            : null;
-
-          const groupData = taskGroups.find(g => g.key === type.key);
+      {/* ===== Category Sections with Group Cards ===== */}
+      <div className="space-y-3 animate-fadeIn">
+        {DEFAULT_CATEGORIES.map(cat => {
+          const catGroups = groupStyles.filter(g => {
+            const tg = taskGroups.find(t => t.key === g.key);
+            return tg?.categoryKey === cat.key;
+          });
+          if (catGroups.length === 0) return null;
 
           return (
-            <div key={type.key} className={`relative group/card ${type.bg} border-2 ${type.border} rounded-xl p-2.5 transition-all duration-300 hover:shadow-md cursor-pointer ${
-              isActive ? `${type.ring} ring-2 ring-offset-1 shadow-md scale-105` : 'hover:scale-102'
-            }`}
-              onClick={() => { setSelectedCat(isActive ? null : type.key); setExpandedId(null); }}
-            >
-              {/* Edit / Delete buttons */}
-              <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity z-10">
-                <button
-                  onClick={(e) => { e.stopPropagation(); if (groupData) openEditGroup(groupData); }}
-                  className="w-5 h-5 rounded bg-white/80 hover:bg-blue-100 flex items-center justify-center shadow-sm"
-                  title="แก้ไขกลุ่ม"
-                >
-                  <Pencil className="w-3 h-3 text-blue-500" />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setDeleteGroupConfirm(type.key); }}
-                  className="w-5 h-5 rounded bg-white/80 hover:bg-rose-100 flex items-center justify-center shadow-sm"
-                  title="ลบกลุ่ม"
-                >
-                  <Trash2 className="w-3 h-3 text-rose-500" />
-                </button>
-              </div>
+            <div key={cat.key} className="flex items-center gap-2 flex-wrap">
+              {/* Category label */}
+              <span className="text-xs font-black text-slate-400 w-16 shrink-0 truncate">{cat.emoji} {cat.label}</span>
 
-              <div className="flex flex-col items-center gap-1.5">
-                {/* Row 1: Label */}
-                <span className={`text-[11px] font-black ${type.text} text-center leading-tight`}>{type.label}</span>
+              {/* Group chips */}
+              {catGroups.map((type) => {
+                const isActive = selectedCat === type.key;
+                const groupData = taskGroups.find(g => g.key === type.key);
 
-                {/* Row 2: Count + Icon */}
-                <div className="flex items-center justify-center gap-2">
-                  <div className="flex items-baseline gap-1">
-                    <span className={`text-2xl font-black ${type.text} leading-none`}>{group.length}</span>
-                    {doneCount > 0 && (
-                      <span className="text-[9px] font-black bg-white/50 px-1.5 py-0.5 rounded-full text-slate-600">
-                        ✓{doneCount}
-                      </span>
-                    )}
+                // Icon mapping
+                const IconComponent = type.icon === 'sun' ? Sun
+                  : type.icon === 'moon' ? Moon
+                  : type.icon === 'code' ? Code
+                  : type.icon === 'home' ? Home
+                  : type.icon === 'brain' ? Brain
+                  : type.icon === 'heart' ? Heart
+                  : type.icon === 'heartpulse' ? HeartPulse
+                  : type.icon === 'dumbbell' ? Dumbbell
+                  : type.icon === 'users' ? Users
+                  : type.icon === 'user' ? UserIcon
+                  : type.icon === 'file' ? FileText
+                  : type.icon === 'coffee' ? Coffee
+                  : type.icon === 'wrench' ? Wrench
+                  : type.icon === 'zap' ? Zap
+                  : type.icon === 'lightning' ? CloudLightning
+                  : type.icon === 'briefcase' ? Briefcase
+                  : type.icon === 'cart' ? ShoppingCart
+                  : type.icon === 'star' ? Star
+                  : type.icon === 'calendar' ? Calendar
+                  : type.icon === 'clock' ? Clock
+                  : type.icon === 'target' ? Target
+                  : type.icon === 'pencil' ? Pencil
+                  : type.icon === 'trending' ? TrendingUp
+                  : type.icon === 'lightbulb' ? Lightbulb
+                  : type.icon === 'music' ? Music
+                  : type.icon === 'game' ? Gamepad2
+                  : type.icon === 'book' ? Book
+                  : type.icon === 'utensils' ? Utensils
+                  : type.icon === 'bike' ? Bike
+                  : type.icon === 'palette' ? Palette
+                  : type.icon === 'rocket' ? Rocket
+                  : type.icon === 'handshake' ? Handshake
+                  : null;
+
+                return (
+                  <div key={type.key} className={`group/card relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all ${
+                    isActive ? `${type.bg} ${type.border} border shadow-sm` : 'hover:bg-slate-100'
+                  }`}
+                    onClick={() => { setSelectedCat(isActive ? null : type.key); setExpandedId(null); }}
+                  >
+                    <div className={`w-6 h-6 rounded-md ${type.iconBg} flex items-center justify-center`}>
+                      {type.icon === 'broom' ? <BroomIcon className="w-3.5 h-3.5 text-white" />
+                      : type.icon === 'family' ? <FamilyIcon className="w-3.5 h-3.5 text-white" />
+                      : type.icon === 'flex' ? <FlexIcon className="w-3.5 h-3.5 text-white" />
+                      : type.icon === 'brain2' ? <BrainIcon className="w-3.5 h-3.5 text-white" />
+                      : IconComponent ? <IconComponent className="w-3.5 h-3.5 text-white" />
+                      : <Briefcase className="w-3.5 h-3.5 text-white" />}
+                    </div>
+                    <span className="text-xs font-bold text-slate-600">{type.label}</span>
+
+                    {/* Edit / Delete on hover */}
+                    <div className="hidden group-hover/card:flex gap-0.5 ml-0.5">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); if (groupData) openEditGroup(groupData); }}
+                        className="w-4 h-4 rounded bg-white/80 hover:bg-blue-100 flex items-center justify-center"
+                        title="แก้ไขกลุ่ม"
+                      >
+                        <Pencil className="w-2.5 h-2.5 text-blue-500" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDeleteGroupConfirm(type.key); }}
+                        className="w-4 h-4 rounded bg-white/80 hover:bg-rose-100 flex items-center justify-center"
+                        title="ลบกลุ่ม"
+                      >
+                        <Trash2 className="w-2.5 h-2.5 text-rose-500" />
+                      </button>
+                    </div>
                   </div>
-                  <div className={`w-9 h-9 rounded-lg ${type.iconBg} flex items-center justify-center shadow-md`}>
-                    {type.icon === 'broom' ? <BroomIcon className="w-5 h-5 text-white" />
-                    : type.icon === 'family' ? <FamilyIcon className="w-5 h-5 text-white" />
-                    : type.icon === 'flex' ? <FlexIcon className="w-5 h-5 text-white" />
-                    : type.icon === 'brain2' ? <BrainIcon className="w-5 h-5 text-white" />
-                    : IconComponent ? <IconComponent className="w-5 h-5 text-white" />
-                    : <Briefcase className="w-5 h-5 text-white" />}
-                  </div>
-                </div>
-              </div>
+                );
+              })}
             </div>
           );
         })}

@@ -52,18 +52,26 @@ const LazyFallback = () => (
 const VIEW_KEY = 'debugme-view';
 
 const DEFAULT_GROUPS: TaskGroup[] = [
-  { key: 'กิจวัตร', label: 'กิจวัตร', emoji: '🌅', color: 'teal', icon: 'sun', size: 68 },
-  { key: 'งานหลัก', label: 'งานหลัก', emoji: '💼', color: 'orange', icon: 'briefcase', size: 92 },
-  { key: 'งานบ้าน', label: 'งานบ้าน', emoji: '🏠', color: 'yellow', icon: 'broom', size: 66 },
-  { key: 'พัฒนาตัวเอง', label: 'พัฒนาตัวเอง', emoji: '🧠', color: 'amber', icon: 'brain', size: 72 },
-  { key: 'สุขภาพ', label: 'สุขภาพ', emoji: '💪', color: 'green', icon: 'heartpulse', size: 62 },
-  { key: 'ครอบครัว', label: 'ครอบครัว', emoji: '👨‍👩‍👧', color: 'violet', icon: 'family', size: 62 },
+  // 💼 อาชีพ
+  { key: 'งานหลัก', label: 'งานหลัก', emoji: '💼', color: 'orange', icon: 'briefcase', size: 92, categoryKey: 'career' },
+  { key: 'งานรอง', label: 'งานรอง', emoji: '📝', color: 'yellow', icon: 'pencil', size: 66, categoryKey: 'career' },
+  // 💪 สุขภาพ
+  { key: 'สุขภาพ', label: 'สุขภาพ', emoji: '💪', color: 'green', icon: 'heartpulse', size: 62, categoryKey: 'health' },
+  { key: 'พักผ่อน', label: 'พักผ่อน', emoji: '☕', color: 'cyan', icon: 'coffee', size: 56, categoryKey: 'health' },
+  // 🏠 ดูแลบ้าน/ชีวิต
+  { key: 'กิจวัตร', label: 'กิจวัตร', emoji: '🌅', color: 'teal', icon: 'sun', size: 68, categoryKey: 'home' },
+  { key: 'งานบ้าน', label: 'งานบ้าน', emoji: '🏠', color: 'yellow', icon: 'broom', size: 66, categoryKey: 'home' },
+  { key: 'ธุระส่วนตัว', label: 'ธุระส่วนตัว', emoji: '🔧', color: 'blue', icon: 'calendar', size: 62, categoryKey: 'home' },
+  // ❤️ ความสัมพันธ์
+  { key: 'ครอบครัว', label: 'ครอบครัว', emoji: '👨‍👩‍👧', color: 'violet', icon: 'family', size: 62, categoryKey: 'relationship' },
+  { key: 'เข้าสังคม', label: 'เข้าสังคม', emoji: '🤝', color: 'indigo', icon: 'handshake', size: 66, categoryKey: 'relationship' },
+  // 🧠 จิตใจ
+  { key: 'พัฒนาตัวเอง', label: 'พัฒนาตัวเอง', emoji: '🧠', color: 'amber', icon: 'brain', size: 72, categoryKey: 'mind' },
+  { key: 'สงบใจ', label: 'สงบใจ', emoji: '🧘', color: 'purple', icon: 'moon', size: 62, categoryKey: 'mind' },
+  // ⏸️ คั่นเวลา
+  { key: 'Breaking', label: 'Breaking', emoji: '⏸️', color: 'cyan', icon: 'coffee', size: 56, categoryKey: 'break' },
+  // Quick-access groups (no category — shown on Dashboard)
   { key: 'งานด่วน', label: 'งานด่วน', emoji: '⚡', color: 'rose', icon: 'lightning', size: 82 },
-  { key: 'พักผ่อน', label: 'พักผ่อน', emoji: '☕', color: 'cyan', icon: 'coffee', size: 56 },
-  { key: 'ธุระส่วนตัว', label: 'ธุระส่วนตัว', emoji: '🔧', color: 'blue', icon: 'calendar', size: 62 },
-  // Legacy groups (kept for existing users' tasks)
-  { key: 'งานรอง', label: 'งานรอง', emoji: '📝', color: 'yellow', icon: 'pencil', size: 66 },
-  { key: 'เฉพาะกิจ', label: 'เฉพาะกิจ', emoji: '🎯', color: 'blue', icon: 'target', size: 62 },
   { key: 'นัดหมาย', label: 'นัดหมาย', emoji: '📅', color: 'indigo', icon: 'handshake', size: 66 },
 ];
 
@@ -129,17 +137,25 @@ const NAV_ITEMS: { view: View; icon: string; label: string }[] = [
 ];
 
 // Merge any missing default groups into loaded groups
-// Icon overrides: force-update icons for default groups (when defaults change)
-const DEFAULT_ICON_MAP = new Map(DEFAULT_GROUPS.map(g => [g.key, g.icon]));
+// Force-update icons & categoryKey for default groups (when defaults change)
+const DEFAULT_GROUP_MAP = new Map(DEFAULT_GROUPS.map(g => [g.key, g]));
+
+// Groups that have been permanently removed
+const REMOVED_GROUPS = new Set(['เฉพาะกิจ']);
 
 const mergeDefaultGroups = (loaded: TaskGroup[]): TaskGroup[] => {
-  const existingKeys = new Set(loaded.map(g => g.key));
+  // Filter out removed groups
+  const filtered = loaded.filter(g => !REMOVED_GROUPS.has(g.key));
+  const existingKeys = new Set(filtered.map(g => g.key));
   const missing = DEFAULT_GROUPS.filter(g => !existingKeys.has(g.key));
-  // Update icons of existing default groups to match latest defaults
-  const updated = loaded.map(g => {
-    const defaultIcon = DEFAULT_ICON_MAP.get(g.key);
-    if (defaultIcon && g.icon !== defaultIcon) {
-      return { ...g, icon: defaultIcon };
+  // Update icons and categoryKey of existing default groups to match latest defaults
+  const updated = filtered.map(g => {
+    const def = DEFAULT_GROUP_MAP.get(g.key);
+    if (def) {
+      const patches: Partial<TaskGroup> = {};
+      if (def.icon !== g.icon) patches.icon = def.icon;
+      if (def.categoryKey && def.categoryKey !== g.categoryKey) patches.categoryKey = def.categoryKey;
+      if (Object.keys(patches).length > 0) return { ...g, ...patches };
     }
     return g;
   });
@@ -416,15 +432,15 @@ const App: React.FC = () => {
         const mergedTasks = mergeDefaultTasks(migratedTasks, defaultTasks, deletedIds);
         setTasks(mergedTasks);
 
-        // Groups: merge defaults + fix icons
+        // Groups: merge defaults + fix icons/categoryKey
         if (data.groups) {
           const mergedGroups = mergeDefaultGroups(data.groups);
           setTaskGroups(mergedGroups);
-          const iconsChanged = data.groups.some((g: TaskGroup) => {
-            const def = DEFAULT_ICON_MAP.get(g.key);
-            return def && g.icon !== def;
+          const groupsChanged = data.groups.some((g: TaskGroup) => {
+            const def = DEFAULT_GROUP_MAP.get(g.key);
+            return def && (g.icon !== def.icon || g.categoryKey !== def.categoryKey);
           });
-          if (iconsChanged) {
+          if (groupsChanged || mergedGroups.length > data.groups.length) {
             saveBack.groups = mergedGroups;
           }
         }
@@ -666,24 +682,33 @@ const App: React.FC = () => {
 
   // Pending slot: passed from Dashboard → Planner
   const [pendingSlot, setPendingSlot] = useState<{ startTime: string; endTime: string } | null>(null);
+  // Pending group: passed from Dashboard → TaskManager
+  const [pendingGroupKey, setPendingGroupKey] = useState<string | null>(null);
 
   const handleNavigateToPlanner = (startTime: string, endTime: string) => {
     setPendingSlot({ startTime, endTime });
     setActiveView('planner');
   };
 
+  const handleNavigateToGroup = (groupKey: string) => {
+    setPendingGroupKey(groupKey);
+    setActiveView('tasks');
+    // Clear after a tick so it doesn't re-trigger
+    setTimeout(() => setPendingGroupKey(null), 100);
+  };
+
   const renderContent = () => {
     switch (activeView) {
-      case 'dashboard': return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} habits={habits} onSaveDailyRecord={handleSaveDailyRecord} onNavigateToPlanner={handleNavigateToPlanner} />;
+      case 'dashboard': return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} habits={habits} onSaveDailyRecord={handleSaveDailyRecord} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} />;
       case 'planner': return <Suspense fallback={<LazyFallback />}><DailyPlanner tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} pendingSlot={pendingSlot} onPendingSlotHandled={() => setPendingSlot(null)} /></Suspense>;
-      case 'tasks': return <Suspense fallback={<LazyFallback />}><TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} /></Suspense>;
+      case 'tasks': return <Suspense fallback={<LazyFallback />}><TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} initialGroupKey={pendingGroupKey} /></Suspense>;
       case 'focus': return <Suspense fallback={<LazyFallback />}><FocusTimer /></Suspense>;
       case 'analytics': return <Suspense fallback={<LazyFallback />}><Analytics tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} totalRecordCount={totalRecordCount} userId={user!.uid} /></Suspense>;
       case 'ai-coach': return <Suspense fallback={<LazyFallback />}><AICoach tasks={tasks} /></Suspense>;
       case 'habits': return <Suspense fallback={<LazyFallback />}><HabitTracker habits={habits} setHabits={setHabits} /></Suspense>;
       case 'search': return <Suspense fallback={<LazyFallback />}><SearchView tasks={tasks} taskGroups={taskGroups} /></Suspense>;
       case 'calendar': return <Suspense fallback={<LazyFallback />}><CalendarView tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} userId={user!.uid} /></Suspense>;
-      default: return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} habits={habits} onSaveDailyRecord={handleSaveDailyRecord} onNavigateToPlanner={handleNavigateToPlanner} />;
+      default: return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} habits={habits} onSaveDailyRecord={handleSaveDailyRecord} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} />;
     }
   };
 

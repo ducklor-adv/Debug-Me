@@ -235,7 +235,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
     const top = categoryTimeData[0];
     const topPct = Math.round((top.value / totalCategoryMins) * 100);
     const neglected = taskGroups
-      .filter(g => !['งานรอง', 'เฉพาะกิจ'].includes(g.key))
+      .filter(g => g.key !== 'งานรอง')
       .filter(g => {
         const found = categoryTimeData.find(c => c.key === g.key);
         return !found || found.value < 30;
@@ -271,7 +271,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
     });
 
     return taskGroups
-      .filter(g => !['งานรอง', 'เฉพาะกิจ'].includes(g.key))
+      .filter(g => g.key !== 'งานรอง')
       .map(g => ({
         name: `${g.emoji} ${g.label}`,
         planned: Math.round((plannedMap.get(g.key) || 0) / 60 * 10) / 10,
@@ -299,7 +299,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
     });
 
     return taskGroups
-      .filter(g => !['งานรอง', 'เฉพาะกิจ'].includes(g.key))
+      .filter(g => g.key !== 'งานรอง')
       .map(g => {
         const data = countMap.get(g.key) || { done: 0, total: 0 };
         const rate = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Task, SubTask, Milestone, TaskGroup, GROUP_COLORS, getTasksForDate, getDayType, ScheduleTemplates, TimeSlot, DailyRecord, Habit } from '../types';
+import { Task, SubTask, Milestone, TaskGroup, GROUP_COLORS, getTasksForDate, getDayType, ScheduleTemplates, TimeSlot, DailyRecord, Habit, DEFAULT_CATEGORIES } from '../types';
 import { CheckCircle2, Circle, Trophy, Zap, Flame, CheckCircle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, ChevronRight, Trash2, Square, Image, Coffee, Code, Sun, Moon, Dumbbell, BookOpen, Brain, FileText, Play, Pause, RotateCcw, Volume2, VolumeX, Target, SkipForward, AlertTriangle, Plus, Handshake, RefreshCw } from 'lucide-react';
 
 interface Attachment {
@@ -18,9 +18,10 @@ interface DashboardProps {
   habits?: Habit[];
   onSaveDailyRecord?: (record: DailyRecord) => void;
   onNavigateToPlanner?: (startTime: string, endTime: string) => void;
+  onNavigateToGroup?: (groupKey: string) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, scheduleTemplates, todayRecords = [], habits = [], onSaveDailyRecord, onNavigateToPlanner }) => {
+const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, scheduleTemplates, todayRecords = [], habits = [], onSaveDailyRecord, onNavigateToPlanner, onNavigateToGroup }) => {
   const [showDoneModal, setShowDoneModal] = useState(false);
   const [showEditView, setShowEditView] = useState(false);
   const [notes, setNotes] = useState('');
@@ -501,6 +502,21 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
           <div className="flex items-center gap-2 mb-3">
             <Clock className="w-4 h-4 text-yellow-300" />
             <span className="text-xs font-bold tracking-widest uppercase text-emerald-100">ตอนนี้ทำอะไร</span>
+            <div className="flex-1" />
+            {(() => {
+              const catKeys = new Set(DEFAULT_CATEGORIES.map(c => c.key));
+              const uncatGroups = taskGroups.filter(g => !g.categoryKey || !catKeys.has(g.categoryKey));
+              return uncatGroups.map(g => {
+                const count = tasks.filter(t => t.category === g.key).length;
+                return (
+                  <button key={g.key} onClick={() => onNavigateToGroup?.(g.key)} className="flex items-center gap-1 px-2 py-1 rounded-full bg-orange-400 text-white hover:bg-orange-500 transition-all active:scale-95 shadow-sm">
+                    <span className="text-xs">{g.emoji}</span>
+                    <span className="text-[10px] font-bold">{g.label}</span>
+                    {count > 0 && <span className="text-[9px] font-black bg-orange-600/40 px-1.5 py-0.5 rounded-full">{count}</span>}
+                  </button>
+                );
+              });
+            })()}
           </div>
 
           {currentSlot ? (() => {
@@ -613,10 +629,10 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
         </div>
       </div>
 
-      {/* AI Cards removed */}
+      {/* Quick-access buttons moved to header row above */}
 
       {/* ===== Upcoming Slots ===== */}
-      <div className="px-4 pt-6 pb-16 max-w-lg mx-auto space-y-4">
+      <div className="px-4 pt-4 pb-16 max-w-lg mx-auto space-y-4">
 
         {upcomingSlots.length > 0 && (() => {
           const next = upcomingSlots[0];
