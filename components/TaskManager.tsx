@@ -220,6 +220,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const savedCatRef = useRef<string | null>(null);
 
   const openNewForm = () => {
     setEditId(null);
@@ -235,6 +236,8 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   };
 
   const openNewFormWithCategory = (cat: string) => {
+    savedCatRef.current = selectedCat;
+    setSelectedCat(null);
     setEditId(null);
     setForm({ ...emptyForm(), category: cat });
     setFormAttachments([]);
@@ -248,6 +251,9 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   };
 
   const openEditForm = (task: Task) => {
+    // Hide category modal while editing, restore on close
+    savedCatRef.current = selectedCat;
+    setSelectedCat(null);
     setEditId(task.id);
     setForm({
       title: task.title,
@@ -283,6 +289,11 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setFormLocationReminder(undefined);
     setShowPhoneInput(false);
     setShowContactInput(false);
+    // Restore category modal if it was open before editing
+    if (savedCatRef.current) {
+      setSelectedCat(savedCatRef.current);
+      savedCatRef.current = null;
+    }
   };
 
   const saveForm = () => {
