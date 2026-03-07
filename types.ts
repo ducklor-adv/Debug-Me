@@ -76,6 +76,7 @@ export interface TimeSlot {
   endTime: string;    // HH:MM
   groupKey: string;   // references TaskGroup.key
   assignedTaskIds?: string[];  // task IDs explicitly assigned to this slot
+  excludedTaskIds?: string[];  // task IDs excluded from auto-matching
 }
 
 export type DayType = 'workday' | 'saturday' | 'sunday';
@@ -92,6 +93,31 @@ export interface ScheduleTemplates {
   saturday: TimeSlot[];
   sunday: TimeSlot[];
   customTemplates?: CustomScheduleTemplate[];
+  dayOverrides?: { [dayOfWeek: string]: string }; // "0"-"6" → custom template ID
+  dateOverrides?: { [date: string]: string };      // "YYYY-MM-DD" → custom template ID
+}
+
+/** Resolve schedule slots for a specific day of week (+ optional date for date-specific overrides) */
+export function getScheduleForDay(
+  templates: ScheduleTemplates,
+  dayOfWeek: number,
+  dateStr?: string
+): { slots: TimeSlot[]; source: 'base' | 'custom'; templateId?: string; templateName?: string; templateEmoji?: string; overrideType?: 'date' | 'day' } {
+  // 1. Date-specific override (highest priority)
+  if (dateStr && templates.dateOverrides?.[dateStr]) {
+    const ct = (templates.customTemplates || []).find(t => t.id === templates.dateOverrides![dateStr]);
+    if (ct) return { slots: ct.slots, source: 'custom', templateId: ct.id, templateName: ct.name, templateEmoji: ct.emoji, overrideType: 'date' };
+  }
+  // 2. Day-of-week override
+  const overrideId = templates.dayOverrides?.[String(dayOfWeek)];
+  if (overrideId) {
+    const ct = (templates.customTemplates || []).find(t => t.id === overrideId);
+    if (ct) return { slots: ct.slots, source: 'custom', templateId: ct.id, templateName: ct.name, templateEmoji: ct.emoji, overrideType: 'day' };
+  }
+  // 3. Fallback to base template
+  if (dayOfWeek === 0) return { slots: templates.sunday, source: 'base' };
+  if (dayOfWeek === 6) return { slots: templates.saturday, source: 'base' };
+  return { slots: templates.workday, source: 'base' };
 }
 
 /** Determine the day type from a Date object */
@@ -144,10 +170,36 @@ export function getTasksForDate(tasks: Task[], date: string): Task[] {
   });
 }
 
+/** Determine if a task is recurring (should NOT have completed set permanently) */
+export function isTaskRecurring(task: Task): boolean {
+  if (task.recurrence) return true;
+  if (task.dayTypes && task.dayTypes.length > 0) return true;
+  if (!task.startDate && !task.endDate) return true;
+  return false;
+}
+
+// ===== Focus Session (Pomodoro tracking) =====
+export interface FocusSession {
+  id: string;
+  date: string;               // YYYY-MM-DD
+  taskId?: string;
+  taskTitle?: string;
+  category?: string;
+  mode: 'focus' | 'break';
+  durationPlanned: number;    // seconds
+  durationActual: number;     // seconds
+  completed: boolean;
+  startedAt: string;          // ISO timestamp
+  completedAt?: string;       // ISO timestamp
+  slotStart?: string;         // HH:MM
+  slotEnd?: string;           // HH:MM
+}
+
 // ===== Daily Record (historical tracking) =====
 export interface DailyRecord {
   id: string;
   date: string;            // YYYY-MM-DD
+  taskId?: string;         // references Task.id (optional for backward compat)
   taskTitle: string;       // snapshot of title
   category: string;        // snapshot of category
   completed: boolean;
@@ -189,7 +241,7 @@ export interface Category {
 export const DEFAULT_CATEGORIES: Category[] = [
   { key: 'career', label: 'อาชีพ', emoji: '💼' },
   { key: 'health', label: 'สุขภาพ', emoji: '💪' },
-  { key: 'home', label: 'ดูแลบ้าน/ชีวิต', emoji: '🏠' },
+  { key: 'home', label: 'กิจวัตรประจำวัน', emoji: '🏠' },
   { key: 'relationship', label: 'ความสัมพันธ์', emoji: '❤️' },
   { key: 'mind', label: 'จิตใจ', emoji: '🧠' },
   { key: 'break', label: 'คั่นเวลา', emoji: '⏸️' },

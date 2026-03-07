@@ -1,36 +1,66 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Pause, RotateCcw, Coffee, Brain, Volume2, VolumeX } from 'lucide-react';
+import { FocusSession } from '../types';
 
-const FocusTimer: React.FC = () => {
+interface FocusTimerProps {
+  onSaveFocusSession?: (session: FocusSession) => void;
+  todayFocusSessions?: FocusSession[];
+}
+
+const FocusTimer: React.FC<FocusTimerProps> = ({ onSaveFocusSession, todayFocusSessions = [] }) => {
   const [timeLeft, setTimeLeft] = useState(25 * 60);
   const [isActive, setIsActive] = useState(false);
   const [mode, setMode] = useState<'focus' | 'break'>('focus');
   const [isMuted, setIsMuted] = useState(false);
+  const startedAtRef = useRef<string | null>(null);
 
   useEffect(() => {
-    let interval: any = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
     if (isActive && timeLeft > 0) {
+      if (!startedAtRef.current) {
+        startedAtRef.current = new Date().toISOString();
+      }
       interval = setInterval(() => {
         setTimeLeft(prev => prev - 1);
       }, 1000);
     } else if (timeLeft === 0) {
       setIsActive(false);
-      // Mode switching logic could go here
+      // Play sound
+      if (!isMuted) {
+        try { new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbsGczHjqIt9jNdUQtQYS11c16Ri5ChrPTzX1IMEKD').play(); } catch {}
+      }
+      // Save completed session
+      if (onSaveFocusSession && startedAtRef.current) {
+        const planned = mode === 'focus' ? 25 * 60 : 5 * 60;
+        onSaveFocusSession({
+          id: `focus-${Date.now()}`,
+          date: new Date().toISOString().split('T')[0],
+          mode,
+          durationPlanned: planned,
+          durationActual: planned,
+          completed: true,
+          startedAt: startedAtRef.current,
+          completedAt: new Date().toISOString(),
+        });
+      }
+      startedAtRef.current = null;
     }
-    return () => clearInterval(interval);
+    return () => { if (interval) clearInterval(interval); };
   }, [isActive, timeLeft]);
 
   const toggleTimer = () => setIsActive(!isActive);
 
   const resetTimer = () => {
     setIsActive(false);
+    startedAtRef.current = null;
     setTimeLeft(mode === 'focus' ? 25 * 60 : 5 * 60);
   };
 
   const switchMode = (newMode: 'focus' | 'break') => {
     setMode(newMode);
     setIsActive(false);
+    startedAtRef.current = null;
     setTimeLeft(newMode === 'focus' ? 25 * 60 : 5 * 60);
   };
 
@@ -39,6 +69,18 @@ const FocusTimer: React.FC = () => {
     const s = seconds % 60;
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
+
+  // Real stats from todayFocusSessions
+  const stats = useMemo(() => {
+    const focusSessions = todayFocusSessions.filter(s => s.mode === 'focus');
+    const completedSessions = focusSessions.filter(s => s.completed);
+    const totalSessions = completedSessions.length;
+    const totalMinutes = Math.round(completedSessions.reduce((sum, s) => sum + s.durationActual, 0) / 60);
+    const efficiency = focusSessions.length > 0
+      ? Math.round((completedSessions.length / focusSessions.length) * 100)
+      : 0;
+    return { totalSessions, totalMinutes, efficiency };
+  }, [todayFocusSessions]);
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 md:space-y-8 py-4 md:py-10 animate-fadeIn">
@@ -103,10 +145,10 @@ const FocusTimer: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-        <FocusStat label="Today's Sessions" value="4" />
-        <FocusStat label="Focus Time" value="100m" />
-        <FocusStat label="Daily Streak" value="2" />
-        <FocusStat label="Efficiency" value="85%" />
+        <FocusStat label="Today's Sessions" value={String(stats.totalSessions)} />
+        <FocusStat label="Focus Time" value={`${stats.totalMinutes}m`} />
+        <FocusStat label="Total Break" value={`${todayFocusSessions.filter(s => s.mode === 'break' && s.completed).length}`} />
+        <FocusStat label="Efficiency" value={`${stats.efficiency}%`} />
       </div>
     </div>
   );

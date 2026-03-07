@@ -1,31 +1,24 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Task, SubTask, Milestone, TaskGroup, GROUP_COLORS, getTasksForDate, getDayType, ScheduleTemplates, TimeSlot, DailyRecord, Habit, DEFAULT_CATEGORIES } from '../types';
-import { CheckCircle2, Circle, Trophy, Zap, Flame, CheckCircle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, ChevronRight, Trash2, Square, Image, Coffee, Code, Sun, Moon, Dumbbell, BookOpen, Brain, FileText, Play, Pause, RotateCcw, Volume2, VolumeX, Target, SkipForward, AlertTriangle, Plus, Handshake, RefreshCw } from 'lucide-react';
-
-interface Attachment {
-  type: 'photo' | 'video' | 'audio' | 'phone' | 'contact' | 'gps';
-  label: string;
-  value: string;
-  preview?: string;
-}
+import { Task, SubTask, TaskAttachment, TaskGroup, GROUP_COLORS, getTasksForDate, ScheduleTemplates, TimeSlot, DailyRecord, DEFAULT_CATEGORIES, Category, isTaskRecurring, FocusSession, getScheduleForDay } from '../types';
+import { CheckCircle2, Circle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, Trash2, Square, Image, Coffee, Brain, Play, Pause, RotateCcw, Volume2, VolumeX, AlertTriangle, Plus, RefreshCw, ChevronDown } from 'lucide-react';
 
 interface DashboardProps {
   tasks: Task[];
-  milestones: Milestone[];
   taskGroups: TaskGroup[];
   scheduleTemplates: ScheduleTemplates;
   todayRecords?: DailyRecord[];
-  habits?: Habit[];
   onSaveDailyRecord?: (record: DailyRecord) => void;
+  onTaskComplete?: (taskId: string, completed: boolean) => void;
+  onSaveFocusSession?: (session: FocusSession) => void;
   onNavigateToPlanner?: (startTime: string, endTime: string) => void;
   onNavigateToGroup?: (groupKey: string) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, scheduleTemplates, todayRecords = [], habits = [], onSaveDailyRecord, onNavigateToPlanner, onNavigateToGroup }) => {
+const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTemplates, todayRecords = [], onSaveDailyRecord, onTaskComplete, onSaveFocusSession, onNavigateToPlanner, onNavigateToGroup }) => {
   const [showDoneModal, setShowDoneModal] = useState(false);
   const [showEditView, setShowEditView] = useState(false);
   const [notes, setNotes] = useState('');
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [showPhoneInput, setShowPhoneInput] = useState(false);
   const [showContactInput, setShowContactInput] = useState(false);
@@ -38,6 +31,16 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
   // Track which tasks are checked today (restored from DailyRecords)
   const [checkedTasks, setCheckedTasks] = useState<Set<string>>(new Set());
 
+  // Expand/collapse for remaining slots
+  const [expandedSlots, setExpandedSlots] = useState<Set<string>>(new Set());
+  const toggleSlot = (id: string) => {
+    setExpandedSlots(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   // Focus Timer
   const [showFocus, setShowFocus] = useState(false);
   const [focusMode, setFocusMode] = useState<'focus' | 'break'>('focus');
@@ -46,8 +49,13 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
   const [soundOn, setSoundOn] = useState(true);
   const focusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const focusStartedAtRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (focusRunning && focusSeconds > 0) {
+      if (!focusStartedAtRef.current) {
+        focusStartedAtRef.current = new Date().toISOString();
+      }
       focusIntervalRef.current = setInterval(() => {
         setFocusSeconds(prev => {
           if (prev <= 1) {
@@ -55,6 +63,27 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
             if (soundOn) {
               try { new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbsGczHjqIt9jNdUQtQYS11c16Ri5ChrPTzX1IMEKD').play(); } catch {}
             }
+            // Save focus session on completion
+            if (onSaveFocusSession) {
+              const planned = focusMode === 'focus' ? 25 * 60 : 5 * 60;
+              const activeTask = activeTaskId ? todayTasks.find(t => t.id === activeTaskId) : slotTasks[0];
+              onSaveFocusSession({
+                id: `focus-${Date.now()}`,
+                date: todayStr,
+                taskId: activeTask?.id,
+                taskTitle: activeTask?.title,
+                category: activeTask?.category,
+                mode: focusMode,
+                durationPlanned: planned,
+                durationActual: planned,
+                completed: true,
+                startedAt: focusStartedAtRef.current || new Date().toISOString(),
+                completedAt: new Date().toISOString(),
+                slotStart: currentSlot?.startTime,
+                slotEnd: currentSlot?.endTime,
+              });
+            }
+            focusStartedAtRef.current = null;
             return 0;
           }
           return prev - 1;
@@ -105,11 +134,13 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
     const checked = new Set<string>();
     todayRecords.forEach(r => {
       if (!r.timeStart || !r.timeEnd) return;
-      const matchTask = todayTasks.find(t => t.title === r.taskTitle && t.category === r.category);
+      // Prefer taskId match (new records), fallback to title+category (old records)
+      const matchTask = r.taskId
+        ? todayTasks.find(t => t.id === r.taskId)
+        : todayTasks.find(t => t.title === r.taskTitle && t.category === r.category);
       if (!matchTask) return;
       const matchSlot = todaySlots.find(s =>
-        s.startTime === r.timeStart && s.endTime === r.timeEnd &&
-        (s.assignedTaskIds || []).includes(matchTask.id)
+        s.startTime === r.timeStart && s.endTime === r.timeEnd
       );
       if (matchSlot) checked.add(matchTask.id);
     });
@@ -124,12 +155,13 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
         next.delete(taskId);
       } else {
         next.add(taskId);
-        if (onSaveDailyRecord) {
-          const task = todayTasks.find(t => t.id === taskId);
-          if (task) {
+        const task = todayTasks.find(t => t.id === taskId);
+        if (task) {
+          if (onSaveDailyRecord) {
             onSaveDailyRecord({
               id: `${todayStr}-${task.id}`,
               date: todayStr,
+              taskId: task.id,
               taskTitle: task.title,
               category: task.category,
               completed: true,
@@ -137,6 +169,10 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
               timeStart: slotStart,
               timeEnd: slotEnd,
             });
+          }
+          // Mark non-recurring tasks as completed
+          if (onTaskComplete && !isTaskRecurring(task)) {
+            onTaskComplete(task.id, true);
           }
         }
       }
@@ -152,9 +188,9 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
   // --- Slot-based logic ---
   const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
 
-  // Get today's schedule slots
-  const dayType = getDayType(new Date());
-  const todaySlots = (scheduleTemplates[dayType] || []).slice().sort((a, b) => a.startTime.localeCompare(b.startTime));
+  // Get today's schedule slots (respects dayOverrides & dateOverrides)
+  const todaySchedule = getScheduleForDay(scheduleTemplates, now.getDay(), todayStr);
+  const todaySlots = (todaySchedule.slots || []).slice().sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   // Find current slot (handles midnight-crossing slots like 22:00-05:00)
   const currentSlot = todaySlots.find(s => {
@@ -165,15 +201,39 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
     return nowMin >= start || nowMin < end;
   });
 
-  // Tasks in current slot (by assignedTaskIds whitelist)
-  const slotTasks = currentSlot
-    ? (currentSlot.assignedTaskIds || [])
-        .map(id => todayTasks.find(t => t.id === id))
-        .filter((t): t is Task => t !== undefined)
-    : [];
+  // Maps for resolving slot groupKey (can be a category key or a group key)
+  const groupMap = new Map<string, TaskGroup>(taskGroups.map(g => [g.key, g]));
+  const categoryMap = new Map<string, Category>(DEFAULT_CATEGORIES.map(c => [c.key, c]));
+  const categoryColorMap: Record<string, string> = { break: 'cyan', sleep: 'indigo' };
+  const resolveSlotInfo = (key: string): { label: string; emoji: string; color: string } => {
+    const cat = categoryMap.get(key);
+    if (cat) {
+      const firstGroup = taskGroups.find(g => g.categoryKey === key);
+      return { label: cat.label, emoji: cat.emoji, color: firstGroup?.color || categoryColorMap[key] || 'orange' };
+    }
+    const g = groupMap.get(key);
+    if (g) return { label: g.label, emoji: g.emoji, color: g.color };
+    return { label: key, emoji: '', color: 'orange' };
+  };
+  const getSlotColor = (s: TimeSlot) => GROUP_COLORS[resolveSlotInfo(s.groupKey).color] || GROUP_COLORS.orange;
 
-  // Upcoming slots (after current time)
-  const upcomingSlots = todaySlots.filter(s => toMin(s.startTime) > nowMin);
+  // Full tasks for slot: only explicitly assigned tasks
+  const getFullTasksForSlot = (slot: TimeSlot): Task[] => {
+    const assigned = slot.assignedTaskIds || [];
+    if (assigned.length === 0) return [];
+    const excludedIds = new Set(slot.excludedTaskIds || []);
+    return assigned
+      .map(id => tasks.find(t => t.id === id))
+      .filter((t): t is Task => t !== undefined && !excludedIds.has(t.id));
+  };
+
+  // Tasks in current slot (assigned + auto-matched from task groups)
+  const slotTasks = currentSlot ? getFullTasksForSlot(currentSlot) : [];
+
+  // Upcoming slots (after current time, excluding current slot to prevent cross-midnight duplicates)
+  const upcomingSlots = todaySlots.filter(s =>
+    s.id !== currentSlot?.id && toMin(s.startTime) > nowMin
+  );
 
   // Free slot calculation (when no current slot)
   const freeSlot = !currentSlot ? (() => {
@@ -209,24 +269,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
     return `${mm}:${ss}`;
   })();
 
-  // Get group style for a slot
-  const getSlotGroup = (s: TimeSlot) => taskGroups.find(g => g.key === s.groupKey);
-  const getSlotColor = (s: TimeSlot) => GROUP_COLORS[getSlotGroup(s)?.color || 'orange'] || GROUP_COLORS.orange;
 
-  const scheduleIcon = (cat: string, size = 'w-3.5 h-3.5') => {
-    const group = taskGroups.find(g => g.key === cat);
-    const icon = group?.icon || 'code';
-    if (icon === 'code') return <Code className={size} />;
-    if (icon === 'coffee') return <Coffee className={size} />;
-    if (icon === 'sun') return <Sun className={size} />;
-    if (icon === 'moon') return <Moon className={size} />;
-    if (icon === 'gym') return <Dumbbell className={size} />;
-    if (icon === 'book') return <BookOpen className={size} />;
-    if (icon === 'brain') return <Brain className={size} />;
-    if (icon === 'file') return <FileText className={size} />;
-    if (icon === 'handshake') return <Handshake className={size} />;
-    return <Clock className={size} />;
-  };
 
   const handleMarkAsDoneClick = (taskId: string) => { setActiveTaskId(taskId); setShowDoneModal(true); };
   const handleConfirmDone = () => {
@@ -259,6 +302,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
         onSaveDailyRecord({
           id: `${todayStr}-${task.id}`,
           date: todayStr,
+          taskId: task.id,
           taskTitle: task.title,
           category: task.category,
           completed: !skipMode,
@@ -269,6 +313,10 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
           attachments: attachments.length > 0 ? attachments : undefined,
         });
         setCheckedTasks(prev => new Set(prev).add(activeTaskId));
+        // Mark non-recurring tasks as completed (only if Done, not Skip)
+        if (onTaskComplete && !skipMode && !isTaskRecurring(task)) {
+          onTaskComplete(task.id, true);
+        }
       }
     }
     resetEditState();
@@ -478,7 +526,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
                 {focusMM}<span className="text-slate-300">:</span>{focusSS}
               </div>
               <p className="mt-4 text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                {focusMode === 'focus' ? (currentSlot ? `Deep Work: ${getSlotGroup(currentSlot)?.label || currentSlot.groupKey}` : 'Deep Work: Coding Time') : 'Break Time'}
+                {focusMode === 'focus' ? (currentSlot ? `Deep Work: ${resolveSlotInfo(currentSlot.groupKey).label}` : 'Deep Work: Coding Time') : 'Break Time'}
               </p>
             </div>
             <div className="flex items-center justify-center gap-5 pb-10">
@@ -499,6 +547,21 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
       {/* ===== NOW: Current Slot ===== */}
       <div className="bg-gradient-to-br from-emerald-600 via-emerald-500 to-green-500 p-6 pb-8">
         <div className="max-w-lg mx-auto">
+          {/* Current date & time */}
+          <div className="text-center mb-4">
+            <p className="text-lg font-black text-white">
+              {now.toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </p>
+            <p className="text-3xl font-black text-white tabular-nums tracking-tight">
+              {now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </p>
+            {todaySchedule.source === 'custom' && todaySchedule.templateName && (
+              <span className="inline-flex items-center gap-1 mt-1 px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full text-xs font-bold text-white">
+                {todaySchedule.templateEmoji} {todaySchedule.templateName}
+              </span>
+            )}
+          </div>
+
           <div className="flex items-center gap-2 mb-3">
             <Clock className="w-4 h-4 text-yellow-300" />
             <span className="text-xs font-bold tracking-widest uppercase text-emerald-100">ตอนนี้ทำอะไร</span>
@@ -520,7 +583,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
           </div>
 
           {currentSlot ? (() => {
-            const group = getSlotGroup(currentSlot);
+            const slotInfo = resolveSlotInfo(currentSlot.groupKey);
             const clr = getSlotColor(currentSlot);
             return (
               <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
@@ -528,11 +591,11 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
                 <div className={`${clr.bg} ${clr.border} border-b-2 p-4`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <div className={`w-8 h-8 rounded-lg ${clr.iconBg} flex items-center justify-center`}>
-                        {scheduleIcon(currentSlot.groupKey, 'w-4 h-4 text-white')}
+                      <div className={`w-8 h-8 rounded-lg ${clr.iconBg} flex items-center justify-center text-lg`}>
+                        {slotInfo.emoji}
                       </div>
                       <div>
-                        <h3 className={`text-base font-black ${clr.text}`}>{group?.label || currentSlot.groupKey}</h3>
+                        <h3 className={`text-base font-black ${clr.text}`}>{slotInfo.label}</h3>
                         <span className="text-[11px] font-mono font-bold text-slate-500">{currentSlot.startTime} – {currentSlot.endTime} ({getSlotDur(currentSlot)} น.)</span>
                       </div>
                     </div>
@@ -636,42 +699,61 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
 
         {upcomingSlots.length > 0 && (() => {
           const next = upcomingSlots[0];
-          const nextGroup = getSlotGroup(next);
+          const nextInfo = resolveSlotInfo(next.groupKey);
           const nextClr = getSlotColor(next);
-          const nextTasks = (next.assignedTaskIds || [])
-            .map(id => todayTasks.find(t => t.id === id))
-            .filter((t): t is Task => t !== undefined);
+          const nextTasks = getFullTasksForSlot(next);
           return (
-            <div className="bg-white rounded-2xl p-5 shadow-sm border border-emerald-100">
-              <div className="flex items-center gap-2 text-emerald-500 mb-3">
-                <Clock className="w-4 h-4" />
-                <span className="text-[10px] font-bold uppercase tracking-widest">Next Up</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-lg ${nextClr.iconBg} flex items-center justify-center shrink-0`}>
-                  {scheduleIcon(next.groupKey, 'w-4 h-4 text-white')}
+            <div className="bg-white rounded-2xl shadow-sm border border-emerald-100 overflow-hidden">
+              <div className={`${nextClr.bg} px-4 py-3 flex items-center gap-3`}>
+                <div className="flex items-center gap-2 text-emerald-500">
+                  <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">Next Up</span>
                 </div>
-                <span className="text-base font-bold text-slate-800 truncate flex-1">{nextGroup?.label || next.groupKey}</span>
-                <span className="text-xs font-mono font-bold text-emerald-600 shrink-0">{next.startTime}–{next.endTime}</span>
-                <span className="text-xs font-bold text-blue-400 shrink-0">{getSlotDur(next)}น.</span>
-              </div>
-              {nextTasks.length > 0 && (
-                <div className="mt-2 pl-11 space-y-1">
-                  {nextTasks.map((t, i) => (
-                    <div key={i} className="flex items-center gap-1.5">
-                      <p className="text-xs text-slate-500 truncate flex-1">• {t.title}</p>
-                      {t.recurrence && (
-                        <span className="text-[8px] font-black bg-violet-100 text-violet-600 px-1 py-0.5 rounded shrink-0">
-                          <RefreshCw className="w-2 h-2 inline" />
-                        </span>
-                      )}
-                      {t.subtasks && t.subtasks.length > 0 && (
-                        <span className="text-[9px] font-bold text-slate-400 shrink-0">{t.subtasks.filter((s: SubTask) => s.completed).length}/{t.subtasks.length}</span>
-                      )}
-                    </div>
-                  ))}
+                <div className="flex-1" />
+                <div className={`w-7 h-7 rounded-lg ${nextClr.iconBg} flex items-center justify-center shrink-0 text-base`}>
+                  {nextInfo.emoji}
                 </div>
-              )}
+                <span className="text-sm font-bold text-slate-800">{nextInfo.label}</span>
+                <span className="text-[11px] font-mono font-bold text-slate-500 shrink-0">{next.startTime}–{next.endTime}</span>
+                <span className="text-[11px] font-bold text-blue-400 shrink-0">{getSlotDur(next)}น.</span>
+              </div>
+              <div className="p-4">
+                {nextTasks.length > 0 ? (
+                  <div className="space-y-2">
+                    {nextTasks.map((task, idx) => {
+                      const isDone = checkedTasks.has(task.id);
+                      return (
+                        <div key={idx} className="py-1">
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => toggleCheck(task.id, next.startTime, next.endTime)} className="shrink-0 active:scale-90">
+                              {isDone
+                                ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                : <Circle className="w-4 h-4 text-slate-300" />}
+                            </button>
+                            <span className={`text-sm font-medium truncate flex-1 ${isDone ? 'line-through text-slate-400' : 'text-slate-700'}`}>{task.title}</span>
+                            {task.recurrence && (
+                              <span className="text-[8px] font-black bg-violet-100 text-violet-600 px-1 py-0.5 rounded shrink-0">
+                                <RefreshCw className="w-2.5 h-2.5 inline" />
+                              </span>
+                            )}
+                            {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration}น.</span>}
+                          </div>
+                          {task.subtasks && task.subtasks.length > 0 && (
+                            <div className="flex items-center gap-2 mt-1 ml-6">
+                              <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-400 rounded-full transition-all" style={{ width: `${(task.subtasks.filter((s: SubTask) => s.completed).length / task.subtasks.length) * 100}%` }} />
+                              </div>
+                              <span className="text-[9px] font-bold text-slate-400 shrink-0">{task.subtasks.filter((s: SubTask) => s.completed).length}/{task.subtasks.length}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400 text-center py-1">ไม่มี task ย่อยในช่วงนี้</p>
+                )}
+              </div>
             </div>
           );
         })()}
@@ -681,35 +763,63 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, milestones, taskGroups, sc
             <div className="px-4 py-2.5 border-b border-emerald-100">
               <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400">อีก {upcomingSlots.length - 1} ช่วงเวลาวันนี้</span>
             </div>
-            <div className="max-h-[420px] overflow-y-auto divide-y divide-emerald-50">
+            <div className="max-h-[520px] overflow-y-auto divide-y divide-emerald-50">
               {upcomingSlots.slice(1).map((slot, idx) => {
-                const g = getSlotGroup(slot);
+                const si = resolveSlotInfo(slot.groupKey);
                 const c = getSlotColor(slot);
-                const sTaskList = (slot.assignedTaskIds || [])
-                  .map(id => todayTasks.find(t => t.id === id))
-                  .filter((t): t is Task => t !== undefined);
+                const sTaskList = getFullTasksForSlot(slot);
+                const isExpanded = expandedSlots.has(slot.id);
                 return (
-                  <div key={idx} className="px-4 py-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`w-7 h-7 rounded-lg ${c.iconBg} flex items-center justify-center shrink-0`}>
-                        {scheduleIcon(slot.groupKey, 'w-3.5 h-3.5 text-white')}
+                  <div key={idx}>
+                    <button onClick={() => toggleSlot(slot.id)} className="w-full px-4 py-2.5 flex items-center gap-2.5 hover:bg-slate-50 transition-colors active:bg-slate-100">
+                      <div className={`w-7 h-7 rounded-lg ${c.iconBg} flex items-center justify-center shrink-0 text-base`}>
+                        {si.emoji}
                       </div>
-                      <span className="text-sm text-slate-700 font-medium truncate flex-1">{g?.label || slot.groupKey}</span>
+                      <span className="text-sm text-slate-700 font-medium truncate flex-1 text-left">{si.label}</span>
+                      {sTaskList.length > 0 && (
+                        <span className="text-[9px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full shrink-0">{sTaskList.length}</span>
+                      )}
                       <span className="text-[11px] font-mono text-blue-400 shrink-0">{slot.startTime}–{slot.endTime}</span>
                       <span className="text-[11px] font-bold text-blue-400 shrink-0 w-10 text-right">{getSlotDur(slot)}น.</span>
-                    </div>
-                    {sTaskList.length > 0 && (
-                      <div className="mt-1.5 pl-9 space-y-0.5">
-                        {sTaskList.map((t, i) => (
-                          <div key={i} className="flex items-center gap-1.5">
-                            <span className="text-xs text-slate-400 truncate flex-1">• {t.title}</span>
-                            {t.recurrence && <RefreshCw className="w-2.5 h-2.5 text-violet-400 shrink-0" />}
-                            {t.subtasks && t.subtasks.length > 0 && (
-                              <span className="text-[9px] font-bold text-slate-300 shrink-0">{t.subtasks.filter((s: SubTask) => s.completed).length}/{t.subtasks.length}</span>
-                            )}
-                            {t.estimatedDuration && <span className="text-[9px] font-mono text-blue-300 shrink-0">{t.estimatedDuration}น.</span>}
+                      <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                    {isExpanded && (
+                      <div className="px-4 pb-3 pt-1">
+                        {sTaskList.length > 0 ? (
+                          <div className="space-y-2 ml-1">
+                            {sTaskList.map((task, i) => {
+                              const isDone = checkedTasks.has(task.id);
+                              return (
+                                <div key={i} className="py-1">
+                                  <div className="flex items-center gap-2">
+                                    <button onClick={() => toggleCheck(task.id, slot.startTime, slot.endTime)} className="shrink-0 active:scale-90">
+                                      {isDone
+                                        ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                        : <Circle className="w-4 h-4 text-slate-300" />}
+                                    </button>
+                                    <span className={`text-sm font-medium truncate flex-1 ${isDone ? 'line-through text-slate-400' : 'text-slate-700'}`}>{task.title}</span>
+                                    {task.recurrence && (
+                                      <span className="text-[8px] font-black bg-violet-100 text-violet-600 px-1 py-0.5 rounded shrink-0">
+                                        <RefreshCw className="w-2.5 h-2.5 inline" />
+                                      </span>
+                                    )}
+                                    {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration}น.</span>}
+                                  </div>
+                                  {task.subtasks && task.subtasks.length > 0 && (
+                                    <div className="flex items-center gap-2 mt-1 ml-6">
+                                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                        <div className="h-full bg-emerald-400 rounded-full transition-all" style={{ width: `${(task.subtasks.filter((s: SubTask) => s.completed).length / task.subtasks.length) * 100}%` }} />
+                                      </div>
+                                      <span className="text-[9px] font-bold text-slate-400 shrink-0">{task.subtasks.filter((s: SubTask) => s.completed).length}/{task.subtasks.length}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                        ))}
+                        ) : (
+                          <p className="text-xs text-slate-400 text-center py-1">ไม่มี task ย่อยในช่วงนี้</p>
+                        )}
                       </div>
                     )}
                   </div>

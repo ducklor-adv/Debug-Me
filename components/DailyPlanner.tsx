@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Task, SubTask, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, CustomScheduleTemplate, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType, DEFAULT_CATEGORIES, Category } from '../types';
-import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown, RefreshCw, GripVertical, Save } from 'lucide-react';
+import { Task, SubTask, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, CustomScheduleTemplate, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType, getScheduleForDay, DEFAULT_CATEGORIES, Category, isTaskRecurring } from '../types';
+import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown, RefreshCw, GripVertical, Save, AlertTriangle, Loader2 } from 'lucide-react';
 import TimePicker from './TimePicker';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
@@ -10,10 +10,25 @@ import { CSS } from '@dnd-kit/utilities';
 const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 const monthNames = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 
-const TAB_CONFIG: { key: DayType; label: string; emoji: string }[] = [
-  { key: 'workday',  label: 'จันทร์-ศุกร์',    emoji: '💼' },
-  { key: 'saturday', label: 'วันเสาร์',        emoji: '🌴' },
-  { key: 'sunday',   label: 'อาทิตย์/วันหยุด', emoji: '☀️' },
+// สีประจำวัน (ไทย)
+const DAY_COLORS: Record<number, { bg: string; text: string; border: string; activeBg: string; activeText: string }> = {
+  0: { bg: 'bg-red-50',    text: 'text-red-500',    border: 'border-red-200',    activeBg: 'bg-red-500',    activeText: 'text-red-600' },    // อาทิตย์ — แดง
+  1: { bg: 'bg-yellow-50', text: 'text-yellow-600',  border: 'border-yellow-200', activeBg: 'bg-yellow-400', activeText: 'text-yellow-600' }, // จันทร์ — เหลือง
+  2: { bg: 'bg-pink-50',   text: 'text-pink-500',   border: 'border-pink-200',   activeBg: 'bg-pink-400',   activeText: 'text-pink-600' },   // อังคาร — ชมพู
+  3: { bg: 'bg-green-50',  text: 'text-green-500',  border: 'border-green-200',  activeBg: 'bg-green-500',  activeText: 'text-green-600' },  // พุธ — เขียว
+  4: { bg: 'bg-orange-50', text: 'text-orange-500', border: 'border-orange-200', activeBg: 'bg-orange-400', activeText: 'text-orange-600' }, // พฤหัสบดี — ส้ม
+  5: { bg: 'bg-blue-50',   text: 'text-blue-500',   border: 'border-blue-200',   activeBg: 'bg-blue-500',   activeText: 'text-blue-600' },   // ศุกร์ — ฟ้า
+  6: { bg: 'bg-purple-50', text: 'text-purple-500', border: 'border-purple-200', activeBg: 'bg-purple-500', activeText: 'text-purple-600' }, // เสาร์ — ม่วง
+};
+
+const DAY_TAB_CONFIG: { dayOfWeek: number; label: string; shortLabel: string }[] = [
+  { dayOfWeek: 1, label: 'จันทร์',   shortLabel: 'จ' },
+  { dayOfWeek: 2, label: 'อังคาร',   shortLabel: 'อ' },
+  { dayOfWeek: 3, label: 'พุธ',      shortLabel: 'พ' },
+  { dayOfWeek: 4, label: 'พฤหัสบดี', shortLabel: 'พฤ' },
+  { dayOfWeek: 5, label: 'ศุกร์',    shortLabel: 'ศ' },
+  { dayOfWeek: 6, label: 'เสาร์',    shortLabel: 'ส' },
+  { dayOfWeek: 0, label: 'อาทิตย์',  shortLabel: 'อา' },
 ];
 
 function getDurationMinutes(start: string, end: string): number {
@@ -114,13 +129,19 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const nextDay = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; });
   const goToday = () => setSelectedDate(new Date());
 
-  // Day type detection & active tab (string to support custom template IDs)
-  const autoDayType = getDayType(selectedDate);
-  const [activeTab, setActiveTab] = useState<string>(autoDayType);
+  // Day detection & active tab ("0"-"6" for day tabs, custom template ID for custom tabs)
+  const selectedDayOfWeek = selectedDate.getDay();
+  const [activeTab, setActiveTab] = useState<string>(String(selectedDayOfWeek));
 
-  // Auto-switch tab when date changes
+  // Auto-switch tab when date changes (respect dirty state)
   useEffect(() => {
-    setActiveTab(getDayType(selectedDate));
+    const newTab = String(selectedDate.getDay());
+    if (scheduleDirty && newTab !== activeTab) {
+      pendingTabRef.current = newTab;
+      setShowUnsavedWarning(true);
+    } else {
+      setActiveTab(newTab);
+    }
   }, [selectedDate]);
 
   // Custom template state
@@ -130,33 +151,118 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const [customForm, setCustomForm] = useState({ name: '', emoji: '📋' });
   const [deleteCustomConfirm, setDeleteCustomConfirm] = useState<string | null>(null);
 
-  const isCustomTab = !['workday', 'saturday', 'sunday'].includes(activeTab);
+  const isDayTab = /^[0-6]$/.test(activeTab);
+  const isCustomTab = !isDayTab;
+  const activeDayOfWeek = isDayTab ? parseInt(activeTab) : -1;
+  const isShowingToday = isToday && isDayTab && activeTab === String(selectedDayOfWeek);
+  const activeDayColor = isDayTab ? DAY_COLORS[activeDayOfWeek] : null;
   const activeCustomTemplate = isCustomTab ? customTemplates.find(t => t.id === activeTab) : null;
 
-  // Derive active schedule from template
-  const schedule = isCustomTab
-    ? (activeCustomTemplate?.slots || [])
-    : (scheduleTemplates[activeTab as DayType] || []);
+  // Schedule save tracking (dirty + status)
+  const [scheduleDirty, setScheduleDirty] = useState(false);
+  const [scheduleSaveStatus, setScheduleSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const pendingTabRef = useRef<string | null>(null);
+
+  // Reset dirty state when switching tabs (after save or discard)
+  useEffect(() => {
+    setScheduleDirty(false);
+    setScheduleSaveStatus('idle');
+  }, [activeTab]);
+
+  // Resolve schedule: day tab → getScheduleForDay(), custom tab → template slots
+  const resolvedDay = isDayTab ? getScheduleForDay(scheduleTemplates, parseInt(activeTab), selectedDateStr) : null;
+  const schedule = isDayTab
+    ? (resolvedDay?.slots || [])
+    : (activeCustomTemplate?.slots || []);
 
   // Use schedule template slots directly (tasks are grouped by category)
   const mergedSchedule = [...schedule].sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-  // Wrapper to update only the active tab's template
+  // Wrapper to update only the active tab's template (+ mark dirty)
   const setScheduleForTab = useCallback((updater: (prev: TimeSlot[]) => TimeSlot[]) => {
-    if (isCustomTab) {
+    setScheduleDirty(true);
+    setScheduleSaveStatus('idle');
+    if (isDayTab) {
+      const dow = parseInt(activeTab);
+      setScheduleTemplates(prev => {
+        const resolved = getScheduleForDay(prev, dow);
+        if (resolved.source === 'custom' && resolved.templateId) {
+          return {
+            ...prev,
+            customTemplates: (prev.customTemplates || []).map(t =>
+              t.id === resolved.templateId ? { ...t, slots: updater(t.slots) } : t
+            ),
+          };
+        } else {
+          const baseKey: DayType = dow === 0 ? 'sunday' : dow === 6 ? 'saturday' : 'workday';
+          return { ...prev, [baseKey]: updater(prev[baseKey] || []) };
+        }
+      });
+    } else {
       setScheduleTemplates(prev => ({
         ...prev,
         customTemplates: (prev.customTemplates || []).map(t =>
           t.id === activeTab ? { ...t, slots: updater(t.slots) } : t
         ),
       }));
-    } else {
-      setScheduleTemplates(prev => ({
-        ...prev,
-        [activeTab]: updater(prev[activeTab as DayType] || []),
-      }));
     }
-  }, [activeTab, isCustomTab, setScheduleTemplates]);
+  }, [activeTab, isDayTab, setScheduleTemplates]);
+
+  // Save schedule explicitly with verification
+  const handleSaveSchedule = useCallback(async () => {
+    if (!onImmediateSave) return;
+    setScheduleSaveStatus('saving');
+    try {
+      await onImmediateSave();
+      setScheduleSaveStatus('saved');
+      setScheduleDirty(false);
+      setTimeout(() => setScheduleSaveStatus('idle'), 3000);
+    } catch (err) {
+      console.error('[Planner] Save failed:', err);
+      setScheduleSaveStatus('error');
+    }
+  }, [onImmediateSave]);
+
+  // Guard tab switch: if dirty, show warning instead of switching
+  const handleTabSwitch = useCallback((newTab: string) => {
+    if (scheduleDirty && newTab !== activeTab) {
+      pendingTabRef.current = newTab;
+      setShowUnsavedWarning(true);
+    } else {
+      setActiveTab(newTab);
+    }
+  }, [scheduleDirty, activeTab]);
+
+  // Confirm discard unsaved changes
+  const confirmDiscardAndSwitch = useCallback(() => {
+    setScheduleDirty(false);
+    setScheduleSaveStatus('idle');
+    setShowUnsavedWarning(false);
+    if (pendingTabRef.current !== null) {
+      setActiveTab(pendingTabRef.current);
+      pendingTabRef.current = null;
+    }
+  }, []);
+
+  // Save then switch tab
+  const saveAndSwitch = useCallback(async () => {
+    if (!onImmediateSave) return;
+    setScheduleSaveStatus('saving');
+    try {
+      await onImmediateSave();
+      setScheduleSaveStatus('saved');
+      setScheduleDirty(false);
+      setShowUnsavedWarning(false);
+      if (pendingTabRef.current !== null) {
+        setActiveTab(pendingTabRef.current);
+        pendingTabRef.current = null;
+      }
+    } catch (err) {
+      console.error('[Planner] Save failed:', err);
+      setScheduleSaveStatus('error');
+    }
+  }, [onImmediateSave]);
 
   // Custom template CRUD
   const openCustomForm = () => {
@@ -195,13 +301,161 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     setCustomFormOpen(false);
   };
   const deleteCustomTemplate = (id: string) => {
-    setScheduleTemplates(prev => ({
-      ...prev,
-      customTemplates: (prev.customTemplates || []).filter(t => t.id !== id),
-    }));
-    if (activeTab === id) setActiveTab(autoDayType);
+    setScheduleTemplates(prev => {
+      const newDayOverrides = { ...(prev.dayOverrides || {}) };
+      Object.keys(newDayOverrides).forEach(key => {
+        if (newDayOverrides[key] === id) delete newDayOverrides[key];
+      });
+      const newDateOverrides = { ...(prev.dateOverrides || {}) };
+      Object.keys(newDateOverrides).forEach(key => {
+        if (newDateOverrides[key] === id) delete newDateOverrides[key];
+      });
+      return {
+        ...prev,
+        customTemplates: (prev.customTemplates || []).filter(t => t.id !== id),
+        dayOverrides: Object.keys(newDayOverrides).length > 0 ? newDayOverrides : {},
+        dateOverrides: Object.keys(newDateOverrides).length > 0 ? newDateOverrides : {},
+      };
+    });
+    if (activeTab === id) handleTabSwitch(String(selectedDayOfWeek));
     setDeleteCustomConfirm(null);
   };
+
+  // Apply/remove custom template override for a day-of-week
+  const applyCustomToDay = (dayOfWeek: number, templateId: string) => {
+    setScheduleTemplates(prev => ({
+      ...prev,
+      dayOverrides: { ...(prev.dayOverrides || {}), [String(dayOfWeek)]: templateId },
+    }));
+  };
+
+  const removeCustomFromDay = (dayOfWeek: number) => {
+    setScheduleTemplates(prev => {
+      const newOverrides = { ...(prev.dayOverrides || {}) };
+      delete newOverrides[String(dayOfWeek)];
+      return {
+        ...prev,
+        dayOverrides: Object.keys(newOverrides).length > 0 ? newOverrides : {},
+      };
+    });
+  };
+
+  // Apply/remove custom template override for a specific date
+  const applyCustomToDate = (dateStr: string, templateId: string) => {
+    setScheduleTemplates(prev => ({
+      ...prev,
+      dateOverrides: { ...(prev.dateOverrides || {}), [dateStr]: templateId },
+    }));
+  };
+
+  const removeCustomFromDate = (dateStr: string) => {
+    setScheduleTemplates(prev => {
+      const newOverrides = { ...(prev.dateOverrides || {}) };
+      delete newOverrides[dateStr];
+      return {
+        ...prev,
+        dateOverrides: Object.keys(newOverrides).length > 0 ? newOverrides : {},
+      };
+    });
+  };
+
+  // State for custom apply mode (day vs date) + pending selections
+  const [customApplyMode, setCustomApplyMode] = useState<'day' | 'date'>('day');
+  const [customDateInput, setCustomDateInput] = useState('');
+  const [pendingDays, setPendingDays] = useState<Set<number>>(new Set());
+  const [pendingDates, setPendingDates] = useState<string[]>([]);
+  const [showApplySuccess, setShowApplySuccess] = useState(false);
+
+  // Initialize pending state when switching to a custom tab
+  useEffect(() => {
+    if (isCustomTab && activeCustomTemplate) {
+      const currentDays = new Set<number>();
+      Object.entries(scheduleTemplates.dayOverrides || {}).forEach(([k, v]) => {
+        if (v === activeCustomTemplate.id) currentDays.add(parseInt(k));
+      });
+      setPendingDays(currentDays);
+
+      const currentDates = Object.entries(scheduleTemplates.dateOverrides || {})
+        .filter(([, v]) => v === activeCustomTemplate.id)
+        .map(([k]) => k)
+        .sort();
+      setPendingDates(currentDates);
+      setShowApplySuccess(false);
+    }
+  }, [activeTab]);
+
+  // Confirm apply days
+  const confirmApplyDays = () => {
+    if (!activeCustomTemplate) return;
+    const templateId = activeCustomTemplate.id;
+    setScheduleTemplates(prev => {
+      const newOverrides = { ...(prev.dayOverrides || {}) };
+      // Remove days that were using this template but are now deselected
+      Object.keys(newOverrides).forEach(k => {
+        if (newOverrides[k] === templateId && !pendingDays.has(parseInt(k))) {
+          delete newOverrides[k];
+        }
+      });
+      // Add newly selected days
+      pendingDays.forEach(d => {
+        newOverrides[String(d)] = templateId;
+      });
+      return {
+        ...prev,
+        dayOverrides: Object.keys(newOverrides).length > 0 ? newOverrides : {},
+      };
+    });
+    setShowApplySuccess(true);
+    setTimeout(() => setShowApplySuccess(false), 3000);
+  };
+
+  // Confirm apply dates
+  const confirmApplyDates = () => {
+    if (!activeCustomTemplate) return;
+    const templateId = activeCustomTemplate.id;
+    setScheduleTemplates(prev => {
+      const newOverrides = { ...(prev.dateOverrides || {}) };
+      // Remove dates that were using this template but are now removed
+      Object.keys(newOverrides).forEach(k => {
+        if (newOverrides[k] === templateId && !pendingDates.includes(k)) {
+          delete newOverrides[k];
+        }
+      });
+      // Add newly selected dates
+      pendingDates.forEach(d => {
+        newOverrides[d] = templateId;
+      });
+      return {
+        ...prev,
+        dateOverrides: Object.keys(newOverrides).length > 0 ? newOverrides : {},
+      };
+    });
+    setShowApplySuccess(true);
+    setTimeout(() => setShowApplySuccess(false), 3000);
+  };
+
+  // Check if pending state differs from current
+  const hasPendingChanges = (() => {
+    if (!activeCustomTemplate) return false;
+    if (customApplyMode === 'day') {
+      const currentDays = new Set(
+        Object.entries(scheduleTemplates.dayOverrides || {})
+          .filter(([, v]) => v === activeCustomTemplate.id)
+          .map(([k]) => parseInt(k))
+      );
+      if (pendingDays.size !== currentDays.size) return true;
+      for (const d of pendingDays) if (!currentDays.has(d)) return true;
+      return false;
+    } else {
+      const currentDates = Object.entries(scheduleTemplates.dateOverrides || {})
+        .filter(([, v]) => v === activeCustomTemplate.id)
+        .map(([k]) => k)
+        .sort();
+      const sortedPending = [...pendingDates].sort();
+      if (sortedPending.length !== currentDates.length) return true;
+      return sortedPending.some((d, i) => d !== currentDates[i]);
+    }
+  })();
 
   // Current time for "now" indicator
   const now = new Date();
@@ -227,7 +481,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   // Task editor modal
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [taskEditForm, setTaskEditForm] = useState({ estimatedDuration: 0 });
-  const [slotForm, setSlotForm] = useState({ startTime: '09:00', endTime: '10:00', groupKey: '' });
+  const [slotForm, setSlotForm] = useState({ startTime: '09:00', endTime: '10:00', groupKey: '', duration: 60 });
 
   // Delete confirmation
   const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<{ taskId: string; slotId: string } | null>(null);
@@ -255,7 +509,10 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     const checked = new Set<string>();
     todayRecords.forEach(r => {
       if (!r.timeStart || !r.timeEnd) return;
-      const matchTask = dayTasks.find(t => t.title === r.taskTitle && t.category === r.category);
+      // Prefer taskId match (new records), fallback to title+category (old records)
+      const matchTask = r.taskId
+        ? dayTasks.find(t => t.id === r.taskId)
+        : dayTasks.find(t => t.title === r.taskTitle && t.category === r.category);
       if (!matchTask) return;
       const matchSlot = sortedSchedule.find(s =>
         s.startTime === r.timeStart && s.endTime === r.timeEnd &&
@@ -276,12 +533,13 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         next.delete(taskId);
       } else {
         next.add(taskId);
-        if (onSaveDailyRecord) {
-          const task = dayTasks.find(t => t.id === taskId);
-          if (task) {
+        const task = dayTasks.find(t => t.id === taskId);
+        if (task) {
+          if (onSaveDailyRecord) {
             onSaveDailyRecord({
               id: `${todayStr}-${task.id}`,
               date: todayStr,
+              taskId: task.id,
               taskTitle: task.title,
               category: task.category,
               completed: true,
@@ -290,39 +548,66 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               timeEnd: slotEnd,
             });
           }
+          // Mark non-recurring tasks as completed
+          if (setTasks && !isTaskRecurring(task)) {
+            setTasks(prev => prev.map(t =>
+              t.id === task.id ? { ...t, completed: true, completedAt: new Date().toISOString() } : t
+            ));
+          }
         }
       }
       return next;
     });
-  }, [isToday, dayTasks, todayStr, onSaveDailyRecord]);
+  }, [isToday, dayTasks, todayStr, onSaveDailyRecord, setTasks]);
 
   // Auto-open slot form from Dashboard navigation
   useEffect(() => {
     if (pendingSlot) {
-      setSlotForm({ startTime: pendingSlot.startTime, endTime: pendingSlot.endTime, groupKey: DEFAULT_CATEGORIES[0]?.key || '' });
+      const dur = getDurationMinutes(pendingSlot.startTime, pendingSlot.endTime);
+      setSlotForm({ startTime: pendingSlot.startTime, endTime: pendingSlot.endTime, groupKey: '', duration: dur });
       setEditingSlot(null);
       setIsAddingSlot(true);
       onPendingSlotHandled?.();
     }
   }, [pendingSlot]);
 
+  // Helper: add minutes to HH:MM string
+  const addMinutesToTime = (time: string, mins: number): string => {
+    const [h, m] = time.split(':').map(Number);
+    let total = h * 60 + m + mins;
+    if (total < 0) total += 24 * 60;
+    total = total % (24 * 60);
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  };
+
   // Slot CRUD
   const openAddSlot = () => {
-    setSlotForm({ startTime: '09:00', endTime: '10:00', groupKey: DEFAULT_CATEGORIES[0]?.key || '' });
+    // Default start time = end time of last slot, or 09:00
+    const lastSlot = sortedSchedule.length > 0 ? sortedSchedule[sortedSchedule.length - 1] : null;
+    const defaultStart = lastSlot ? lastSlot.endTime : '09:00';
+    const defaultDuration = 60;
+    setSlotForm({
+      startTime: defaultStart,
+      endTime: addMinutesToTime(defaultStart, defaultDuration),
+      groupKey: '',
+      duration: defaultDuration,
+    });
     setEditingSlot(null);
     setIsAddingSlot(true);
   };
 
   const openEditSlot = (slot: TimeSlot) => {
-    setSlotForm({ startTime: slot.startTime, endTime: slot.endTime, groupKey: slot.groupKey });
+    const dur = getDurationMinutes(slot.startTime, slot.endTime);
+    setSlotForm({ startTime: slot.startTime, endTime: slot.endTime, groupKey: slot.groupKey, duration: dur });
     setEditingSlot(slot);
     setIsAddingSlot(true);
   };
 
   const saveSlot = () => {
     if (!slotForm.groupKey || !slotForm.startTime || !slotForm.endTime) return;
+    const { startTime, endTime, groupKey } = slotForm;
     if (editingSlot) {
-      setScheduleForTab(prev => prev.map(s => s.id === editingSlot.id ? { ...s, ...slotForm } : s));
+      setScheduleForTab(prev => prev.map(s => s.id === editingSlot.id ? { ...s, startTime, endTime, groupKey } : s));
     } else {
       const newSlot: TimeSlot = {
         id: `${activeTab}-${Date.now()}`,
@@ -342,12 +627,11 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     setPickerSelected(new Set());
   };
 
-  // Task Picker: get available tasks for the picker (matching group/category, not already assigned)
+  // Task Picker: show ALL tasks from matching groups (no dayType filter), exclude tasks already in slot
   const getPickerTasks = (slot: TimeSlot): Task[] => {
-    const assigned = new Set(slot.assignedTaskIds || []);
+    const alreadyInSlot = new Set(getFullTasksForSlot(slot).map(t => t.id));
     const matchKeys = new Set(getGroupKeysForSlot(slot.groupKey));
-    return getTasksForDate(tasks, selectedDateStr)
-      .filter(t => matchKeys.has(t.category) && !assigned.has(t.id));
+    return tasks.filter(t => matchKeys.has(t.category) && !alreadyInSlot.has(t.id));
   };
 
   // Task Picker: confirm selection
@@ -382,10 +666,11 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
     const { taskId, slotId } = confirmDeleteTaskId;
 
-    // Remove task from slot's assignedTaskIds
+    // Remove from assignedTaskIds
     setScheduleForTab(prev => prev.map(s => {
       if (s.id !== slotId) return s;
-      return { ...s, assignedTaskIds: (s.assignedTaskIds || []).filter(id => id !== taskId) };
+      const newAssigned = (s.assignedTaskIds || []).filter(id => id !== taskId);
+      return { ...s, assignedTaskIds: newAssigned };
     }));
 
     setConfirmDeleteTaskId(null);
@@ -451,13 +736,23 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     return [key];
   };
 
+  // Full tasks for slot: only explicitly assigned tasks (user picks via picker)
+  const getFullTasksForSlot = (slot: TimeSlot): Task[] => {
+    const assigned = slot.assignedTaskIds || [];
+    if (assigned.length === 0) return [];
+    const excludedIds = new Set(slot.excludedTaskIds || []);
+    return assigned
+      .map(id => tasks.find(t => t.id === id))
+      .filter((t): t is Task => t !== undefined && !excludedIds.has(t.id));
+  };
+
   // Summary: time per group from schedule slots
   const summaryMap = new Map<string, { totalMins: number; doneMins: number }>();
 
   sortedSchedule.forEach(slot => {
     const slotMins = Math.max(0, getDurationMinutes(slot.startTime, slot.endTime));
     const prev = summaryMap.get(slot.groupKey) || { totalMins: 0, doneMins: 0 };
-    const slotTasks = getTasksForSlot(tasks, slot);
+    const slotTasks = getFullTasksForSlot(slot);
     const doneMins = slotTasks
       .filter(t => checkedTasks.has(t.id))
       .reduce((s, t) => s + (t.estimatedDuration || 0), 0);
@@ -496,22 +791,32 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     }));
   };
 
-  // DnD: reorder tasks within a slot
+  // DnD: reorder tasks within a slot (updates slot's assignedTaskIds)
   const taskSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 100, tolerance: 8 } }),
   );
 
-  const handleTaskDragEnd = (event: DragEndEvent) => {
+  const handleTaskDragEnd = (slotId: string) => (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over || active.id === over.id || !setTasks) return;
+    if (!over || active.id === over.id) return;
 
-    setTasks(prev => {
-      const oldIndex = prev.findIndex(t => t.id === active.id);
-      const newIndex = prev.findIndex(t => t.id === over.id);
-      if (oldIndex === -1 || newIndex === -1) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
-    });
+    // Find the slot and its current task list
+    const slot = sortedSchedule.find(s => s.id === slotId);
+    if (!slot) return;
+    const currentTasks = getFullTasksForSlot(slot);
+
+    const oldIndex = currentTasks.findIndex(t => t.id === active.id);
+    const newIndex = currentTasks.findIndex(t => t.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(currentTasks, oldIndex, newIndex);
+
+    // Save the new order as assignedTaskIds on this slot
+    setScheduleForTab(prev => prev.map(s => {
+      if (s.id !== slotId) return s;
+      return { ...s, assignedTaskIds: reordered.map(t => t.id) };
+    }));
   };
 
   // Merge milestones and slots
@@ -561,80 +866,84 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
   return (
     <div className="space-y-3">
-      {/* Date Navigation */}
-      <div className="bg-white rounded-xl border border-slate-200 p-3 flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <button onClick={prevDay} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors">
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <button onClick={goToday} className={`text-xs font-bold px-3 py-1 rounded-full transition-all ${isToday ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-emerald-100'}`}>
-            วันนี้
-          </button>
-          <button onClick={nextDay} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors">
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-        <span className="text-sm font-bold text-slate-700">{dateLabel}</span>
-      </div>
-
-      {/* Schedule Template Tabs */}
+      {/* 1. Schedule Template Tabs — 7 days */}
       <div className="bg-white rounded-xl border border-slate-200 p-1">
-        <div className="flex gap-1 overflow-x-auto scrollbar-hide">
-          {TAB_CONFIG.map(tab => {
-            const isActive = activeTab === tab.key;
-            const isAutoMatch = autoDayType === tab.key;
+        <div className="flex gap-0.5 overflow-x-auto scrollbar-hide">
+          {DAY_TAB_CONFIG.map(tab => {
+            const isActive = activeTab === String(tab.dayOfWeek);
+            const isTodayDay = new Date().getDay() === tab.dayOfWeek;
+            const hasOverride = !!(scheduleTemplates.dayOverrides?.[String(tab.dayOfWeek)]);
+            const dc = DAY_COLORS[tab.dayOfWeek];
             return (
               <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex-1 min-w-0 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-bold transition-all ${
-                  isActive
-                    ? 'bg-emerald-500 text-white shadow-sm'
-                    : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'
+                key={tab.dayOfWeek}
+                onClick={() => handleTabSwitch(String(tab.dayOfWeek))}
+                className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 rounded-lg font-bold transition-all ${
+                  isTodayDay
+                    ? `${dc.activeBg} text-white text-sm shadow-sm`
+                    : isActive
+                      ? `ring-2 ring-blue-500 ${dc.text} text-xs`
+                      : `${dc.text} opacity-60 hover:opacity-100 hover:${dc.bg} text-xs`
                 }`}
               >
-                <span>{tab.emoji}</span>
-                <span className="hidden sm:inline">{tab.label}</span>
-                <span className="sm:hidden">{tab.key === 'workday' ? 'จ-ศ' : tab.key === 'saturday' ? 'ส.' : 'อา.'}</span>
-                {isAutoMatch && !isActive && (
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span>{tab.shortLabel}</span>
+                {hasOverride && (
+                  <span className={`text-[7px] font-black leading-none px-1.5 py-0.5 rounded-sm ${
+                    isTodayDay
+                      ? 'bg-white text-violet-600'
+                      : 'bg-violet-500 text-white'
+                  }`}>
+                    📌custom
+                  </span>
                 )}
               </button>
             );
           })}
-          {customTemplates.map(ct => {
-            const isActive = activeTab === ct.id;
-            return (
-              <button
-                key={ct.id}
-                onClick={() => setActiveTab(ct.id)}
-                className={`shrink-0 flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
-                  isActive
-                    ? 'bg-emerald-500 text-white shadow-sm'
-                    : 'text-slate-400 hover:bg-slate-50 hover:text-slate-600'
-                }`}
-              >
-                <span>{ct.emoji}</span>
-                <span className="max-w-[60px] truncate">{ct.name}</span>
-              </button>
-            );
-          })}
-          <button
-            onClick={openCustomForm}
-            className="shrink-0 flex items-center justify-center w-8 py-2 rounded-lg text-slate-300 hover:bg-emerald-50 hover:text-emerald-500 transition-all"
-            title="เพิ่ม template"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
         </div>
       </div>
 
-      {/* Custom tab edit/delete buttons */}
+      {/* Custom tab header + usage status */}
       {isCustomTab && activeCustomTemplate && (
         <div className="flex items-center justify-between">
-          <span className="text-sm font-bold text-slate-600">
-            {activeCustomTemplate.emoji} {activeCustomTemplate.name}
-          </span>
+          <div>
+            <span className="text-sm font-bold text-slate-600">
+              {activeCustomTemplate.emoji} {activeCustomTemplate.name}
+            </span>
+            {(() => {
+              const usedDays = DAY_TAB_CONFIG.filter(tab =>
+                scheduleTemplates.dayOverrides?.[String(tab.dayOfWeek)] === activeCustomTemplate.id
+              );
+              const usedDates = Object.entries(scheduleTemplates.dateOverrides || {})
+                .filter(([, v]) => v === activeCustomTemplate.id)
+                .map(([k]) => k).sort();
+
+              if (usedDays.length > 0 || usedDates.length > 0) {
+                return (
+                  <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mt-0.5">
+                    <span className="text-[10px] font-bold text-emerald-500">ใช้อยู่:</span>
+                    {usedDays.length > 0 && (
+                      <span className="text-[10px] font-bold text-blue-500">
+                        {usedDays.map(d => d.label).join(', ')}
+                      </span>
+                    )}
+                    {usedDays.length > 0 && usedDates.length > 0 && (
+                      <span className="text-[10px] text-slate-300">|</span>
+                    )}
+                    {usedDates.length > 0 && (
+                      <span className="text-[10px] font-bold text-violet-500">
+                        {usedDates.map(ds => {
+                          const d = new Date(ds);
+                          return `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear() + 543}`;
+                        }).join(', ')}
+                      </span>
+                    )}
+                  </div>
+                );
+              } else {
+                return <p className="text-[10px] text-slate-400 mt-0.5">ยังไม่ได้ใช้</p>;
+              }
+            })()}
+          </div>
           <div className="flex gap-1.5">
             <button onClick={() => openEditCustom(activeCustomTemplate)} className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-400 hover:text-blue-500 hover:border-blue-200 transition-colors">
               <Pencil className="w-3.5 h-3.5" />
@@ -646,19 +955,165 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         </div>
       )}
 
-      {/* Progress (today only) */}
-      {isToday && dayTasks.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-3">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">ความคืบหน้าวันนี้</span>
-            <span className="text-xs font-black text-emerald-600">{progressPct}%</span>
+      {/* 3. Custom Day card */}
+      <div className="bg-white rounded-xl border border-slate-200 p-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-black text-violet-500 uppercase tracking-widest px-1 shrink-0">Custom Day</span>
+          {customTemplates.length > 0 && (
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide flex-1 min-w-0">
+              {customTemplates.map(ct => {
+                const isActive = activeTab === ct.id;
+                return (
+                  <button
+                    key={ct.id}
+                    onClick={() => handleTabSwitch(ct.id)}
+                    className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                      isActive
+                        ? 'bg-violet-500 text-white border-violet-500 shadow-sm'
+                        : 'bg-violet-50 text-violet-600 border-violet-200 hover:bg-violet-100'
+                    }`}
+                  >
+                    <span>{ct.emoji}</span>
+                    <span className="max-w-[80px] truncate">{ct.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {customTemplates.length === 0 && (
+            <span className="text-[11px] text-slate-400 flex-1">ยังไม่มี template</span>
+          )}
+          <button
+            onClick={openCustomForm}
+            className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-slate-400 hover:bg-violet-50 hover:text-violet-500 transition-all border border-slate-200"
+          >
+            <Plus className="w-3 h-3" /> เพิ่ม
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Context Bar — shows current view + template type */}
+      <div className={`rounded-xl border p-3 flex items-center justify-between transition-all ${
+        isCustomTab
+          ? 'bg-violet-50 border-violet-200'
+          : activeDayColor
+            ? `${activeDayColor.bg} ${activeDayColor.border}`
+            : 'bg-white border-slate-200'
+      }`}>
+        <div className="flex items-center gap-1.5">
+          <button onClick={prevDay} className="p-1.5 rounded-lg hover:bg-white/60 text-slate-400 transition-colors">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          {isCustomTab && activeCustomTemplate ? (
+            <span className="text-xs font-bold px-3 py-1 rounded-full bg-violet-500 text-white shadow-sm">
+              {activeCustomTemplate.emoji} {activeCustomTemplate.name}
+            </span>
+          ) : isShowingToday ? (
+            <button onClick={goToday} className={`text-xs font-bold px-3 py-1 rounded-full transition-all ${activeDayColor ? `${activeDayColor.activeBg} text-white shadow-sm` : 'bg-emerald-500 text-white'}`}>
+              วันนี้
+            </button>
+          ) : (
+            <span className={`text-xs font-bold px-3 py-1 rounded-full shadow-sm ${activeDayColor ? `${activeDayColor.activeBg} text-white` : 'bg-slate-500 text-white'}`}>
+              {dayNames[activeDayOfWeek]}
+            </span>
+          )}
+          <button onClick={nextDay} className="p-1.5 rounded-lg hover:bg-white/60 text-slate-400 transition-colors">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+        {isDayTab && isShowingToday && (
+          <div className="flex items-center gap-2">
+            <span className={`text-sm font-bold ${activeDayColor ? activeDayColor.activeText : 'text-slate-700'}`}>{dateLabel}</span>
+            {resolvedDay?.source === 'custom' && (
+              <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-pink-400 via-violet-400 to-blue-400 text-white text-[9px] font-bold shadow-sm">
+                Custom : {resolvedDay.templateEmoji} {resolvedDay.templateName}
+              </span>
+            )}
           </div>
-          <div className="h-2 bg-emerald-100 rounded-full overflow-hidden">
-            <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }} />
-          </div>
+        )}
+        {isDayTab && !isShowingToday && (
+          resolvedDay?.source === 'custom' ? (
+            <span className="px-2.5 py-1 rounded-full bg-gradient-to-r from-pink-400 via-violet-400 to-blue-400 text-white text-[10px] font-bold shadow-sm">
+              Custom Template : {resolvedDay.templateEmoji} {resolvedDay.templateName}
+            </span>
+          ) : (
+            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${activeDayColor ? `${activeDayColor.activeBg} text-white` : 'bg-blue-100 text-blue-600'}`}>Daily Template</span>
+          )
+        )}
+        {isCustomTab && (
+          <span className="px-2.5 py-1 rounded-full bg-gradient-to-r from-pink-400 via-violet-400 to-blue-400 text-white text-[10px] font-bold shadow-sm">Custom Template</span>
+        )}
+      </div>
+
+      {/* 4. Day Info Bar — template source + total time + กลับค่าเดิม */}
+      {isDayTab && resolvedDay && (
+        <div className="flex flex-col items-center gap-1">
+          <span className="text-xs font-bold text-slate-500">
+            {resolvedDay.source === 'custom'
+              ? <>{resolvedDay.templateEmoji} {resolvedDay.templateName} <span className="text-[9px] text-slate-400">({resolvedDay.overrideType === 'date' ? 'เฉพาะวันนี้' : 'ทุกสัปดาห์'})</span></>
+              : <>📋 {parseInt(activeTab) >= 1 && parseInt(activeTab) <= 5 ? 'ตารางวันทำงาน' : parseInt(activeTab) === 6 ? 'ตารางวันเสาร์' : 'ตารางวันอาทิตย์'}</>
+            }
+          </span>
+          <span className="text-[10px] font-bold text-slate-400">
+            กิจกรรมรวม {formatDuration(totalAllMins)} ทั้งวัน
+          </span>
+          {resolvedDay.source === 'custom' && (
+            <button
+              onClick={() => {
+                if (resolvedDay.overrideType === 'date') {
+                  removeCustomFromDate(selectedDateStr);
+                } else {
+                  removeCustomFromDay(parseInt(activeTab));
+                }
+              }}
+              className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-400 hover:text-rose-500 hover:border-rose-200 transition-colors"
+            >
+              กลับค่าเดิม
+            </button>
+          )}
         </div>
       )}
 
+      {/* Save bar — shows when dirty */}
+      {scheduleDirty && (
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 animate-fadeIn">
+          <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+          <span className="text-xs font-bold text-amber-600 flex-1">มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก</span>
+          <button
+            onClick={handleSaveSchedule}
+            disabled={scheduleSaveStatus === 'saving'}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors disabled:opacity-60 shadow-sm"
+          >
+            {scheduleSaveStatus === 'saving' ? (
+              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> กำลังบันทึก...</>
+            ) : (
+              <><Save className="w-3.5 h-3.5" /> บันทึก</>
+            )}
+          </button>
+        </div>
+      )}
+      {/* Save success notification */}
+      {scheduleSaveStatus === 'saved' && !scheduleDirty && (
+        <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 animate-fadeIn">
+          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+          <span className="text-xs font-bold text-emerald-600">บันทึกสำเร็จแล้ว!</span>
+        </div>
+      )}
+      {/* Save error notification */}
+      {scheduleSaveStatus === 'error' && (
+        <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 animate-fadeIn">
+          <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+          <span className="text-xs font-bold text-rose-600 flex-1">บันทึกไม่สำเร็จ กรุณาลองอีกครั้ง</span>
+          <button
+            onClick={handleSaveSchedule}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500 text-white text-xs font-bold hover:bg-rose-600 transition-colors"
+          >
+            <RefreshCw className="w-3 h-3" /> ลองใหม่
+          </button>
+        </div>
+      )}
+
+      <div className={`${isCustomTab ? 'rounded-xl border-2 border-blue-300 bg-blue-50/30 p-3 space-y-3' : ''}`}>
       <div className="flex flex-col md:flex-row gap-4">
         {/* Left: Slot Timeline */}
         <div className="flex-[2] space-y-2">
@@ -679,7 +1134,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
             const slot = item.data as TimeSlot;
             const slotInfo = resolveSlotInfo(slot.groupKey);
             const colors = GROUP_COLORS[slotInfo.color] || GROUP_COLORS.orange;
-            const slotTasks = getTasksForSlot(tasks, slot);
+            const slotTasks = getFullTasksForSlot(slot);
             const checkedCount = slotTasks.filter(t => checkedTasks.has(t.id)).length;
             const slotDur = getDurationMinutes(slot.startTime, slot.endTime);
             const isExpanded = expandedSlots.has(slot.id);
@@ -738,7 +1193,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                 {isExpanded && (
                   <div className="border-t px-2 py-2 space-y-0.5" style={{ borderColor: 'inherit' }}>
                     {slotTasks.length > 0 && (
-                      <DndContext sensors={taskSensors} collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd}>
+                      <DndContext sensors={taskSensors} collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd(slot.id)}>
                       <SortableContext items={slotTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
                       {slotTasks.map(task => {
                         const checked = checkedTasks.has(task.id);
@@ -870,6 +1325,146 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         </div>
       </div>
 
+      {/* ใช้ Custom Day นี้ — day/date selector (only when viewing custom template) */}
+      {isCustomTab && activeCustomTemplate && (
+        <div className="border-t-2 border-blue-200 pt-3 mt-1">
+          <div className="flex items-center flex-wrap gap-x-1.5 gap-y-1 mb-3">
+            <span className="text-[11px] font-black text-blue-600">ใช้ Custom Day นี้ โดยเลือก :</span>
+            <button
+              onClick={() => setCustomApplyMode('day')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all ${
+                customApplyMode === 'day' ? 'bg-blue-500 text-white border-blue-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:text-blue-500 hover:border-blue-300'
+              }`}
+            >
+              วัน
+            </button>
+            <span className="text-[11px] font-bold text-slate-400">หรือ</span>
+            <button
+              onClick={() => setCustomApplyMode('date')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all ${
+                customApplyMode === 'date' ? 'bg-blue-500 text-white border-blue-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200 hover:text-blue-500 hover:border-blue-300'
+              }`}
+            >
+              วันที่
+            </button>
+          </div>
+
+          {customApplyMode === 'day' ? (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {DAY_TAB_CONFIG.map(tab => {
+                  const isSelected = pendingDays.has(tab.dayOfWeek);
+                  return (
+                    <button
+                      key={tab.dayOfWeek}
+                      onClick={() => {
+                        setPendingDays(prev => {
+                          const next = new Set(prev);
+                          if (next.has(tab.dayOfWeek)) next.delete(tab.dayOfWeek);
+                          else next.add(tab.dayOfWeek);
+                          return next;
+                        });
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                        isSelected
+                          ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
+                          : 'bg-orange-50 text-orange-500 border-orange-200 hover:bg-orange-100 hover:border-orange-300'
+                      }`}
+                    >
+                      {tab.shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
+              {pendingDays.size > 0 ? (
+                <p className="text-[10px] text-blue-500 font-bold mt-2">
+                  เลือก: {DAY_TAB_CONFIG.filter(tab => pendingDays.has(tab.dayOfWeek)).map(d => d.label).join(', ')}
+                </p>
+              ) : (
+                <p className="text-[10px] text-slate-400 mt-2">กดเลือกวันที่ต้องการใช้ template นี้ (ทุกสัปดาห์)</p>
+              )}
+              {/* Confirm button for day mode */}
+              <button
+                onClick={confirmApplyDays}
+                disabled={!hasPendingChanges}
+                className={`mt-2 w-full py-2 rounded-xl text-xs font-bold transition-all ${
+                  hasPendingChanges
+                    ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm'
+                    : 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                }`}
+              >
+                ยืนยัน
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="date"
+                  value={customDateInput}
+                  onChange={e => setCustomDateInput(e.target.value)}
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 focus:ring-2 focus:ring-blue-300 focus:border-blue-400 outline-none"
+                />
+                <button
+                  onClick={() => {
+                    if (customDateInput && !pendingDates.includes(customDateInput)) {
+                      setPendingDates(prev => [...prev, customDateInput].sort());
+                      setCustomDateInput('');
+                    }
+                  }}
+                  disabled={!customDateInput}
+                  className="px-3 py-1.5 rounded-lg bg-blue-500 text-white text-xs font-bold hover:bg-blue-600 transition-colors disabled:opacity-40"
+                >
+                  เพิ่ม
+                </button>
+              </div>
+              {pendingDates.length > 0 ? (
+                <div className="space-y-1">
+                  {pendingDates.map(dateStr => {
+                    const d = new Date(dateStr);
+                    const label = `${dayNames[d.getDay()]} ${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear() + 543}`;
+                    return (
+                      <div key={dateStr} className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-1.5 border border-blue-200">
+                        <span className="text-xs font-bold text-blue-600">{label}</span>
+                        <button
+                          onClick={() => setPendingDates(prev => prev.filter(d => d !== dateStr))}
+                          className="text-blue-400 hover:text-rose-500 transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-[10px] text-slate-400">เลือกวันที่เฉพาะเจาะจงที่ต้องการใช้ template นี้</p>
+              )}
+              {/* Confirm button for date mode */}
+              <button
+                onClick={confirmApplyDates}
+                disabled={!hasPendingChanges}
+                className={`mt-2 w-full py-2 rounded-xl text-xs font-bold transition-all ${
+                  hasPendingChanges
+                    ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm'
+                    : 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                }`}
+              >
+                ยืนยัน
+              </button>
+            </>
+          )}
+
+          {/* Success notification */}
+          {showApplySuccess && (
+            <div className="mt-2 flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 animate-fadeIn">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span className="text-xs font-bold text-emerald-600">บันทึกสำเร็จแล้ว!</span>
+            </div>
+          )}
+        </div>
+      )}
+      </div>
+
       {/* Slot Editor Modal */}
       {isAddingSlot && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setIsAddingSlot(false)}>
@@ -883,27 +1478,71 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               </button>
             </div>
 
-            {/* Time inputs */}
-            <div className="flex gap-3">
+            {/* 1. Duration — ระยะเวลากิจกรรม */}
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ระยะเวลากิจกรรม</label>
+              <div className="mt-1.5 flex items-center justify-center gap-3">
+                <button
+                  onClick={() => setSlotForm(f => {
+                    const d = Math.max(15, f.duration - 15);
+                    return { ...f, duration: d, endTime: addMinutesToTime(f.startTime, d) };
+                  })}
+                  className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-lg flex items-center justify-center transition-colors"
+                >
+                  −
+                </button>
+                <div className="text-center min-w-[80px]">
+                  <span className="text-2xl font-black text-emerald-600">{formatDuration(slotForm.duration)}</span>
+                </div>
+                <button
+                  onClick={() => setSlotForm(f => {
+                    const d = Math.min(480, f.duration + 15);
+                    return { ...f, duration: d, endTime: addMinutesToTime(f.startTime, d) };
+                  })}
+                  className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-black text-lg flex items-center justify-center transition-colors"
+                >
+                  +
+                </button>
+              </div>
+              {/* Quick duration buttons */}
+              <div className="mt-2 flex flex-wrap justify-center gap-1.5">
+                {[30, 60, 90, 120, 180].map(mins => (
+                  <button
+                    key={mins}
+                    onClick={() => setSlotForm(f => ({ ...f, duration: mins, endTime: addMinutesToTime(f.startTime, mins) }))}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all ${
+                      slotForm.duration === mins
+                        ? 'bg-emerald-500 text-white border-emerald-500'
+                        : 'bg-white text-slate-500 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300'
+                    }`}
+                  >
+                    {formatDuration(mins)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 2. Start time — เวลาเริ่ม */}
+            <div>
               <TimePicker
-                label="เริ่ม"
+                label="เวลาเริ่ม"
                 value={slotForm.startTime}
-                onChange={value => setSlotForm(f => ({ ...f, startTime: value }))}
-                className="flex-1"
-              />
-              <TimePicker
-                label="จบ"
-                value={slotForm.endTime}
-                onChange={value => setSlotForm(f => ({ ...f, endTime: value }))}
-                className="flex-1"
+                onChange={value => setSlotForm(f => ({ ...f, startTime: value, endTime: addMinutesToTime(value, f.duration) }))}
               />
             </div>
 
-            {/* Category selector */}
+            {/* 3. End time — คำนวณอัตโนมัติ (read-only display) */}
+            <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-4 py-2.5 border border-slate-200">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">เวลาจบ</span>
+              <span className="flex-1" />
+              <span className="text-sm font-black text-slate-700">{slotForm.endTime}</span>
+              <span className="text-[10px] text-slate-400">(คำนวณอัตโนมัติ)</span>
+            </div>
+
+            {/* 4. Category selector — หมวดหมู่ */}
             <div>
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">หมวดหมู่</label>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {/* DEFAULT_CATEGORIES */}
                 {DEFAULT_CATEGORIES.map(cat => {
                   const firstGroup = taskGroups.find(g => g.categoryKey === cat.key);
                   const clr = GROUP_COLORS[firstGroup?.color || categoryColorMap[cat.key] || 'orange'] || GROUP_COLORS.orange;
@@ -922,7 +1561,6 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                     </button>
                   );
                 })}
-                {/* Uncategorized groups (งานด่วน, นัดหมาย, etc.) */}
                 {taskGroups.filter(g => !g.categoryKey).map(g => {
                   const clr = GROUP_COLORS[g.color] || GROUP_COLORS.orange;
                   const isActive = slotForm.groupKey === g.key;
@@ -943,7 +1581,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               </div>
             </div>
 
-            {/* Actions */}
+            {/* 5. Actions */}
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setIsAddingSlot(false)}
@@ -1175,7 +1813,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                   value={customForm.name}
                   onChange={e => setCustomForm({ ...customForm, name: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  placeholder="เช่น วัน WFH, วันลา, วันพิเศษ..."
+                  placeholder="เช่น Trip Travel, วัน WFH, วันลา..."
                 />
               </div>
               <div>
@@ -1203,6 +1841,48 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                 className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-200 transition-colors disabled:opacity-40 flex items-center gap-2"
               >
                 {editingCustomId ? <><Save className="w-4 h-4" /> บันทึก</> : <><Plus className="w-4 h-4" /> สร้าง</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unsaved Changes Warning Modal */}
+      {showUnsavedWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6 text-amber-500" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-800">มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก</h3>
+                <p className="text-sm text-slate-500 mt-0.5">คุณต้องการบันทึกก่อนเปลี่ยนหน้าหรือไม่?</p>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => { setShowUnsavedWarning(false); pendingTabRef.current = null; }}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={confirmDiscardAndSwitch}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                ไม่บันทึก
+              </button>
+              <button
+                onClick={saveAndSwitch}
+                disabled={scheduleSaveStatus === 'saving'}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors disabled:opacity-60 flex items-center justify-center gap-1"
+              >
+                {scheduleSaveStatus === 'saving' ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> บันทึก...</>
+                ) : (
+                  <><Save className="w-3.5 h-3.5" /> บันทึก</>
+                )}
               </button>
             </div>
           </div>

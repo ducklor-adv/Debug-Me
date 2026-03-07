@@ -3,7 +3,7 @@ import {
   getDocs, deleteDoc, getCountFromServer, Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Task, TaskGroup, DailyRecord, Milestone, TimeSlot, ScheduleTemplates, Habit } from '../types';
+import { Task, TaskGroup, DailyRecord, Milestone, TimeSlot, ScheduleTemplates, Habit, FocusSession } from '../types';
 
 // ===== App Data (tasks, groups, milestones, schedule) =====
 
@@ -91,4 +91,34 @@ export async function getDailyRecordsInRange(
   );
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ ...d.data(), id: d.id }) as DailyRecord);
+}
+
+// ===== Focus Sessions =====
+
+function focusCollection(uid: string) {
+  return collection(db, 'users', uid, 'focusSessions');
+}
+
+export async function addFocusSessionFS(uid: string, session: FocusSession) {
+  const ref = doc(db, 'users', uid, 'focusSessions', session.id);
+  await setDoc(ref, stripUndefined(session) as FocusSession, { merge: true });
+}
+
+export async function getFocusSessionsByDate(uid: string, date: string): Promise<FocusSession[]> {
+  const q = query(focusCollection(uid), where('date', '==', date));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ ...d.data(), id: d.id }) as FocusSession);
+}
+
+export async function getFocusSessionsInRange(
+  uid: string, startDate: string, endDate: string,
+): Promise<FocusSession[]> {
+  const q = query(
+    focusCollection(uid),
+    where('date', '>=', startDate),
+    where('date', '<=', endDate),
+    orderBy('date', 'asc'),
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ ...d.data(), id: d.id }) as FocusSession);
 }

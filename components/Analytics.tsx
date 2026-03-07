@@ -8,7 +8,7 @@ import {
   AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, Flame, CheckCircle2, Clock, Target, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Flame, CheckCircle2, Clock, Target, BarChart3, FileText, Download } from 'lucide-react';
 
 // Tailwind color → hex for Recharts
 const COLOR_HEX: Record<string, string> = {
@@ -321,6 +321,81 @@ const Analytics: React.FC<AnalyticsProps> = ({
     }));
   }, [currentRecords]);
 
+  // ====== G: FULL DATA EXPORT (CSV for Google Sheets) ======
+  const [exporting, setExporting] = useState(false);
+
+  const csvEscape = (v: unknown): string => {
+    if (v === null || v === undefined) return '';
+    const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  const downloadCSV = (filename: string, headers: string[], rows: unknown[][]) => {
+    const bom = '\uFEFF';
+    const csv = bom + [headers.join(','), ...rows.map(r => r.map(csvEscape).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportAllCSV = async () => {
+    setExporting(true);
+    try {
+      // 1. Tasks
+      downloadCSV(`debugme-tasks-${todayS}.csv`,
+        ['id', 'title', 'description', 'priority', 'completed', 'category', 'dayTypes', 'startDate', 'endDate', 'startTime', 'endTime', 'estimatedDuration', 'completedAt', 'notes', 'subtasks', 'recurrence', 'attachments'],
+        tasks.map(t => [
+          t.id, t.title, t.description, t.priority, t.completed, t.category,
+          (t.dayTypes || []).join(';'), t.startDate || '', t.endDate || '',
+          t.startTime || '', t.endTime || '', t.estimatedDuration || '',
+          t.completedAt || '', t.notes || '',
+          (t.subtasks || []).map(s => `${s.completed ? '[x]' : '[ ]'} ${s.title}`).join(' | '),
+          t.recurrence ? JSON.stringify(t.recurrence) : '',
+          (t.attachments || []).map(a => `${a.type}:${a.label}`).join(' | '),
+        ]),
+      );
+
+      // 2. Task Groups
+      downloadCSV(`debugme-groups-${todayS}.csv`,
+        ['key', 'label', 'emoji', 'color', 'icon', 'size', 'categoryKey'],
+        taskGroups.map(g => [g.key, g.label, g.emoji, g.color, g.icon, g.size, g.categoryKey || '']),
+      );
+
+      // 3. Schedule Templates (all day types in one file)
+      const schedRows: unknown[][] = [];
+      (['workday', 'saturday', 'sunday'] as const).forEach(day => {
+        (scheduleTemplates[day] || []).forEach(s => {
+          schedRows.push([day, s.id, s.startTime, s.endTime, s.groupKey, (s.assignedTaskIds || []).join(';')]);
+        });
+      });
+      downloadCSV(`debugme-schedule-${todayS}.csv`,
+        ['dayType', 'id', 'startTime', 'endTime', 'groupKey', 'assignedTaskIds'],
+        schedRows,
+      );
+
+      // 4. Daily Records (ALL from Firestore)
+      const allRecords = await getDailyRecordsInRange(userId, '2020-01-01', todayS);
+      allRecords.sort((a, b) => a.date.localeCompare(b.date) || (a.timeStart || '').localeCompare(b.timeStart || ''));
+      downloadCSV(`debugme-records-${todayS}.csv`,
+        ['id', 'date', 'taskId', 'taskTitle', 'category', 'completed', 'completedAt', 'timeStart', 'timeEnd', 'notes', 'attachments'],
+        allRecords.map(r => [
+          r.id, r.date, r.taskId || '', r.taskTitle, r.category, r.completed,
+          r.completedAt || '', r.timeStart || '', r.timeEnd || '',
+          r.notes || '',
+          (r.attachments || []).map(a => `${a.type}:${a.label}`).join(' | '),
+        ]),
+      );
+    } catch (err) {
+      console.error('Export error:', err);
+    }
+    setExporting(false);
+  };
+
   // Completion insight
   const completionInsight = useMemo(() => {
     if (completionRate > 80) return `เก่งมาก! ทำกิจกรรมได้ตามเป้า ${completionRate}%`;
@@ -531,6 +606,26 @@ const Analytics: React.FC<AnalyticsProps> = ({
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* G: Export All Data as CSV */}
+      <button
+        onClick={exportAllCSV}
+        disabled={exporting}
+        className="w-full bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3 hover:bg-indigo-50 hover:border-indigo-200 transition-colors disabled:opacity-60 active:scale-[0.99]"
+      >
+        <div className={`w-9 h-9 bg-indigo-50 rounded-xl flex items-center justify-center shrink-0 ${exporting ? 'animate-pulse' : ''}`}>
+          <FileText className="w-5 h-5 text-indigo-500" />
+        </div>
+        <div className="text-left flex-1">
+          <h4 className="text-sm font-black text-slate-800">
+            {exporting ? 'กำลังโหลด...' : 'ดาวน์โหลดข้อมูลทั้งหมด (CSV)'}
+          </h4>
+          <p className="text-[10px] text-slate-400 font-bold">
+            4 ไฟล์: Tasks, Groups, Schedule, DailyRecords — เปิดใน Google Sheets ได้เลย
+          </p>
+        </div>
+        <Download className={`w-5 h-5 text-indigo-400 shrink-0 ${exporting ? 'animate-spin' : ''}`} />
+      </button>
     </div>
   );
 };

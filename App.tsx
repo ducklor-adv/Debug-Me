@@ -14,7 +14,6 @@ import {
   Download,
   Upload,
   Database,
-  ShieldCheck,
   Cloud,
   Flame,
   CalendarDays,
@@ -22,8 +21,8 @@ import {
   Bell,
   WifiOff,
 } from 'lucide-react';
-import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, getDayType, DEFAULT_CATEGORIES } from './types';
-import { subscribeAppData, saveAppData, addDailyRecordFS, getDailyRecordsByDate, getDailyRecordCount } from './lib/firestoreDB';
+import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, getDayType, DEFAULT_CATEGORIES, FocusSession } from './types';
+import { subscribeAppData, saveAppData, addDailyRecordFS, getDailyRecordsByDate, getDailyRecordCount, addFocusSessionFS, getFocusSessionsByDate } from './lib/firestoreDB';
 import Dashboard from './components/Dashboard';
 import UndoToast from './components/UndoToast';
 import Login from './components/Login';
@@ -31,7 +30,7 @@ import { useNotificationScheduler } from './hooks/useNotificationScheduler';
 import { useLocationReminders } from './hooks/useLocationReminders';
 import { analyzeBehaviorPatterns, BehaviorPattern } from './services/behaviorAnalysis';
 import { getDailyRecordsInRange } from './lib/firestoreDB';
-import { useUndoStack, UndoAction } from './hooks/useUndoStack';
+import { useUndoStack } from './hooks/useUndoStack';
 
 // Lazy-load non-dashboard views for faster initial load
 const TaskManager = lazy(() => import('./components/TaskManager'));
@@ -58,8 +57,8 @@ const DEFAULT_GROUPS: TaskGroup[] = [
   // 💪 สุขภาพ
   { key: 'สุขภาพ', label: 'สุขภาพ', emoji: '💪', color: 'green', icon: 'heartpulse', size: 62, categoryKey: 'health' },
   { key: 'พักผ่อน', label: 'พักผ่อน', emoji: '☕', color: 'cyan', icon: 'coffee', size: 56, categoryKey: 'health' },
-  // 🏠 ดูแลบ้าน/ชีวิต
-  { key: 'กิจวัตร', label: 'กิจวัตร', emoji: '🌅', color: 'teal', icon: 'sun', size: 68, categoryKey: 'home' },
+  // 🏠 กิจวัตรประจำวัน
+  { key: 'กิจวัตร', label: 'กิจวัตรทั่วไป', emoji: '🌅', color: 'teal', icon: 'sun', size: 68, categoryKey: 'home' },
   { key: 'งานบ้าน', label: 'งานบ้าน', emoji: '🏠', color: 'yellow', icon: 'broom', size: 66, categoryKey: 'home' },
   { key: 'ธุระส่วนตัว', label: 'ธุระส่วนตัว', emoji: '🔧', color: 'blue', icon: 'calendar', size: 62, categoryKey: 'home' },
   // ❤️ ความสัมพันธ์
@@ -216,6 +215,7 @@ const App: React.FC = () => {
   // Daily records state
   const [todayRecords, setTodayRecords] = useState<DailyRecord[]>([]);
   const [totalRecordCount, setTotalRecordCount] = useState(0);
+  const [todayFocusSessions, setTodayFocusSessions] = useState<FocusSession[]>([]);
 
   // Reactive todayStr — updates when day changes (overnight / visibility change)
   const [todayStr, setTodayStr] = useState(() => new Date().toISOString().split('T')[0]);
@@ -246,20 +246,23 @@ const App: React.FC = () => {
   }, []);
   const defaultTasks: Task[] = useMemo(() => [
     // ===== ทุกวัน (ไม่ต้องระบุ dayTypes — recurring, no dates) =====
-    // 🌅 กิจวัตร — ทุกวัน
-    { id: 'd-1', title: 'ตื่นนอน อาบน้ำ แปรงฟัน', description: 'กิจวัตรเช้า เตรียมพร้อมเริ่มวัน', priority: Priority.MEDIUM, completed: false, category: 'กิจวัตร', estimatedDuration: 30 },
-    { id: 'd-2', title: 'เตรียมอาหารเช้า / กินข้าว', description: 'ทำอาหารเช้าง่ายๆ กินให้อิ่มก่อนเริ่มงาน', priority: Priority.MEDIUM, completed: false, category: 'กิจวัตร', estimatedDuration: 30 },
-    { id: 'd-3', title: 'อาบน้ำ เตรียมนอน', description: 'ผ่อนคลายก่อนเข้านอน ปิดหน้าจอ', priority: Priority.LOW, completed: false, category: 'กิจวัตร', estimatedDuration: 30 },
+    // 🌅 กิจวัตรทั่วไป — เช้า
+    { id: 'd-1', title: 'เช้า : ตื่นนอน ล้างหน้า แปรงฟัน', description: 'ตื่นนอนแล้วล้างหน้า แปรงฟัน เตรียมพร้อมเริ่มวัน', priority: Priority.MEDIUM, completed: false, category: 'กิจวัตร', estimatedDuration: 15 },
+    { id: 'd-2', title: 'เช้า : เตรียมอาหารเช้า / กินข้าว', description: 'ทำอาหารเช้าง่ายๆ กินให้อิ่มก่อนเริ่มงาน', priority: Priority.MEDIUM, completed: false, category: 'กิจวัตร', estimatedDuration: 30 },
+    { id: 'd-23', title: 'เช้า : อาบน้ำ แต่งตัว', description: 'อาบน้ำเช้า แต่งตัวเตรียมพร้อม', priority: Priority.MEDIUM, completed: false, category: 'กิจวัตร', estimatedDuration: 20 },
+    // 🌅 กิจวัตรทั่วไป — เย็น
+    { id: 'd-3', title: 'เย็น : อาบน้ำ', description: 'อาบน้ำหลังเลิกงาน ผ่อนคลายร่างกาย', priority: Priority.LOW, completed: false, category: 'กิจวัตร', estimatedDuration: 20 },
+    { id: 'd-24', title: 'เย็น : เตรียมตัวนอน', description: 'แปรงฟัน เปลี่ยนชุด ปิดหน้าจอ เตรียมพร้อมเข้านอน', priority: Priority.LOW, completed: false, category: 'กิจวัตร', estimatedDuration: 15 },
     // 💪 สุขภาพ — ทุกวัน
     { id: 'd-14', title: 'ออกกำลังกาย / วิ่ง / เดินเร็ว', description: 'คาร์ดิโอ 30-45 นาที หรือเดินรอบหมู่บ้าน', priority: Priority.HIGH, completed: false, category: 'สุขภาพ', estimatedDuration: 40 },
     { id: 'd-15', title: 'ยืดเหยียด / โยคะ', description: 'ยืดกล้ามเนื้อ ผ่อนคลายร่างกาย', priority: Priority.LOW, completed: false, category: 'สุขภาพ', estimatedDuration: 20 },
     { id: 'd-16', title: 'นั่งสมาธิ / หายใจลึก', description: 'นั่งสมาธิ 10-15 นาที ฝึกจิตให้สงบ', priority: Priority.MEDIUM, completed: false, category: 'สุขภาพ', estimatedDuration: 15 },
-    // 🌅 กิจวัตร — มื้อกลางวัน
-    { id: 'd-21', title: 'พักเที่ยง / กินข้าวกลางวัน', description: 'กินข้าว พักสมอง เดินเล่นสั้นๆ', priority: Priority.MEDIUM, completed: false, category: 'กิจวัตร', estimatedDuration: 60 },
+    // 🌅 กิจวัตรทั่วไป — กลางวัน
+    { id: 'd-21', title: 'เที่ยง : พักเที่ยง / กินข้าวกลางวัน', description: 'กินข้าว พักสมอง เดินเล่นสั้นๆ', priority: Priority.MEDIUM, completed: false, category: 'กิจวัตร', estimatedDuration: 60 },
     // ☕ พักผ่อน — ทุกวัน
     { id: 'd-22', title: 'พักผ่อน / งานอดิเรก', description: 'ดูซีรีส์ เล่นเกม ฟังเพลง หรือพักสายตา', priority: Priority.LOW, completed: false, category: 'พักผ่อน', estimatedDuration: 30 },
-    // 🌅 กิจวัตร — มื้อเย็น
-    { id: 'd-17', title: 'กินข้าวเย็นกับครอบครัว', description: 'นั่งกินข้าวด้วยกัน คุยเรื่องทั่วไป', priority: Priority.HIGH, completed: false, category: 'กิจวัตร', estimatedDuration: 30 },
+    // 🌅 กิจวัตรทั่วไป — มื้อเย็น
+    { id: 'd-17', title: 'เย็น : กินข้าวเย็น', description: 'กินข้าวเย็น อาจกินกับครอบครัว', priority: Priority.HIGH, completed: false, category: 'กิจวัตร', estimatedDuration: 30 },
     // 👨‍👩‍👧 ครอบครัว — ทุกวัน (เย็น)
     { id: 'd-18', title: 'เวลาครอบครัว / พูดคุย', description: 'ใช้เวลาด้วยกัน ดูทีวี เล่นเกม หรือคุยกัน', priority: Priority.MEDIUM, completed: false, category: 'ครอบครัว', estimatedDuration: 30 },
 
@@ -293,15 +296,51 @@ const App: React.FC = () => {
     // ===== เสาร์+อาทิตย์ (weekend) =====
     { id: 'd-33', title: 'พักผ่อนเต็มที่ / งานอดิเรก', description: 'ดูหนัง เล่นเกม ทำสวน หรืออะไรก็ได้ที่ชอบ', priority: Priority.LOW, completed: false, category: 'พักผ่อน', dayTypes: ['saturday', 'sunday'], estimatedDuration: 90 },
 
-    // ===== มี deadline (ไม่ recurring) =====
-    { id: 'd-19', title: 'จ่ายบิล / ค่าน้ำค่าไฟ', description: 'ตรวจสอบและชำระค่าใช้จ่ายรายเดือน', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: '2026-02-28', category: 'งานด่วน', dayTypes: ['workday'], estimatedDuration: 30 },
-    { id: 'd-20', title: 'นัดหมอ / ตรวจสุขภาพ', description: 'นัดพบแพทย์ประจำปี หรือตามนัด', priority: Priority.HIGH, completed: false, startDate: todayStr, endDate: '2026-03-15', category: 'งานด่วน', dayTypes: ['workday'], estimatedDuration: 60 },
+    // ===== ⚡ งานด่วน — เรื่องเร่งด่วนหลากหลายด้าน =====
+    { id: 'd-19', title: 'จ่ายบิล / ค่าน้ำค่าไฟ', description: 'ตรวจสอบและชำระค่าใช้จ่ายรายเดือน', priority: Priority.HIGH, completed: false, category: 'งานด่วน', dayTypes: ['workday'], estimatedDuration: 30 },
+    { id: 'd-45', title: 'แก้ปัญหาเร่งด่วนที่ทำงาน', description: 'งาน bug / ลูกค้าร้องเรียน / ระบบล่ม ต้องจัดการทันที', priority: Priority.HIGH, completed: false, category: 'งานด่วน', dayTypes: ['workday'], estimatedDuration: 60 },
+    { id: 'd-46', title: 'ติดต่อเรื่องด่วน (โทร/ส่งข้อความ)', description: 'โทรหาคนที่ต้องติดต่อด่วน ตอบข้อความสำคัญ', priority: Priority.HIGH, completed: false, category: 'งานด่วน', estimatedDuration: 15 },
+    { id: 'd-47', title: 'ส่งเอกสาร / งานก่อน Deadline', description: 'เอกสารสำคัญที่ต้องส่งภายในวันนี้ หรือใกล้ deadline', priority: Priority.HIGH, completed: false, category: 'งานด่วน', dayTypes: ['workday'], estimatedDuration: 45 },
+    { id: 'd-48', title: 'ซ่อมแซมของเสีย (บ้าน/รถ/อุปกรณ์)', description: 'ของเสียที่ต้องซ่อมด่วน น้ำรั่ว ไฟดับ รถเสีย', priority: Priority.HIGH, completed: false, category: 'งานด่วน', estimatedDuration: 60 },
+    { id: 'd-49', title: 'ดูแลคนป่วย / เหตุฉุกเฉินครอบครัว', description: 'พาไปหาหมอ ดูแลคนในบ้านที่ไม่สบาย', priority: Priority.HIGH, completed: false, category: 'งานด่วน', estimatedDuration: 120 },
+    { id: 'd-50', title: 'เตรียมของสำหรับงาน / อีเว้นท์', description: 'เตรียมอุปกรณ์ เอกสาร ของขวัญ สำหรับงานที่กำลังจะถึง', priority: Priority.HIGH, completed: false, category: 'งานด่วน', estimatedDuration: 45 },
     // 🏠 งานบ้าน — ซักผ้า (ทุกวัน)
     { id: 'd-10', title: 'ซักผ้า / ตากผ้า / พับผ้า', description: 'จัดการเสื้อผ้า', priority: Priority.LOW, completed: false, category: 'งานบ้าน', estimatedDuration: 20 },
     // 🧠 พัฒนาตัวเอง — เขียนบันทึก (ทุกวัน)
     { id: 'd-13', title: 'เขียนบันทึก / วางแผนเป้าหมาย', description: 'Journal สะท้อนตัวเอง ทบทวนเป้าหมาย', priority: Priority.LOW, completed: false, category: 'พัฒนาตัวเอง', estimatedDuration: 15 },
     // 🔧 ธุระส่วนตัว — เอกสาร (มี deadline)
     { id: 'd-24', title: 'จัดการเอกสาร / ธุระธนาคาร', description: 'เอกสารสำคัญ โอนเงิน หรือติดต่อหน่วยงาน', priority: Priority.MEDIUM, completed: false, startDate: todayStr, endDate: '2026-02-28', category: 'ธุระส่วนตัว', dayTypes: ['workday'], estimatedDuration: 60 },
+
+    // ===== กลุ่มที่ยังไม่มี default task =====
+
+    // 📝 งานรอง (career) — งาน side / freelance / รายได้เสริม
+    { id: 'd-34', title: 'งานรอง / Freelance / รายได้เสริม', description: 'ทำงานเสริม ตอบลูกค้า หรือพัฒนาช่องทางรายได้', priority: Priority.MEDIUM, completed: false, category: 'งานรอง', dayTypes: ['workday'], estimatedDuration: 60 },
+    { id: 'd-35', title: 'วางแผนการเงิน / ทบทวนรายรับ-รายจ่าย', description: 'สรุปค่าใช้จ่าย ดูยอดเงินออม วางแผนเป้าหมายการเงิน', priority: Priority.MEDIUM, completed: false, category: 'งานรอง', dayTypes: ['sunday'], estimatedDuration: 30 },
+
+    // 🤝 เข้าสังคม (relationship) — เพื่อน / ชุมชน / networking
+    { id: 'd-36', title: 'โทร / แชทเพื่อนสนิท', description: 'ติดต่อเพื่อนสนิท ถามไถ่ความเป็นอยู่ รักษาความสัมพันธ์', priority: Priority.LOW, completed: false, category: 'เข้าสังคม', estimatedDuration: 15 },
+    { id: 'd-37', title: 'ออกไปเจอเพื่อน / สังสรรค์', description: 'นัดเจอเพื่อน กินข้าว ทำกิจกรรมด้วยกัน', priority: Priority.MEDIUM, completed: false, category: 'เข้าสังคม', dayTypes: ['saturday'], estimatedDuration: 120 },
+    { id: 'd-38', title: 'ช่วยเหลือคนรอบข้าง / จิตอาสา', description: 'ทำเรื่องดีๆ เล็กๆ น้อยๆ ให้คนรอบข้าง ทำบุญ บริจาค', priority: Priority.LOW, completed: false, category: 'เข้าสังคม', dayTypes: ['sunday'], estimatedDuration: 60 },
+
+    // 🧘 สงบใจ (mind) — ผ่อนคลายจิตใจ / mindfulness
+    { id: 'd-39', title: 'เขียน Gratitude / สิ่งดีๆ วันนี้', description: 'จดสิ่งที่รู้สึกขอบคุณ 3 ข้อ สะท้อนตัวเองก่อนนอน', priority: Priority.LOW, completed: false, category: 'สงบใจ', estimatedDuration: 10 },
+    { id: 'd-40', title: 'ฟังเพลงผ่อนคลาย / เสียงธรรมชาติ', description: 'ฟังเพลงเบาๆ White Noise หรือเสียงธรรมชาติ ปล่อยวางสมอง', priority: Priority.LOW, completed: false, category: 'สงบใจ', estimatedDuration: 15 },
+    { id: 'd-41', title: 'สวดมนต์ / อ่านธรรมะ', description: 'สวดมนต์ก่อนนอน หรืออ่านข้อคิดดีๆ เติมพลังจิตใจ', priority: Priority.LOW, completed: false, category: 'สงบใจ', estimatedDuration: 15 },
+
+    // ⏸️ Breaking (break) — พักระหว่างวัน
+    { id: 'd-42', title: 'พักสายตา / เดินเล่นสั้นๆ', description: 'ลุกจากโต๊ะ เดินยืดเส้น พักสายตาจากหน้าจอ 5-10 นาที', priority: Priority.LOW, completed: false, category: 'Breaking', dayTypes: ['workday'], estimatedDuration: 10 },
+    { id: 'd-43', title: 'ดื่มน้ำ / ทานของว่าง', description: 'ดื่มน้ำให้เพียงพอ ทานผลไม้หรือของว่างเบาๆ', priority: Priority.LOW, completed: false, category: 'Breaking', estimatedDuration: 10 },
+
+    // 📅 นัดหมาย — นัดหมายหลายประเภทตามเป้าหมาย
+    { id: 'd-44', title: 'ตรวจสอบนัดหมายประจำสัปดาห์', description: 'เช็คปฏิทิน ยืนยันนัดหมาย เตรียมตัวล่วงหน้า', priority: Priority.MEDIUM, completed: false, category: 'นัดหมาย', dayTypes: ['workday'], estimatedDuration: 10 },
+    { id: 'd-20', title: 'นัดหมอ / ตรวจสุขภาพ', description: 'นัดพบแพทย์ ทันตแพทย์ ตรวจสุขภาพประจำปี', priority: Priority.HIGH, completed: false, category: 'นัดหมาย', estimatedDuration: 60 },
+    { id: 'd-51', title: 'นัดประชุม / ประชุมออนไลน์', description: 'ประชุมทีม ประชุมลูกค้า หรือ video call สำคัญ', priority: Priority.HIGH, completed: false, category: 'นัดหมาย', dayTypes: ['workday'], estimatedDuration: 60 },
+    { id: 'd-52', title: 'นัดเพื่อน / กินข้าว / สังสรรค์', description: 'นัดเจอเพื่อน กินข้าว ทำกิจกรรมด้วยกัน', priority: Priority.MEDIUM, completed: false, category: 'นัดหมาย', estimatedDuration: 120 },
+    { id: 'd-53', title: 'นัดช่างซ่อม / ช่างต่างๆ', description: 'นัดช่างซ่อมแอร์ ช่างไฟ ช่างประปา หรือช่างอื่นๆ', priority: Priority.MEDIUM, completed: false, category: 'นัดหมาย', estimatedDuration: 60 },
+    { id: 'd-54', title: 'นัดทำธุระราชการ / ธนาคาร', description: 'นัดทำบัตร ต่อทะเบียน จัดการเอกสารราชการ ธนาคาร', priority: Priority.MEDIUM, completed: false, category: 'นัดหมาย', dayTypes: ['workday'], estimatedDuration: 90 },
+    { id: 'd-55', title: 'นัดทำผม / สปา / ดูแลตัวเอง', description: 'ตัดผม ทำเล็บ นวดผ่อนคลาย ดูแลตัวเอง', priority: Priority.LOW, completed: false, category: 'นัดหมาย', estimatedDuration: 90 },
+    { id: 'd-56', title: 'นัดรับ-ส่งของ / พัสดุ', description: 'รอรับพัสดุ นัดส่งของ หรือไปรับสินค้าที่สั่ง', priority: Priority.MEDIUM, completed: false, category: 'นัดหมาย', estimatedDuration: 30 },
+    { id: 'd-57', title: 'นัดพบครู / อาจารย์ / ที่ปรึกษา', description: 'ประชุมผู้ปกครอง พบอาจารย์ที่ปรึกษา หรือ mentor', priority: Priority.MEDIUM, completed: false, category: 'นัดหมาย', estimatedDuration: 60 },
   ], [todayStr]);
 
   // ===== Data state (synced via Firestore) =====
@@ -395,6 +434,37 @@ const App: React.FC = () => {
     }
   }, [loadTodayRecords, user]);
 
+  // Mark a task as completed (for non-recurring tasks, called from Dashboard)
+  const handleTaskComplete = useCallback((taskId: string, completed: boolean) => {
+    setTasks(prev => prev.map(t =>
+      t.id === taskId
+        ? { ...t, completed, completedAt: completed ? new Date().toISOString() : undefined }
+        : t
+    ));
+  }, []);
+
+  // Load today's focus sessions
+  const loadTodayFocusSessions = useCallback(async () => {
+    if (!user) return;
+    try {
+      const sessions = await getFocusSessionsByDate(user.uid, todayStr);
+      setTodayFocusSessions(sessions);
+    } catch (err) {
+      console.error('Failed to load focus sessions:', err);
+    }
+  }, [todayStr, user]);
+
+  // Save a focus session to Firestore
+  const handleSaveFocusSession = useCallback(async (session: FocusSession) => {
+    if (!user) return;
+    try {
+      await addFocusSessionFS(user.uid, session);
+      await loadTodayFocusSessions();
+    } catch (err) {
+      console.error('Failed to save focus session:', err);
+    }
+  }, [loadTodayFocusSessions, user]);
+
   // Dirty state: tracks unsaved local changes
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
 
@@ -407,6 +477,7 @@ const App: React.FC = () => {
     }
 
     loadTodayRecords();
+    loadTodayFocusSessions();
 
     const unsubscribe = subscribeAppData(user.uid, (data) => {
       console.log('🔄 Firestore data received');
@@ -486,6 +557,8 @@ const App: React.FC = () => {
             const migrated: ScheduleTemplates = {
               ...DEFAULT_SCHEDULE_TEMPLATES,
               customTemplates: Array.isArray(tpl.customTemplates) ? tpl.customTemplates : [],
+              dayOverrides: tpl.dayOverrides || undefined,
+              dateOverrides: tpl.dateOverrides || undefined,
             };
             setScheduleTemplates(migrated);
             saveBack.scheduleTemplates = migrated;
@@ -495,6 +568,8 @@ const App: React.FC = () => {
               saturday: vSat,
               sunday: vSun,
               customTemplates: Array.isArray(tpl.customTemplates) ? tpl.customTemplates : [],
+              dayOverrides: tpl.dayOverrides || undefined,
+              dateOverrides: tpl.dateOverrides || undefined,
             };
             setScheduleTemplates(fixed);
           }
@@ -547,7 +622,7 @@ const App: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, [user, loadTodayRecords]);
+  }, [user, loadTodayRecords, loadTodayFocusSessions]);
 
   // Auto-save: debounce 1.5s after any local change
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -712,16 +787,16 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     switch (activeView) {
-      case 'dashboard': return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} habits={habits} onSaveDailyRecord={handleSaveDailyRecord} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} />;
+      case 'dashboard': return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} />;
       case 'planner': return <Suspense fallback={<LazyFallback />}><DailyPlanner tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} pendingSlot={pendingSlot} onPendingSlotHandled={() => setPendingSlot(null)} /></Suspense>;
-      case 'tasks': return <Suspense fallback={<LazyFallback />}><TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} initialGroupKey={pendingGroupKey} /></Suspense>;
-      case 'focus': return <Suspense fallback={<LazyFallback />}><FocusTimer /></Suspense>;
+      case 'tasks': return <Suspense fallback={<LazyFallback />}><TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} initialGroupKey={pendingGroupKey} defaultTasks={defaultTasks} /></Suspense>;
+      case 'focus': return <Suspense fallback={<LazyFallback />}><FocusTimer onSaveFocusSession={handleSaveFocusSession} todayFocusSessions={todayFocusSessions} /></Suspense>;
       case 'analytics': return <Suspense fallback={<LazyFallback />}><Analytics tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} totalRecordCount={totalRecordCount} userId={user!.uid} /></Suspense>;
       case 'ai-coach': return <Suspense fallback={<LazyFallback />}><AICoach tasks={tasks} /></Suspense>;
       case 'habits': return <Suspense fallback={<LazyFallback />}><HabitTracker habits={habits} setHabits={setHabits} /></Suspense>;
       case 'search': return <Suspense fallback={<LazyFallback />}><SearchView tasks={tasks} taskGroups={taskGroups} /></Suspense>;
       case 'calendar': return <Suspense fallback={<LazyFallback />}><CalendarView tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} userId={user!.uid} /></Suspense>;
-      default: return <Dashboard tasks={tasks} milestones={milestones} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} habits={habits} onSaveDailyRecord={handleSaveDailyRecord} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} />;
+      default: return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} />;
     }
   };
 

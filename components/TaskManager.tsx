@@ -1,8 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Task, TaskAttachment, SubTask, Recurrence, Priority, TaskGroup, GROUP_COLORS, LocationReminder, DEFAULT_CATEGORIES, Category, getTasksForDate } from '../types';
-import { Plus, Trash2, CheckCircle2, Circle, Sparkles, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning, Handshake, GripVertical, ListTodo } from 'lucide-react';
+import { Task, TaskAttachment, SubTask, Recurrence, Priority, TaskGroup, GROUP_COLORS, LocationReminder, DEFAULT_CATEGORIES } from '../types';
+import { Plus, Trash2, CheckCircle2, Circle, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning, Handshake, GripVertical, ListTodo, AlertTriangle, Loader2 } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -70,8 +70,6 @@ const FamilyIcon: React.FC<{ className?: string }> = ({ className }) => (
     <line x1="20" y1="14" x2="20" y2="20" />
   </svg>
 );
-import { getAIPrioritization } from '../services/geminiService';
-// TimePicker no longer needed (tasks don't have individual times)
 
 interface TaskManagerProps {
   tasks: Task[];
@@ -82,6 +80,7 @@ interface TaskManagerProps {
   setDeletedDefaultTaskIds: React.Dispatch<React.SetStateAction<string[]>>;
   onImmediateSave?: (updatedTasks?: Task[], updatedDeletedIds?: string[]) => Promise<void>;
   initialGroupKey?: string | null;
+  defaultTasks?: Task[];
 }
 
 // Derive style from a TaskGroup using GROUP_COLORS
@@ -162,26 +161,23 @@ const emptyForm = (): Omit<Task, 'id'> => ({
   dayTypes: ['workday', 'saturday', 'sunday'],
 });
 
-const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups, deletedDefaultTaskIds, setDeletedDefaultTaskIds, onImmediateSave, initialGroupKey }) => {
-  const [aiInsight, setAiInsight] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-
+const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups, deletedDefaultTaskIds, setDeletedDefaultTaskIds, onImmediateSave, initialGroupKey, defaultTasks = [] }) => {
   // DnD sensors for task reordering
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 100, tolerance: 8 } }),
   );
 
-  const handleTaskDragEnd = (event: DragEndEvent) => {
+  const handleTaskDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    setTasks(prev => {
-      const oldIndex = prev.findIndex(t => t.id === active.id);
-      const newIndex = prev.findIndex(t => t.id === over.id);
-      if (oldIndex === -1 || newIndex === -1) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
-    });
+    const oldIndex = tasks.findIndex(t => t.id === active.id);
+    const newIndex = tasks.findIndex(t => t.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const updatedTasks = arrayMove(tasks, oldIndex, newIndex);
+    setTasks(updatedTasks);
+    if (onImmediateSave) await withSaveStatus(() => onImmediateSave(updatedTasks));
   };
 
   // Derive style objects from dynamic groups
@@ -193,6 +189,14 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   const [groupForm, setGroupForm] = useState({ name: '', emoji: '📌', color: 'cyan', icon: 'code', categoryKey: 'career' });
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
   const [deleteGroupConfirm, setDeleteGroupConfirm] = useState<string | null>(null);
+  const [showClearDefaultConfirm, setShowClearDefaultConfirm] = useState(false);
+  const [defaultPickerGroup, setDefaultPickerGroup] = useState<string | null>(null);
+  const [selectedDefaultIds, setSelectedDefaultIds] = useState<Set<string>>(new Set());
+  const [recurrenceEditTaskId, setRecurrenceEditTaskId] = useState<string | null>(null);
+  const [recurrenceForm, setRecurrenceForm] = useState<Recurrence | undefined>(undefined);
+  const [recurrenceStartDate, setRecurrenceStartDate] = useState<string>('');
+  const [durationEditTaskId, setDurationEditTaskId] = useState<string | null>(null);
+  const [durationValue, setDurationValue] = useState<number>(0);
 
   // Form state
   const [formOpen, setFormOpen] = useState(false);
@@ -219,6 +223,25 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   const videoInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+
+  // Save status tracking
+  const [taskSaveStatus, setTaskSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const saveStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const withSaveStatus = async (action: () => Promise<void>) => {
+    setTaskSaveStatus('saving');
+    try {
+      await action();
+      setTaskSaveStatus('saved');
+      if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
+      saveStatusTimerRef.current = setTimeout(() => setTaskSaveStatus('idle'), 3000);
+    } catch (err) {
+      console.error('[TaskManager] Save failed:', err);
+      setTaskSaveStatus('error');
+      if (saveStatusTimerRef.current) clearTimeout(saveStatusTimerRef.current);
+      saveStatusTimerRef.current = setTimeout(() => setTaskSaveStatus('idle'), 5000);
+    }
+  };
 
   // Expanded card & selected category
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -319,9 +342,8 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     }
     setTasks(updatedTasks);
     closeForm();
-    // Immediately save to Firestore (don't rely on auto-save debounce)
     if (onImmediateSave) {
-      await onImmediateSave(updatedTasks);
+      await withSaveStatus(() => onImmediateSave(updatedTasks));
     }
   };
 
@@ -345,8 +367,14 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setFormSubtasks(prev => prev.map(s => s.id === id ? { ...s, note: note || undefined } : s));
   };
 
-  const toggleTask = (id: string) => {
-    setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+  const toggleTask = async (id: string) => {
+    const updatedTasks = tasks.map(t => t.id === id ? {
+      ...t,
+      completed: !t.completed,
+      completedAt: !t.completed ? new Date().toISOString() : undefined,
+    } : t);
+    setTasks(updatedTasks);
+    if (onImmediateSave) await withSaveStatus(() => onImmediateSave(updatedTasks));
   };
 
   const deleteTask = (id: string) => {
@@ -369,11 +397,8 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
       setDeletedDefaultTaskIds(updatedDeletedIds);
       setConfirmDeleteId(null);
 
-      // Save to Firestore immediately to prevent the task from coming back
       if (onImmediateSave) {
-        console.log('💾 Calling immediate save with:', { taskCount: updatedTasks.length, deletedIds: updatedDeletedIds });
-        await onImmediateSave(updatedTasks, updatedDeletedIds);
-        console.log('✅ Immediate save completed');
+        await withSaveStatus(() => onImmediateSave(updatedTasks, updatedDeletedIds));
       }
     }
   };
@@ -446,16 +471,6 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setFormAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleAIAnalyze = async () => {
-    setIsAnalyzing(true);
-    try {
-      const insight = await getAIPrioritization(tasks);
-      setAiInsight(insight || "I don't have enough information to analyze your tasks yet.");
-    } catch {
-      setAiInsight("Failed to connect to the productivity strategist. Please try again later.");
-    } finally { setIsAnalyzing(false); }
-  };
-
   // Group CRUD
   const openGroupForm = () => {
     setEditingGroupKey(null);
@@ -467,7 +482,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setGroupForm({ name: g.label, emoji: g.emoji, color: g.color, icon: g.icon, categoryKey: g.categoryKey || 'career' });
     setGroupFormOpen(true);
   };
-  const saveGroup = () => {
+  const saveGroup = async () => {
     const name = groupForm.name.trim();
     if (!name) return;
 
@@ -476,7 +491,11 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
       const oldKey = editingGroupKey;
       setTaskGroups(prev => prev.map(g => g.key === oldKey ? { ...g, key: name, label: name, emoji: groupForm.emoji, color: groupForm.color, icon: groupForm.icon, categoryKey: groupForm.categoryKey } : g));
       if (name !== oldKey) {
-        setTasks(prev => prev.map(t => t.category === oldKey ? { ...t, category: name } : t));
+        const updatedTasks = tasks.map(t => t.category === oldKey ? { ...t, category: name } : t);
+        setTasks(updatedTasks);
+        if (onImmediateSave) await withSaveStatus(() => onImmediateSave(updatedTasks));
+      } else {
+        if (onImmediateSave) await withSaveStatus(() => onImmediateSave());
       }
       setEditingGroupKey(null);
     } else {
@@ -492,42 +511,225 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
         categoryKey: groupForm.categoryKey,
       };
       setTaskGroups(prev => [...prev, newGroup]);
+      if (onImmediateSave) await withSaveStatus(() => onImmediateSave());
     }
     setGroupFormOpen(false);
   };
-  const deleteGroup = (key: string) => {
+  const deleteGroup = async (key: string) => {
+    const updatedTasks = tasks.filter(t => t.category !== key);
     setTaskGroups(prev => prev.filter(g => g.key !== key));
-    setTasks(prev => prev.filter(t => t.category !== key));
+    setTasks(updatedTasks);
     setDeleteGroupConfirm(null);
     if (selectedCat === key) setSelectedCat(null);
+    if (onImmediateSave) await withSaveStatus(() => onImmediateSave(updatedTasks));
   };
 
   return (
     <div className="space-y-6 pb-10">
 
-      {/* Header - Add Group Button */}
-      <div className="flex justify-end">
+      {/* Header - Add Group + Clear Default Buttons */}
+      <div className="flex justify-end gap-2">
+        {tasks.some(t => t.id.startsWith('d-')) && (
+          <button onClick={() => setShowClearDefaultConfirm(true)} className="flex items-center gap-1.5 px-3 py-2.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl font-bold text-sm hover:bg-rose-100 transition-colors">
+            <Trash2 className="w-3.5 h-3.5" /> ล้าง Default ({tasks.filter(t => t.id.startsWith('d-')).length})
+          </button>
+        )}
         <button onClick={openGroupForm} className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-200">
           <Plus className="w-4 h-4" /> เพิ่มกลุ่ม
         </button>
       </div>
 
-      {/* AI Insight */}
-      {aiInsight && (
-        <div className="p-5 bg-amber-50 border border-amber-200 rounded-2xl relative animate-fadeIn shadow-sm">
-          <button onClick={() => setAiInsight(null)} className="absolute top-3 right-3 p-2 bg-amber-100 rounded-xl text-amber-600 hover:bg-amber-200 transition-colors">
-            <X className="w-4 h-4" />
-          </button>
-          <div className="flex gap-3">
-            <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center shrink-0">
-              <Sparkles className="w-5 h-5 text-amber-500" />
+      {/* ===== Clear Default Confirm Modal ===== */}
+      {showClearDefaultConfirm && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setShowClearDefaultConfirm(false)}>
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-5 text-center">
+              <div className="w-14 h-14 bg-rose-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-7 h-7 text-rose-500" />
+              </div>
+              <h3 className="text-lg font-black text-slate-800 mb-2">ล้าง Default Tasks?</h3>
+              <p className="text-sm text-slate-500 mb-1">จะลบ task ตัวอย่างทั้งหมด <span className="font-bold text-rose-600">{tasks.filter(t => t.id.startsWith('d-')).length} รายการ</span></p>
+              <p className="text-xs text-slate-400">task ที่คุณสร้างเองจะไม่ถูกลบ</p>
             </div>
-            <div>
-              <p className="font-black text-base mb-1.5 text-amber-900">AI Strategy Recommendation</p>
-              <p className="text-sm text-amber-800 whitespace-pre-wrap leading-relaxed">{aiInsight}</p>
+            <div className="flex border-t border-slate-100">
+              <button onClick={() => setShowClearDefaultConfirm(false)} className="flex-1 py-3.5 text-sm font-bold text-slate-500 hover:bg-slate-50 transition-colors">
+                ยกเลิก
+              </button>
+              <button
+                onClick={async () => {
+                  const defaultIds = tasks.filter(t => t.id.startsWith('d-')).map(t => t.id);
+                  const updatedDeletedIds = [...new Set([...deletedDefaultTaskIds, ...defaultIds])];
+                  const updatedTasks = tasks.filter(t => !t.id.startsWith('d-'));
+                  setTasks(updatedTasks);
+                  setDeletedDefaultTaskIds(updatedDeletedIds);
+                  setShowClearDefaultConfirm(false);
+                  if (onImmediateSave) await withSaveStatus(() => onImmediateSave(updatedTasks, updatedDeletedIds));
+                }}
+                className="flex-1 py-3.5 text-sm font-bold text-rose-600 hover:bg-rose-50 transition-colors border-l border-slate-100"
+              >
+                ยืนยันลบ
+              </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ===== Default Task Picker Modal ===== */}
+      {defaultPickerGroup !== null && createPortal(
+        <div style={{ zIndex: 9100 }} className="fixed inset-0 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setDefaultPickerGroup(null)}>
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl animate-fadeIn overflow-hidden" onClick={e => e.stopPropagation()}>
+            {(() => {
+              const groupData = taskGroups.find(g => g.key === defaultPickerGroup);
+              const style = getTypeStyle(defaultPickerGroup);
+              const allDefaults = defaultTasks.filter(t => t.category === defaultPickerGroup);
+              const existingIds = new Set(tasks.map(t => t.id));
+              const selectableDefaults = allDefaults.filter(t => !existingIds.has(t.id));
+              const dayTypeLabel = (dt?: string[]) => {
+                if (!dt || dt.length === 0) return 'ทุกวัน';
+                return dt.map(d => d === 'workday' ? 'วันทำงาน' : d === 'saturday' ? 'เสาร์' : d === 'sunday' ? 'อาทิตย์' : d).join(', ');
+              };
+
+              return (
+                <>
+                  {/* Header */}
+                  <div className={`p-4 ${style.bg} border-b ${style.border}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{groupData?.emoji || '📋'}</span>
+                        <div>
+                          <h3 className={`font-black text-base ${style.text}`}>{groupData?.label || defaultPickerGroup}</h3>
+                          <p className="text-xs text-slate-500">เลือก Default Tasks ที่ต้องการ</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setDefaultPickerGroup(null)} className="p-2 rounded-xl hover:bg-white/50 text-slate-400 transition-colors">
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                    {/* Select all / none */}
+                    {selectableDefaults.length > 0 && (
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={() => setSelectedDefaultIds(new Set(selectableDefaults.map(t => t.id)))}
+                          className="px-2.5 py-1 bg-white/80 border border-white rounded-lg text-[11px] font-bold text-slate-600 hover:bg-white transition-colors"
+                        >
+                          เลือกทั้งหมด ({selectableDefaults.length})
+                        </button>
+                        <button
+                          onClick={() => setSelectedDefaultIds(new Set())}
+                          className="px-2.5 py-1 bg-white/50 border border-white/80 rounded-lg text-[11px] font-bold text-slate-400 hover:bg-white/70 transition-colors"
+                        >
+                          ยกเลิกทั้งหมด
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Task list */}
+                  <div className="p-3 max-h-[50vh] overflow-y-auto space-y-1.5">
+                    {allDefaults.length === 0 ? (
+                      <p className="text-center text-sm text-slate-400 py-8">ไม่มี Default Tasks สำหรับกลุ่มนี้</p>
+                    ) : allDefaults.map(task => {
+                      const alreadyAdded = existingIds.has(task.id);
+                      const isSelected = selectedDefaultIds.has(task.id);
+                      return (
+                        <div
+                          key={task.id}
+                          onClick={() => {
+                            if (alreadyAdded) return;
+                            setSelectedDefaultIds(prev => {
+                              const next = new Set(prev);
+                              if (next.has(task.id)) next.delete(task.id); else next.add(task.id);
+                              return next;
+                            });
+                          }}
+                          className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-all cursor-pointer ${
+                            alreadyAdded
+                              ? 'bg-slate-50 border-slate-100 opacity-50 cursor-default'
+                              : isSelected
+                                ? `${style.bg} ${style.border} shadow-sm`
+                                : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm'
+                          }`}
+                        >
+                          {/* Checkbox */}
+                          <div className="mt-0.5 shrink-0">
+                            {alreadyAdded ? (
+                              <div className="w-5 h-5 rounded-md bg-slate-200 flex items-center justify-center">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />
+                              </div>
+                            ) : isSelected ? (
+                              <div className={`w-5 h-5 rounded-md flex items-center justify-center`} style={{ backgroundColor: `var(--color-${style.key === 'default' ? 'emerald' : style.key}-500, #10b981)` }}>
+                                <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                              </div>
+                            ) : (
+                              <div className="w-5 h-5 rounded-md border-2 border-slate-300" />
+                            )}
+                          </div>
+                          {/* Task info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-sm font-bold ${alreadyAdded ? 'text-slate-400' : 'text-slate-700'}`}>
+                                {task.title}
+                              </span>
+                              {alreadyAdded && (
+                                <span className="text-[10px] font-bold bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded">เพิ่มแล้ว</span>
+                              )}
+                            </div>
+                            {task.description && (
+                              <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{task.description}</p>
+                            )}
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded">
+                                {dayTypeLabel(task.dayTypes)}
+                              </span>
+                              {task.estimatedDuration && (
+                                <span className="text-[10px] font-bold bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded">
+                                  {task.estimatedDuration} นาที
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex items-center justify-between p-3 border-t border-slate-100 bg-slate-50/50">
+                    <button
+                      onClick={() => setDefaultPickerGroup(null)}
+                      className="px-4 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-colors"
+                    >
+                      ยกเลิก
+                    </button>
+                    <button
+                      disabled={selectedDefaultIds.size === 0}
+                      onClick={async () => {
+                        const selectedTasks = allDefaults.filter(t => selectedDefaultIds.has(t.id));
+                        const idsToRestore = selectedTasks.map(t => t.id);
+                        const updatedDeletedIds = deletedDefaultTaskIds.filter(id => !idsToRestore.includes(id));
+                        const updatedTasks = [...tasks, ...selectedTasks];
+                        setTasks(updatedTasks);
+                        setDeletedDefaultTaskIds(updatedDeletedIds);
+                        setDefaultPickerGroup(null);
+                        setSelectedDefaultIds(new Set());
+                        if (onImmediateSave) await withSaveStatus(() => onImmediateSave(updatedTasks, updatedDeletedIds));
+                      }}
+                      className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all ${
+                        selectedDefaultIds.size > 0
+                          ? 'bg-emerald-500 text-white shadow-md hover:bg-emerald-600 active:scale-95'
+                          : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      }`}
+                    >
+                      เพิ่ม ({selectedDefaultIds.size} รายการ)
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* ===== Group Form ===== */}
@@ -1135,7 +1337,17 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                     )}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400 text-center py-3">ยังไม่มีรายการ</p>
+                  <div className="text-center py-3">
+                    <p className="text-xs text-slate-400 mb-2">ยังไม่มีรายการ</p>
+                    {defaultTasks.filter(t => t.category === activeGroup.key).length > 0 && (
+                      <button
+                        onClick={() => { setDefaultPickerGroup(activeGroup.key); setSelectedDefaultIds(new Set()); }}
+                        className={`px-3 py-1.5 ${activeColor.bg} ${activeColor.border} border ${activeColor.text} rounded-lg text-xs font-bold transition-colors active:scale-95`}
+                      >
+                        <Plus className="w-3 h-3 inline mr-1" />from Default list
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 {/* Add button */}
@@ -1319,6 +1531,18 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {(() => {
+                      const availableDefaults = defaultTasks.filter(t => t.category === selectedCat);
+                      if (availableDefaults.length === 0) return null;
+                      return (
+                        <button
+                          onClick={() => { setDefaultPickerGroup(selectedCat); setSelectedDefaultIds(new Set()); }}
+                          className="px-2.5 py-2 bg-white border border-emerald-200 text-emerald-600 rounded-xl text-xs font-bold transition-colors active:scale-95 hover:shadow-md"
+                        >
+                          <Plus className="w-3 h-3 inline mr-1" />from Default list
+                        </button>
+                      );
+                    })()}
                     <button onClick={() => openNewFormWithCategory(selectedCat)} className={`px-3 py-2 bg-white ${style.border} border ${style.text} rounded-xl text-xs font-bold transition-colors active:scale-95 hover:shadow-md`}>
                       <Plus className="w-3.5 h-3.5 inline mr-1" />เพิ่ม Task
                     </button>
@@ -1332,7 +1556,21 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
               {/* Modal Body */}
               <div className="px-2 py-3 sm:p-4 flex-1 overflow-y-auto sm:max-h-[60vh]">
                 {group.length === 0 ? (
-                  <p className="text-center text-sm text-slate-400 py-12">ยังไม่มี task ในหมวดนี้</p>
+                  <div className="text-center py-12">
+                    <p className="text-sm text-slate-400 mb-4">ยังไม่มี task ในหมวดนี้</p>
+                    {(() => {
+                      const availableDefaults = defaultTasks.filter(t => t.category === selectedCat);
+                      if (availableDefaults.length === 0) return null;
+                      return (
+                        <button
+                          onClick={() => { setDefaultPickerGroup(selectedCat); setSelectedDefaultIds(new Set()); }}
+                          className={`px-4 py-2.5 ${style.bg} ${style.border} border ${style.text} rounded-xl text-sm font-bold transition-colors active:scale-95 hover:shadow-md`}
+                        >
+                          <Plus className="w-3.5 h-3.5 inline mr-1.5" />from Default list
+                        </button>
+                      );
+                    })()}
+                  </div>
                 ) : (
                   <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={handleTaskDragEnd}>
                   <SortableContext items={group.map(t => t.id)} strategy={verticalListSortingStrategy}>
@@ -1372,7 +1610,10 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                           {/* Metadata Row */}
                           <div className="flex items-center gap-2 ml-7">
                             {task.recurrence && (
-                              <span className="text-[8px] font-black bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded shrink-0 flex items-center gap-0.5">
+                              <span
+                                onClick={(e) => { e.stopPropagation(); setRecurrenceEditTaskId(task.id); setRecurrenceForm(task.recurrence); setRecurrenceStartDate(task.startDate || new Date().toISOString().slice(0, 10)); }}
+                                className="text-[8px] font-black bg-violet-100 text-violet-600 px-1.5 py-0.5 rounded shrink-0 flex items-center gap-0.5 cursor-pointer hover:bg-violet-200 transition-colors"
+                              >
                                 <RefreshCw className="w-2.5 h-2.5" />
                                 {task.recurrence.pattern === 'daily' ? 'ทุกวัน' :
                                  task.recurrence.pattern === 'every_x_days' ? `ทุก ${task.recurrence.interval || 2} วัน` :
@@ -1381,7 +1622,10 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                               </span>
                             )}
                             {!task.startDate && !task.endDate && !task.recurrence && (
-                              <span className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded shrink-0">ทำซ้ำ</span>
+                              <span
+                                onClick={(e) => { e.stopPropagation(); setRecurrenceEditTaskId(task.id); setRecurrenceForm(undefined); setRecurrenceStartDate(new Date().toISOString().slice(0, 10)); }}
+                                className="text-[8px] font-black bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded shrink-0 cursor-pointer hover:bg-emerald-200 transition-colors"
+                              >ทำซ้ำ</span>
                             )}
                             {task.dayTypes && task.dayTypes.length > 0 && task.dayTypes.length < 3 && (
                               <span className="text-[8px] font-black bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded shrink-0">
@@ -1392,7 +1636,10 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                               <Paperclip className="w-3.5 h-3.5 text-slate-300 shrink-0" />
                             )}
                             {task.estimatedDuration && (
-                              <span className="text-[10px] text-blue-500 font-bold shrink-0">{task.estimatedDuration}น.</span>
+                              <span
+                                onClick={(e) => { e.stopPropagation(); setDurationEditTaskId(task.id); setDurationValue(task.estimatedDuration || 30); }}
+                                className="text-[10px] text-blue-500 font-bold shrink-0 cursor-pointer hover:text-blue-700 transition-colors"
+                              >{task.estimatedDuration}น.</span>
                             )}
                             {task.startDate && (
                               <>
@@ -1458,10 +1705,287 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                   </DndContext>
                 )}
               </div>
+
+              {/* Save button bar + status */}
+              <div className={`shrink-0 px-3 py-2.5 border-t flex items-center gap-2 sm:rounded-b-2xl ${
+                taskSaveStatus === 'saved' ? 'bg-emerald-50 border-emerald-200'
+                  : taskSaveStatus === 'error' ? 'bg-rose-50 border-rose-200'
+                  : 'bg-white border-slate-200'
+              }`}>
+                {taskSaveStatus === 'saved' ? (
+                  <><CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /><span className="text-xs font-bold text-emerald-600 flex-1">บันทึกสำเร็จแล้ว!</span></>
+                ) : taskSaveStatus === 'error' ? (
+                  <><AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" /><span className="text-xs font-bold text-rose-600 flex-1">บันทึกไม่สำเร็จ</span></>
+                ) : (
+                  <span className="flex-1" />
+                )}
+                <button
+                  onClick={async () => {
+                    if (onImmediateSave) await withSaveStatus(() => onImmediateSave());
+                  }}
+                  disabled={taskSaveStatus === 'saving'}
+                  className={`flex items-center gap-1.5 px-5 py-2 rounded-xl text-sm font-bold transition-all shadow-sm ${
+                    taskSaveStatus === 'saving'
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95'
+                  }`}
+                >
+                  {taskSaveStatus === 'saving' ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> กำลังบันทึก...</>
+                  ) : (
+                    <><Save className="w-4 h-4" /> บันทึก</>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         );
       })(), document.body)}
+
+      {/* ===== Recurrence Quick Edit Popup ===== */}
+      {recurrenceEditTaskId !== null && createPortal(
+        <div style={{ zIndex: 9200 }} className="fixed inset-0 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setRecurrenceEditTaskId(null)}>
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn overflow-hidden" onClick={e => e.stopPropagation()}>
+            {(() => {
+              const editTask = tasks.find(t => t.id === recurrenceEditTaskId);
+              if (!editTask) return null;
+              return (
+                <>
+                  {/* Header */}
+                  <div className="p-4 border-b border-slate-100 bg-violet-50/50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-violet-100 rounded-lg flex items-center justify-center">
+                          <RefreshCw className="w-4 h-4 text-violet-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-black text-sm text-slate-800">ตั้งค่าการทำซ้ำ</h3>
+                          <p className="text-[11px] text-slate-500 truncate max-w-[200px]">{editTask.title}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setRecurrenceEditTaskId(null)} className="p-2 rounded-xl hover:bg-white/70 text-slate-400 transition-colors">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Body */}
+                  <div className="p-4 space-y-4">
+                    {/* Start date */}
+                    <div>
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">วันเริ่มต้นนับการทำซ้ำ</label>
+                      <input
+                        type="date"
+                        value={recurrenceStartDate}
+                        onChange={e => setRecurrenceStartDate(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-violet-400"
+                      />
+                    </div>
+
+                    {/* Pattern selector */}
+                    <div>
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">รูปแบบการทำซ้ำ</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {([
+                          { key: undefined, label: 'ไม่ซ้ำ' },
+                          { key: 'daily', label: 'ทุกวัน' },
+                          { key: 'every_x_days', label: 'ทุก X วัน' },
+                          { key: 'weekly', label: 'รายสัปดาห์' },
+                          { key: 'monthly', label: 'รายเดือน' },
+                          { key: 'yearly', label: 'รายปี' },
+                        ] as { key: Recurrence['pattern'] | undefined; label: string }[]).map(opt => (
+                          <button
+                            key={opt.label}
+                            onClick={() => setRecurrenceForm(opt.key ? { pattern: opt.key } : undefined)}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                              (recurrenceForm?.pattern || undefined) === opt.key
+                                ? 'bg-violet-100 text-violet-700 border-violet-300'
+                                : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Pattern-specific settings */}
+                    {recurrenceForm?.pattern === 'every_x_days' && (
+                      <div className="flex items-center gap-2 bg-violet-50 rounded-xl p-3">
+                        <span className="text-sm text-slate-600 font-bold">ทุก</span>
+                        <input type="number" min="2" max="365" value={recurrenceForm.interval || 2} onChange={e => setRecurrenceForm({ ...recurrenceForm, interval: parseInt(e.target.value) || 2 })} className="w-20 bg-white border border-violet-200 rounded-lg px-3 py-2 text-sm text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                        <span className="text-sm text-slate-600 font-bold">วัน</span>
+                      </div>
+                    )}
+
+                    {recurrenceForm?.pattern === 'weekly' && (
+                      <div className="bg-violet-50 rounded-xl p-3">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-2">เลือกวันในสัปดาห์</span>
+                        <div className="flex gap-1.5">
+                          {['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((d, i) => {
+                            const isOn = (recurrenceForm.weekDays || []).includes(i);
+                            return (
+                              <button
+                                key={i}
+                                onClick={() => {
+                                  const days = recurrenceForm.weekDays || [];
+                                  const next = isOn ? days.filter(x => x !== i) : [...days, i];
+                                  setRecurrenceForm({ ...recurrenceForm, weekDays: next });
+                                }}
+                                className={`w-9 h-9 rounded-lg text-xs font-bold transition-all ${
+                                  isOn ? 'bg-violet-500 text-white shadow-sm' : 'bg-white text-slate-400 border border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                {d}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {recurrenceForm?.pattern === 'monthly' && (
+                      <div className="flex items-center gap-2 bg-violet-50 rounded-xl p-3">
+                        <span className="text-sm text-slate-600 font-bold">ทุกวันที่</span>
+                        <input type="number" min="1" max="31" value={recurrenceForm.monthDay || 1} onChange={e => setRecurrenceForm({ ...recurrenceForm, monthDay: parseInt(e.target.value) || 1 })} className="w-20 bg-white border border-violet-200 rounded-lg px-3 py-2 text-sm text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                        <span className="text-sm text-slate-600 font-bold">ของเดือน</span>
+                      </div>
+                    )}
+
+                    {recurrenceForm?.pattern === 'yearly' && (
+                      <div className="flex items-center gap-2 bg-violet-50 rounded-xl p-3 flex-wrap">
+                        <span className="text-sm text-slate-600 font-bold">เดือน</span>
+                        <select value={recurrenceForm.monthDate?.month || 1} onChange={e => setRecurrenceForm({ ...recurrenceForm, monthDate: { month: parseInt(e.target.value), day: recurrenceForm.monthDate?.day || 1 } })} className="bg-white border border-violet-200 rounded-lg px-2 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-violet-400">
+                          {['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'].map((m, i) => (
+                            <option key={i} value={i + 1}>{m}</option>
+                          ))}
+                        </select>
+                        <span className="text-sm text-slate-600 font-bold">วันที่</span>
+                        <input type="number" min="1" max="31" value={recurrenceForm.monthDate?.day || 1} onChange={e => setRecurrenceForm({ ...recurrenceForm, monthDate: { month: recurrenceForm.monthDate?.month || 1, day: parseInt(e.target.value) || 1 } })} className="w-16 bg-white border border-violet-200 rounded-lg px-2 py-2 text-sm text-center font-bold focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex border-t border-slate-100">
+                    <button onClick={() => setRecurrenceEditTaskId(null)} className="flex-1 py-3.5 text-sm font-bold text-slate-500 hover:bg-slate-50 transition-colors">
+                      ยกเลิก
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const updatedTasks = tasks.map(t =>
+                          t.id === recurrenceEditTaskId
+                            ? {
+                                ...t,
+                                recurrence: recurrenceForm,
+                                startDate: recurrenceForm ? recurrenceStartDate : undefined,
+                              }
+                            : t
+                        );
+                        setTasks(updatedTasks);
+                        setRecurrenceEditTaskId(null);
+                        if (onImmediateSave) await withSaveStatus(() => onImmediateSave(updatedTasks));
+                      }}
+                      className="flex-1 py-3.5 text-sm font-bold text-violet-600 hover:bg-violet-50 transition-colors border-l border-slate-100"
+                    >
+                      บันทึก
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ===== Duration Quick Edit Popup ===== */}
+      {durationEditTaskId !== null && createPortal(
+        <div style={{ zIndex: 9200 }} className="fixed inset-0 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={() => setDurationEditTaskId(null)}>
+          <div className="bg-white rounded-2xl max-w-xs w-full shadow-2xl animate-fadeIn overflow-hidden" onClick={e => e.stopPropagation()}>
+            {(() => {
+              const editTask = tasks.find(t => t.id === durationEditTaskId);
+              if (!editTask) return null;
+              return (
+                <>
+                  <div className="p-4 border-b border-slate-100 bg-blue-50/50">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                          <Clock className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-black text-sm text-slate-800">ตั้งเวลา</h3>
+                          <p className="text-[11px] text-slate-500 truncate max-w-[180px]">{editTask.title}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setDurationEditTaskId(null)} className="p-2 rounded-xl hover:bg-white/70 text-slate-400 transition-colors">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-5">
+                    <div className="flex items-center justify-center gap-4">
+                      <button
+                        onClick={() => setDurationValue(Math.max(5, durationValue - 5))}
+                        className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 font-black text-xl hover:bg-blue-200 active:scale-95 transition-all flex items-center justify-center"
+                      >−</button>
+                      <div className="text-center min-w-[80px]">
+                        <span className="text-3xl font-black text-slate-800">{durationValue}</span>
+                        <span className="text-sm font-bold text-slate-400 ml-1">นาที</span>
+                      </div>
+                      <button
+                        onClick={() => setDurationValue(Math.min(480, durationValue + 5))}
+                        className="w-12 h-12 rounded-xl bg-blue-100 text-blue-600 font-black text-xl hover:bg-blue-200 active:scale-95 transition-all flex items-center justify-center"
+                      >+</button>
+                    </div>
+
+                    {/* Quick presets */}
+                    <div className="flex gap-1.5 justify-center mt-4">
+                      {[15, 30, 45, 60, 90, 120].map(v => (
+                        <button
+                          key={v}
+                          onClick={() => setDurationValue(v)}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                            durationValue === v
+                              ? 'bg-blue-100 text-blue-700 border-blue-300'
+                              : 'bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {v >= 60 ? `${v / 60}ชม.` : `${v}น.`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex border-t border-slate-100">
+                    <button onClick={() => setDurationEditTaskId(null)} className="flex-1 py-3.5 text-sm font-bold text-slate-500 hover:bg-slate-50 transition-colors">
+                      ยกเลิก
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const updatedTasks = tasks.map(t =>
+                          t.id === durationEditTaskId
+                            ? { ...t, estimatedDuration: durationValue }
+                            : t
+                        );
+                        setTasks(updatedTasks);
+                        setDurationEditTaskId(null);
+                        if (onImmediateSave) await withSaveStatus(() => onImmediateSave(updatedTasks));
+                      }}
+                      className="flex-1 py-3.5 text-sm font-bold text-blue-600 hover:bg-blue-50 transition-colors border-l border-slate-100"
+                    >
+                      บันทึก
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Delete Confirmation Dialog */}
       {confirmDeleteId && createPortal(
