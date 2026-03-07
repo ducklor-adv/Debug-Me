@@ -3,7 +3,7 @@ import {
   getDocs, deleteDoc, getCountFromServer, Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Task, TaskGroup, DailyRecord, Milestone, TimeSlot, ScheduleTemplates, Habit, FocusSession } from '../types';
+import { Task, TaskGroup, DailyRecord, Milestone, TimeSlot, ScheduleTemplates, Habit, FocusSession, Project } from '../types';
 
 // ===== App Data (tasks, groups, milestones, schedule) =====
 
@@ -15,6 +15,7 @@ export interface AppData {
   scheduleTemplates?: ScheduleTemplates;
   deletedDefaultTaskIds?: string[];    // Track which default tasks user has deleted
   habits?: Habit[];                    // Habit tracker data
+  projects?: Project[];               // Project management data
 }
 
 /** Real-time listener on user's appData document */

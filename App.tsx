@@ -20,8 +20,9 @@ import {
   Search,
   Bell,
   WifiOff,
+  FolderKanban,
 } from 'lucide-react';
-import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, getDayType, DEFAULT_CATEGORIES, FocusSession } from './types';
+import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, getDayType, DEFAULT_CATEGORIES, FocusSession, Project } from './types';
 import { subscribeAppData, saveAppData, addDailyRecordFS, getDailyRecordsByDate, getDailyRecordCount, addFocusSessionFS, getFocusSessionsByDate } from './lib/firestoreDB';
 import Dashboard from './components/Dashboard';
 import UndoToast from './components/UndoToast';
@@ -41,6 +42,7 @@ const DailyPlanner = lazy(() => import('./components/DailyPlanner'));
 const HabitTracker = lazy(() => import('./components/HabitTracker'));
 const SearchView = lazy(() => import('./components/SearchView'));
 const CalendarView = lazy(() => import('./components/CalendarView'));
+const ProjectManager = lazy(() => import('./components/ProjectManager'));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center py-20">
@@ -206,7 +208,7 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>(() => {
     try {
       const saved = localStorage.getItem(VIEW_KEY);
-      if (saved && ['dashboard','tasks','focus','analytics','ai-coach','planner'].includes(saved)) return saved as View;
+      if (saved && ['dashboard','tasks','focus','analytics','ai-coach','planner','habits','calendar','search','projects'].includes(saved)) return saved as View;
     } catch {}
     return 'dashboard';
   });
@@ -350,6 +352,7 @@ const App: React.FC = () => {
   const [scheduleTemplates, setScheduleTemplates] = useState<ScheduleTemplates>(DEFAULT_SCHEDULE_TEMPLATES);
   const [deletedDefaultTaskIds, setDeletedDefaultTaskIds] = useState<string[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [firestoreLoading, setFirestoreLoading] = useState(true);
   const firestoreReadyRef = useRef(false);
   const isRemoteUpdateRef = useRef(false);
@@ -588,6 +591,13 @@ const App: React.FC = () => {
           setHabits([]);
         }
 
+        // Projects
+        if (data.projects) {
+          setProjects(data.projects);
+        } else {
+          setProjects([]);
+        }
+
         // Tasks: save back if migration or new defaults added
         if (needsMigration || mergedTasks.length > migratedTasks.length) {
           saveBack.tasks = mergedTasks;
@@ -649,7 +659,7 @@ const App: React.FC = () => {
       setSaveStatus('saving');
       try {
         isRemoteUpdateRef.current = true;
-        await saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits });
+        await saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects });
         setIsDirty(false);
         setSaveStatus('saved');
         setTimeout(() => {
@@ -666,7 +676,7 @@ const App: React.FC = () => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, user]);
+  }, [tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects, user]);
 
   useEffect(() => { localStorage.setItem(VIEW_KEY, activeView); }, [activeView]);
 
@@ -680,6 +690,7 @@ const App: React.FC = () => {
       scheduleTemplates,
       deletedDefaultTaskIds,
       habits,
+      projects,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -707,6 +718,7 @@ const App: React.FC = () => {
           if (data.scheduleTemplates) setScheduleTemplates(data.scheduleTemplates);
           if (data.deletedDefaultTaskIds) setDeletedDefaultTaskIds(data.deletedDefaultTaskIds);
           if (data.habits) setHabits(data.habits);
+          if (data.projects) setProjects(data.projects);
           alert('นำเข้าข้อมูลสำเร็จ!');
         } catch {
           alert('ไฟล์ไม่ถูกต้อง');
@@ -749,7 +761,7 @@ const App: React.FC = () => {
       console.error('[DebugMe] Immediate save failed:', err);
       isRemoteUpdateRef.current = false;
     }
-  }, [user, tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits]);
+  }, [user, tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects]);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
@@ -796,6 +808,7 @@ const App: React.FC = () => {
       case 'habits': return <Suspense fallback={<LazyFallback />}><HabitTracker habits={habits} setHabits={setHabits} /></Suspense>;
       case 'search': return <Suspense fallback={<LazyFallback />}><SearchView tasks={tasks} taskGroups={taskGroups} /></Suspense>;
       case 'calendar': return <Suspense fallback={<LazyFallback />}><CalendarView tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} userId={user!.uid} /></Suspense>;
+      case 'projects': return <Suspense fallback={<LazyFallback />}><ProjectManager projects={projects} setProjects={setProjects} tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} onImmediateSave={handleImmediateSave} /></Suspense>;
       default: return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} />;
     }
   };
@@ -861,6 +874,7 @@ const App: React.FC = () => {
               <NavItem icon={<Flame />} label="Habits" active={activeView === 'habits'} onClick={() => handleNavItemClick('habits')} />
               <NavItem icon={<CalendarDays />} label="Calendar" active={activeView === 'calendar'} onClick={() => handleNavItemClick('calendar')} />
               <NavItem icon={<Search />} label="Search" active={activeView === 'search'} onClick={() => handleNavItemClick('search')} />
+              <NavItem icon={<FolderKanban />} label="Projects" active={activeView === 'projects'} onClick={() => handleNavItemClick('projects')} />
             </div>
             <div className="pt-4 mt-4 border-t border-slate-100/60 px-2">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">AI Assistant</p>
@@ -937,7 +951,7 @@ const App: React.FC = () => {
               <Menu className="w-5 h-5" />
             </button>
             <h2 className="text-lg font-bold text-white capitalize tracking-tight lg:text-2xl flex-1">
-              {activeView === 'dashboard' ? 'TODAY' : activeView === 'planner' ? 'Daily Planner' : activeView === 'ai-coach' ? 'AI Coach' : activeView === 'habits' ? 'Habits' : activeView === 'calendar' ? 'Calendar' : activeView === 'search' ? 'Search' : activeView}
+              {activeView === 'dashboard' ? 'TODAY' : activeView === 'planner' ? 'Daily Planner' : activeView === 'ai-coach' ? 'AI Coach' : activeView === 'habits' ? 'Habits' : activeView === 'calendar' ? 'Calendar' : activeView === 'search' ? 'Search' : activeView === 'projects' ? 'Projects' : activeView}
             </h2>
             <button onClick={() => setShowNotifSettings(true)} className="p-2 rounded-lg hover:bg-emerald-500 text-white/80">
               <Bell className="w-5 h-5" />

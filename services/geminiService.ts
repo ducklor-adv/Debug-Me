@@ -130,3 +130,55 @@ export const chatWithCoach = async (history: { role: 'user' | 'model', message: 
   const response = await withRetry(() => chat.sendMessage({ message: userInput }));
   return response.text;
 };
+
+export const analyzeProjectTasks = async (
+  history: { role: 'user' | 'model', message: string }[],
+  userInput: string
+) => {
+  const ai = getAIClient();
+
+  const systemPrompt = `คุณคือ Project Manager AI ที่เชี่ยวชาญในการวิเคราะห์งานและวางแผนโปรเจกต์
+หน้าที่ของคุณ:
+1. รับฟังรายละเอียดงาน/โปรเจกต์จากผู้ใช้
+2. ถามคำถามเพิ่มเติมถ้าข้อมูลยังไม่เพียงพอ (เช่น deadline, scope, ข้อจำกัด)
+3. เมื่อมีข้อมูลเพียงพอแล้ว ให้วิเคราะห์และสร้างแผนงานเป็น JSON
+
+กฎสำคัญ:
+- ตอบเป็นภาษาไทยเสมอ สั้นกระชับ
+- ถามคำถาม 1-2 ข้อต่อรอบ ไม่ถามมากเกินไป
+- เมื่อพร้อมสร้างแผน ให้ตอบ JSON ภายใน \`\`\`json ... \`\`\` block
+- JSON ต้องมี format ดังนี้:
+\`\`\`json
+{
+  "processes": [
+    {
+      "title": "ชื่อ Phase",
+      "emoji": "📋",
+      "order": 1,
+      "tasks": [
+        { "title": "ชื่องาน", "description": "รายละเอียด", "duration": 120, "priority": "High" }
+      ]
+    }
+  ]
+}
+\`\`\`
+- priority: "High" / "Medium" / "Low"
+- duration: นาที (เช่น 60 = 1 ชั่วโมง)
+- แบ่ง process ตามลำดับขั้นตอนจริงของโปรเจกต์
+- ใส่ description ที่เป็นประโยชน์ ชัดเจน สำหรับคนทำงานจริง`;
+
+  const chat = ai.chats.create({
+    model: MODEL,
+    config: {
+      systemInstruction: systemPrompt,
+    }
+  });
+
+  // Send previous history first (if any)
+  for (const msg of history) {
+    await chat.sendMessage({ message: msg.message });
+  }
+
+  const response = await withRetry(() => chat.sendMessage({ message: userInput }));
+  return response.text;
+};

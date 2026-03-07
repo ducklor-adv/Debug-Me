@@ -229,7 +229,35 @@ export interface TimeEntry {
   hours: number;
 }
 
-export type View = 'dashboard' | 'tasks' | 'focus' | 'analytics' | 'ai-coach' | 'planner' | 'habits' | 'calendar' | 'search';
+export type View = 'dashboard' | 'tasks' | 'focus' | 'analytics' | 'ai-coach' | 'planner' | 'habits' | 'calendar' | 'search' | 'projects';
+
+// ===== Project Management =====
+
+export interface ProjectProcess {
+  id: string;
+  title: string;
+  order: number;
+  emoji: string;
+  color: string;           // GROUP_COLORS key
+  taskIds: string[];        // references Task.id
+}
+
+export interface Project {
+  id: string;
+  title: string;
+  description?: string;
+  emoji: string;
+  color: string;              // GROUP_COLORS key
+  type: 'main' | 'side';     // งานหลัก / งานรอง
+  status: 'active' | 'completed' | 'archived';
+  startDate?: string;         // YYYY-MM-DD
+  endDate?: string;           // YYYY-MM-DD (deadline)
+  taskIds: string[];          // references Task.id
+  taskStatuses: Record<string, 'todo' | 'in_progress' | 'done'>;
+  processes?: ProjectProcess[];   // AI-generated process/phase timeline
+  createdAt: string;          // ISO timestamp
+  completedAt?: string;
+}
 
 // ===== Life Category (หมวดหมู่ชีวิต) =====
 export interface Category {
