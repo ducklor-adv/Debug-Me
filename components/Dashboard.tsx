@@ -125,6 +125,11 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
   const todayStr = new Date().toISOString().split('T')[0];
   const todayTasks = getTasksForDate(tasks, todayStr);
 
+  // Today's appointments (นัดหมาย) — only those with startDate set to today
+  const todayAppointments = tasks
+    .filter((t: Task) => t.category === 'นัดหมาย' && !t.completed && t.startDate === todayStr)
+    .sort((a: Task, b: Task) => (a.startTime || '99:99').localeCompare(b.startTime || '99:99'));
+
   // Restore checked state from todayRecords — run only ONCE on initial load
   const hasRestoredChecks = useRef(false);
   useEffect(() => {
@@ -217,14 +222,26 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
   };
   const getSlotColor = (s: TimeSlot) => GROUP_COLORS[resolveSlotInfo(s.groupKey).color] || GROUP_COLORS.orange;
 
-  // Full tasks for slot: only explicitly assigned tasks
+  // Full tasks for slot: explicitly assigned + auto-matched appointments
   const getFullTasksForSlot = (slot: TimeSlot): Task[] => {
     const assigned = slot.assignedTaskIds || [];
-    if (assigned.length === 0) return [];
     const excludedIds = new Set(slot.excludedTaskIds || []);
-    return assigned
+    const manualTasks = assigned
       .map(id => tasks.find(t => t.id === id))
       .filter((t): t is Task => t !== undefined && !excludedIds.has(t.id));
+
+    // Auto-include appointment tasks whose startTime falls in this slot
+    const slotStart = toMin(slot.startTime);
+    const slotEnd = toMin(slot.endTime);
+    const manualIds = new Set(manualTasks.map(t => t.id));
+    const autoTasks = todayAppointments.filter(t => {
+      if (!t.startTime || excludedIds.has(t.id) || manualIds.has(t.id)) return false;
+      const tMin = toMin(t.startTime);
+      if (slotEnd > slotStart) return tMin >= slotStart && tMin < slotEnd;
+      return tMin >= slotStart || tMin < slotEnd; // midnight crossing
+    });
+
+    return [...manualTasks, ...autoTasks];
   };
 
   // Tasks in current slot (assigned + auto-matched from task groups)
@@ -677,17 +694,45 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
         </div>
       </div>
 
-      {/* ===== Stats ===== */}
+      {/* ===== นัดหมายวันนี้ ===== */}
       <div className="px-4 -mt-4 max-w-lg mx-auto">
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-emerald-100">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-2xl font-black text-slate-800">{completedTasksCount}</h4>
-              <p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">Tasks Done</p>
-            </div>
+        <div className="bg-white rounded-2xl shadow-sm border border-indigo-100 overflow-hidden">
+          <div className="bg-indigo-50 px-4 py-3 flex items-center gap-2">
+            <span className="text-base">📅</span>
+            <span className="text-xs font-black text-indigo-700">นัดหมายวันนี้</span>
+            {todayAppointments.length > 0 && (
+              <span className="text-[9px] font-bold bg-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded-full">{todayAppointments.length}</span>
+            )}
+          </div>
+          <div className="p-3">
+            {todayAppointments.length > 0 ? (
+              <div className="space-y-1.5">
+                {todayAppointments.map(task => {
+                  const isDone = checkedTasks.has(task.id);
+                  return (
+                    <div key={task.id} className="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-indigo-50/50 transition-colors">
+                      <button onClick={() => toggleCheck(task.id)} className="shrink-0 active:scale-90">
+                        {isDone
+                          ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                          : <Circle className="w-4 h-4 text-indigo-300" />}
+                      </button>
+                      <span className="text-[11px] font-mono font-black bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded shrink-0">
+                        {task.startTime
+                          ? <>{task.startTime}{task.endTime ? `–${task.endTime}` : ''}</>
+                          : <span className="text-indigo-400">ไม่ระบุเวลา</span>
+                        }
+                      </span>
+                      <span className={`text-sm font-bold truncate flex-1 ${isDone ? 'line-through text-slate-400' : 'text-slate-700'}`}>{task.title}</span>
+                      {!isDone && (
+                        <button onClick={() => handleMarkAsDoneClick(task.id)} className="text-[10px] font-bold text-emerald-500 hover:text-emerald-700 transition-colors shrink-0">Done</button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 text-center py-2">ไม่มีนัดหมายวันนี้</p>
+            )}
           </div>
         </div>
       </div>
@@ -695,7 +740,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
       {/* Quick-access buttons moved to header row above */}
 
       {/* ===== Upcoming Slots ===== */}
-      <div className="px-4 pt-4 pb-16 max-w-lg mx-auto space-y-4">
+      <div className="px-4 pt-4 pb-4 max-w-lg mx-auto space-y-4">
 
         {upcomingSlots.length > 0 && (() => {
           const next = upcomingSlots[0];
@@ -828,6 +873,21 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
             </div>
           </div>
         )}
+      </div>
+
+      {/* ===== Stats (Tasks Done) ===== */}
+      <div className="px-4 pb-16 max-w-lg mx-auto">
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-emerald-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-emerald-50 text-emerald-500 rounded-xl flex items-center justify-center">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-2xl font-black text-slate-800">{completedTasksCount}</h4>
+              <p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">Tasks Done</p>
+            </div>
+          </div>
+        </div>
       </div>
 
     </div>
