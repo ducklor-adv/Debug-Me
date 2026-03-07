@@ -1245,53 +1245,30 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
         const renderTask = (t: Task) => (
           <div
             key={t.id}
-            onClick={() => { setSelectedCat(t.category); setExpandedId(null); }}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-white/80 border cursor-pointer hover:shadow-sm transition-all ${
-              t.completed ? 'border-slate-100 opacity-60' : activeColor!.border
+            onClick={() => openEditForm(t)}
+            className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer hover:bg-slate-50 transition-all ${
+              t.completed ? 'opacity-50' : ''
             }`}
           >
             {t.completed
               ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              : <Circle className={`w-4 h-4 shrink-0 ${activeColor!.text}`} />
+              : <Circle className={`w-4 h-4 shrink-0 ${activeColor!.text} opacity-40`} />
             }
-            <div className="flex-1 min-w-0">
-              <span className={`text-sm font-bold block truncate ${t.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
-                {t.title}
-              </span>
-              <span className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                <span className="flex items-center gap-0.5">
-                  <Calendar className="w-3 h-3" />
-                  {t.startDate ? (() => {
-                    const d = new Date(t.startDate);
-                    const todayCheck = new Date().toISOString().slice(0, 10);
-                    const tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
-                    const tmrCheck = tmr.toISOString().slice(0, 10);
-                    const dayNames = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
-                    const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-                    if (t.startDate === todayCheck) return `วันนี้`;
-                    if (t.startDate === tmrCheck) return `พรุ่งนี้`;
-                    return `${dayNames[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
-                  })() : <span className="text-slate-300">ไม่ระบุวัน</span>}
-                </span>
-                <span className="flex items-center gap-0.5">
-                  <Clock className="w-3 h-3" />
-                  {t.startTime
-                    ? <>{t.startTime}{t.endTime ? `–${t.endTime}` : ''}</>
-                    : <span className="text-slate-300">ไม่ระบุเวลา</span>
-                  }
-                </span>
-                {t.estimatedDuration && <span>({t.estimatedDuration} นาที)</span>}
-              </span>
-            </div>
+            <span className={`text-xs flex-1 truncate ${t.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+              {t.title}
+            </span>
+            {t.startTime && (
+              <span className="text-[10px] text-slate-400 shrink-0">{t.startTime}</span>
+            )}
             {t.priority === Priority.HIGH && (
-              <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <Zap className="w-3 h-3 text-amber-400 shrink-0" />
             )}
             <button
               onClick={(e) => { e.stopPropagation(); deleteTask(t.id); }}
-              className="p-1 rounded text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors shrink-0"
+              className="p-0.5 rounded text-slate-300 hover:text-rose-500 transition-colors shrink-0"
               title="ลบรายการ"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Trash2 className="w-3 h-3" />
             </button>
           </div>
         );

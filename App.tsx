@@ -22,7 +22,7 @@ import {
   WifiOff,
   FolderKanban,
 } from 'lucide-react';
-import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, getDayType, DEFAULT_CATEGORIES, FocusSession, Project } from './types';
+import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, CustomScheduleTemplate, getDayType, DEFAULT_CATEGORIES, FocusSession, Project } from './types';
 import { subscribeAppData, saveAppData, addDailyRecordFS, getDailyRecordsByDate, getDailyRecordCount, addFocusSessionFS, getFocusSessionsByDate } from './lib/firestoreDB';
 import Dashboard from './components/Dashboard';
 import UndoToast from './components/UndoToast';
@@ -125,7 +125,109 @@ export const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
     { id: 'sun-9',  startTime: '21:00', endTime: '22:00', groupKey: 'mind' },
     { id: 'sun-10', startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
   ],
-  customTemplates: [],
+  customTemplates: [
+    {
+      id: 'ct-lazy', name: 'วันขี้เกียจ', emoji: '😴',
+      slots: [
+        { id: 'lazy-0',  startTime: '00:00', endTime: '09:00', groupKey: 'sleep' },
+        { id: 'lazy-1',  startTime: '09:00', endTime: '10:00', groupKey: 'home' },
+        { id: 'lazy-2',  startTime: '10:00', endTime: '12:00', groupKey: 'break' },
+        { id: 'lazy-3',  startTime: '12:00', endTime: '13:00', groupKey: 'break' },
+        { id: 'lazy-4',  startTime: '13:00', endTime: '15:00', groupKey: 'break' },
+        { id: 'lazy-5',  startTime: '15:00', endTime: '16:00', groupKey: 'home' },
+        { id: 'lazy-6',  startTime: '16:00', endTime: '18:00', groupKey: 'break' },
+        { id: 'lazy-7',  startTime: '18:00', endTime: '19:00', groupKey: 'break' },
+        { id: 'lazy-8',  startTime: '19:00', endTime: '22:00', groupKey: 'break' },
+        { id: 'lazy-9',  startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
+      ],
+    },
+    {
+      id: 'ct-sick', name: 'วันป่วย', emoji: '🤒',
+      slots: [
+        { id: 'sick-0',  startTime: '00:00', endTime: '08:00', groupKey: 'sleep' },
+        { id: 'sick-1',  startTime: '08:00', endTime: '09:00', groupKey: 'health' },
+        { id: 'sick-2',  startTime: '09:00', endTime: '10:00', groupKey: 'home' },
+        { id: 'sick-3',  startTime: '10:00', endTime: '12:00', groupKey: 'sleep' },
+        { id: 'sick-4',  startTime: '12:00', endTime: '13:00', groupKey: 'home' },
+        { id: 'sick-5',  startTime: '13:00', endTime: '15:00', groupKey: 'sleep' },
+        { id: 'sick-6',  startTime: '15:00', endTime: '16:00', groupKey: 'health' },
+        { id: 'sick-7',  startTime: '16:00', endTime: '18:00', groupKey: 'break' },
+        { id: 'sick-8',  startTime: '18:00', endTime: '19:00', groupKey: 'home' },
+        { id: 'sick-9',  startTime: '19:00', endTime: '21:00', groupKey: 'break' },
+        { id: 'sick-10', startTime: '21:00', endTime: '00:00', groupKey: 'sleep' },
+      ],
+    },
+    {
+      id: 'ct-trip', name: 'เที่ยวต่างจังหวัด', emoji: '🏕️',
+      slots: [
+        { id: 'trip-0',  startTime: '00:00', endTime: '06:00', groupKey: 'sleep' },
+        { id: 'trip-1',  startTime: '06:00', endTime: '07:00', groupKey: 'home' },
+        { id: 'trip-2',  startTime: '07:00', endTime: '08:00', groupKey: 'health' },
+        { id: 'trip-3',  startTime: '08:00', endTime: '09:00', groupKey: 'break' },
+        { id: 'trip-4',  startTime: '09:00', endTime: '12:00', groupKey: 'relationship' },
+        { id: 'trip-5',  startTime: '12:00', endTime: '13:00', groupKey: 'break' },
+        { id: 'trip-6',  startTime: '13:00', endTime: '17:00', groupKey: 'relationship' },
+        { id: 'trip-7',  startTime: '17:00', endTime: '18:00', groupKey: 'break' },
+        { id: 'trip-8',  startTime: '18:00', endTime: '20:00', groupKey: 'relationship' },
+        { id: 'trip-9',  startTime: '20:00', endTime: '22:00', groupKey: 'mind' },
+        { id: 'trip-10', startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
+      ],
+    },
+    {
+      id: 'ct-hustle', name: 'วันทำงานหนัก', emoji: '💪',
+      slots: [
+        { id: 'hst-0',  startTime: '00:00', endTime: '05:00', groupKey: 'sleep' },
+        { id: 'hst-1',  startTime: '05:00', endTime: '06:00', groupKey: 'health' },
+        { id: 'hst-2',  startTime: '06:00', endTime: '07:00', groupKey: 'home' },
+        { id: 'hst-3',  startTime: '07:00', endTime: '12:00', groupKey: 'career' },
+        { id: 'hst-4',  startTime: '12:00', endTime: '13:00', groupKey: 'break' },
+        { id: 'hst-5',  startTime: '13:00', endTime: '18:00', groupKey: 'career' },
+        { id: 'hst-6',  startTime: '18:00', endTime: '19:00', groupKey: 'home' },
+        { id: 'hst-7',  startTime: '19:00', endTime: '22:00', groupKey: 'career' },
+        { id: 'hst-8',  startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
+      ],
+    },
+    {
+      id: 'ct-family', name: 'วันครอบครัว', emoji: '👨‍👩‍👧‍👦',
+      slots: [
+        { id: 'fam-0',  startTime: '00:00', endTime: '07:00', groupKey: 'sleep' },
+        { id: 'fam-1',  startTime: '07:00', endTime: '09:00', groupKey: 'home' },
+        { id: 'fam-2',  startTime: '09:00', endTime: '12:00', groupKey: 'relationship' },
+        { id: 'fam-3',  startTime: '12:00', endTime: '13:00', groupKey: 'break' },
+        { id: 'fam-4',  startTime: '13:00', endTime: '17:00', groupKey: 'relationship' },
+        { id: 'fam-5',  startTime: '17:00', endTime: '18:00', groupKey: 'break' },
+        { id: 'fam-6',  startTime: '18:00', endTime: '20:00', groupKey: 'relationship' },
+        { id: 'fam-7',  startTime: '20:00', endTime: '22:00', groupKey: 'break' },
+        { id: 'fam-8',  startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
+      ],
+    },
+    {
+      id: 'ct-grow', name: 'วันพัฒนาตัวเอง', emoji: '📚',
+      slots: [
+        { id: 'grw-0',  startTime: '00:00', endTime: '06:00', groupKey: 'sleep' },
+        { id: 'grw-1',  startTime: '06:00', endTime: '07:00', groupKey: 'health' },
+        { id: 'grw-2',  startTime: '07:00', endTime: '08:00', groupKey: 'home' },
+        { id: 'grw-3',  startTime: '08:00', endTime: '12:00', groupKey: 'mind' },
+        { id: 'grw-4',  startTime: '12:00', endTime: '13:00', groupKey: 'break' },
+        { id: 'grw-5',  startTime: '13:00', endTime: '17:00', groupKey: 'mind' },
+        { id: 'grw-6',  startTime: '17:00', endTime: '18:00', groupKey: 'health' },
+        { id: 'grw-7',  startTime: '18:00', endTime: '19:00', groupKey: 'relationship' },
+        { id: 'grw-8',  startTime: '19:00', endTime: '21:00', groupKey: 'mind' },
+        { id: 'grw-9',  startTime: '21:00', endTime: '00:00', groupKey: 'sleep' },
+      ],
+    },
+  ],
+};
+
+/** Merge custom templates: remove old "Trip travel", add missing defaults */
+const mergeCustomTemplates = (loaded: CustomScheduleTemplate[]): CustomScheduleTemplate[] => {
+  const defaultCTs = DEFAULT_SCHEDULE_TEMPLATES.customTemplates || [];
+  // Remove old user-created "Trip travel" (non-default IDs with trip/travel in name)
+  const filtered = loaded.filter(t => !(/trip|travel/i.test(t.name) && !t.id.startsWith('ct-')));
+  // Add missing default custom templates
+  const existingIds = new Set(filtered.map(t => t.id));
+  const missing = defaultCTs.filter(t => !existingIds.has(t.id));
+  return [...filtered, ...missing];
 };
 
 const NAV_ITEMS: { view: View; icon: string; label: string }[] = [
@@ -166,11 +268,13 @@ const mergeDefaultGroups = (loaded: TaskGroup[]): TaskGroup[] => {
 // Exclude tasks that user has explicitly deleted
 const mergeDefaultTasks = (loaded: Task[], defaults: Task[], deletedIds: string[] = []): Task[] => {
   const deletedSet = new Set(deletedIds);
-  // CRITICAL: Filter out deleted default tasks from loaded tasks first!
-  const filtered = loaded.filter(t => !deletedSet.has(t.id));
+  // Collect default IDs for งานด่วน/นัดหมาย — these start empty, user adds manually
+  const uncatDefaultIds = new Set(defaults.filter(t => t.category === 'งานด่วน' || t.category === 'นัดหมาย').map(t => t.id));
+  // Filter out deleted + old default งานด่วน/นัดหมาย tasks
+  const filtered = loaded.filter(t => !deletedSet.has(t.id) && !uncatDefaultIds.has(t.id));
 
   const existingIds = new Set(filtered.map(t => t.id));
-  const missing = defaults.filter(t => !existingIds.has(t.id) && !deletedSet.has(t.id));
+  const missing = defaults.filter(t => !existingIds.has(t.id) && !deletedSet.has(t.id) && !uncatDefaultIds.has(t.id));
   return missing.length > 0 ? [...filtered, ...missing] : filtered;
 };
 
@@ -554,10 +658,12 @@ const App: React.FC = () => {
           // Migration: Reset to defaults if old group keys (Thai names instead of category keys)
           const oldKeys = hasOldGroupKeys(vWork) || hasOldGroupKeys(vSat) || hasOldGroupKeys(vSun);
 
+          const mergedCTs = mergeCustomTemplates(Array.isArray(tpl.customTemplates) ? tpl.customTemplates : []);
+
           if (!wasOwnSave && oldKeys) {
             const migrated: ScheduleTemplates = {
               ...DEFAULT_SCHEDULE_TEMPLATES,
-              customTemplates: Array.isArray(tpl.customTemplates) ? tpl.customTemplates : [],
+              customTemplates: mergedCTs,
               dayOverrides: tpl.dayOverrides || undefined,
               dateOverrides: tpl.dateOverrides || undefined,
             };
@@ -568,7 +674,7 @@ const App: React.FC = () => {
               workday: vWork,
               saturday: vSat,
               sunday: vSun,
-              customTemplates: Array.isArray(tpl.customTemplates) ? tpl.customTemplates : [],
+              customTemplates: mergedCTs,
               dayOverrides: tpl.dayOverrides || undefined,
               dateOverrides: tpl.dateOverrides || undefined,
             };
