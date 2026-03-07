@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Task, SubTask, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, CustomScheduleTemplate, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType, getScheduleForDay, DEFAULT_CATEGORIES, Category, isTaskRecurring } from '../types';
-import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown, RefreshCw, GripVertical, Save, AlertTriangle, Loader2 } from 'lucide-react';
+import { Task, SubTask, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, CustomScheduleTemplate, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType, getScheduleForDay, DEFAULT_CATEGORIES, Category, isTaskRecurring, CLEAR_OVERRIDE } from '../types';
+import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown, RefreshCw, GripVertical, Save, AlertTriangle, Loader2, Layers, RotateCcw } from 'lucide-react';
 import TimePicker from './TimePicker';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
@@ -61,6 +61,7 @@ interface DailyPlannerProps {
   onImmediateSave?: (updatedTasks?: Task[], updatedDeletedIds?: string[]) => Promise<void>;
   pendingSlot?: { startTime: string; endTime: string } | null;
   onPendingSlotHandled?: () => void;
+  defaultScheduleTemplates?: ScheduleTemplates;
 }
 
 /** Get tasks explicitly assigned to a slot */
@@ -115,7 +116,7 @@ const SortableTaskItem: React.FC<{ id: string; children: React.ReactNode }> = ({
 const DailyPlanner: React.FC<DailyPlannerProps> = ({
   tasks, setTasks, taskGroups, milestones, scheduleTemplates, setScheduleTemplates, todayRecords = [], onSaveDailyRecord,
   deletedDefaultTaskIds = [], setDeletedDefaultTaskIds, onImmediateSave,
-  pendingSlot, onPendingSlotHandled,
+  pendingSlot, onPendingSlotHandled, defaultScheduleTemplates,
 }) => {
   // Date navigation
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -188,15 +189,28 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       setScheduleTemplates(prev => {
         const resolved = getScheduleForDay(prev, dow);
         if (resolved.source === 'custom' && resolved.templateId) {
+          const newSlots = updater(resolved.slots || []);
           return {
             ...prev,
             customTemplates: (prev.customTemplates || []).map(t =>
-              t.id === resolved.templateId ? { ...t, slots: updater(t.slots) } : t
+              t.id === resolved.templateId ? { ...t, slots: newSlots } : t
             ),
+          };
+        } else if (resolved.source === 'cleared') {
+          // Day was cleared via override — remove override and set base to new slots
+          const baseKey: DayType = dow === 0 ? 'sunday' : dow === 6 ? 'saturday' : 'workday';
+          const newSlots = updater([]);
+          const newOverrides = { ...(prev.dayOverrides || {}) };
+          delete newOverrides[String(dow)];
+          return {
+            ...prev,
+            [baseKey]: newSlots,
+            dayOverrides: Object.keys(newOverrides).length > 0 ? newOverrides : {},
           };
         } else {
           const baseKey: DayType = dow === 0 ? 'sunday' : dow === 6 ? 'saturday' : 'workday';
-          return { ...prev, [baseKey]: updater(prev[baseKey] || []) };
+          const newSlots = updater(prev[baseKey] || []);
+          return { ...prev, [baseKey]: newSlots };
         }
       });
     } else {
@@ -486,7 +500,9 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   // Delete confirmation
   const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<{ taskId: string; slotId: string } | null>(null);
   const [confirmDeleteSlotId, setConfirmDeleteSlotId] = useState<string | null>(null);
-
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const [confirmReload, setConfirmReload] = useState(false);
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
 
   // Task Picker for adding tasks to a slot
   const [pickerSlot, setPickerSlot] = useState<TimeSlot | null>(null);
@@ -1029,6 +1045,9 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                 Custom : {resolvedDay.templateEmoji} {resolvedDay.templateName}
               </span>
             )}
+            {resolvedDay?.source === 'cleared' && (
+              <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-600 text-[9px] font-bold">Cleared</span>
+            )}
           </div>
         )}
         {isDayTab && !isShowingToday && (
@@ -1036,6 +1055,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
             <span className="px-2.5 py-1 rounded-full bg-gradient-to-r from-pink-400 via-violet-400 to-blue-400 text-white text-[10px] font-bold shadow-sm">
               Custom Template : {resolvedDay.templateEmoji} {resolvedDay.templateName}
             </span>
+          ) : resolvedDay?.source === 'cleared' ? (
+            <span className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-600 text-[10px] font-bold">Cleared</span>
           ) : (
             <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${activeDayColor ? `${activeDayColor.activeBg} text-white` : 'bg-blue-100 text-blue-600'}`}>Daily Template</span>
           )
@@ -1051,6 +1072,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
           <span className="text-xs font-bold text-slate-500">
             {resolvedDay.source === 'custom'
               ? <>{resolvedDay.templateEmoji} {resolvedDay.templateName} <span className="text-[9px] text-slate-400">({resolvedDay.overrideType === 'date' ? 'เฉพาะวันนี้' : 'ทุกสัปดาห์'})</span></>
+              : resolvedDay.source === 'cleared'
+              ? <span className="text-rose-500">🗑️ เคลียร์แล้ว</span>
               : <>📋 {parseInt(activeTab) >= 1 && parseInt(activeTab) <= 5 ? 'ตารางวันทำงาน' : parseInt(activeTab) === 6 ? 'ตารางวันเสาร์' : 'ตารางวันอาทิตย์'}</>
             }
           </span>
@@ -1303,7 +1326,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                     <div key={c.key}>
                       <div className="flex items-center justify-between mb-0.5">
                         <span className="text-[11px] font-bold text-slate-600">{c.emoji} {c.label}</span>
-                        <span className="text-[10px] font-black text-slate-400">{formatDuration(c.totalMins)}</span>
+                        <span className="text-[10px] font-black text-slate-400">{formatDuration(c.totalMins)} <span className="text-slate-300">({pct}%)</span></span>
                       </div>
                       <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                         <div className={`h-full rounded-full ${clr.iconBg}`} style={{ width: `${pct}%` }} />
@@ -1322,6 +1345,32 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               <p className="text-xs font-bold">ไม่มี Slot</p>
             </div>
           )}
+
+          {/* Template management buttons */}
+          <div className="flex flex-col gap-1.5 mt-2">
+            <button
+              onClick={() => setConfirmClearAll(true)}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-600 text-[11px] font-bold hover:bg-rose-100 transition-colors active:scale-95"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> เคลียร์ Slot ทั้งหมด
+            </button>
+            {isDayTab && customTemplates.length > 0 && (
+              <button
+                onClick={() => setShowCustomPicker(true)}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-600 text-[11px] font-bold hover:bg-blue-100 transition-colors active:scale-95"
+              >
+                <Layers className="w-3.5 h-3.5" /> ใช้ Custom Template
+              </button>
+            )}
+            {isDayTab && defaultScheduleTemplates && (
+              <button
+                onClick={() => setConfirmReload(true)}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-600 text-[11px] font-bold hover:bg-emerald-100 transition-colors active:scale-95"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Reload Default
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1789,6 +1838,95 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               >
                 ลบ
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Slots Confirmation */}
+      {confirmClearAll && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn p-5">
+            <h3 className="text-lg font-black text-slate-800 mb-2">เคลียร์ Slot ทั้งหมด</h3>
+            <p className="text-sm text-slate-600 mb-6">ลบ slot ทั้งหมดในตารางนี้ เพื่อสร้างใหม่ตั้งแต่ต้น?</p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setConfirmClearAll(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl transition-colors">ยกเลิก</button>
+              <button onClick={() => {
+                if (isDayTab) {
+                  const dow = parseInt(activeTab);
+                  // Use override mechanism (same as Custom Template) — doesn't modify base array
+                  setScheduleTemplates(prev => ({
+                    ...prev,
+                    dayOverrides: { ...(prev.dayOverrides || {}), [String(dow)]: CLEAR_OVERRIDE },
+                  }));
+                  setScheduleDirty(true);
+                } else {
+                  // Custom tab: directly clear the template's slots
+                  setScheduleForTab(() => []);
+                }
+                setConfirmClearAll(false);
+              }} className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white font-bold text-sm rounded-xl transition-colors">เคลียร์ทั้งหมด</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reload Default Confirmation */}
+      {confirmReload && defaultScheduleTemplates && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn p-5">
+            <h3 className="text-lg font-black text-slate-800 mb-2">Reload Default Template</h3>
+            <p className="text-sm text-slate-600 mb-6">โหลดตาราง default ใหม่ จะเขียนทับ slot ปัจจุบันทั้งหมด</p>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setConfirmReload(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl transition-colors">ยกเลิก</button>
+              <button onClick={() => {
+                const dow = parseInt(activeTab);
+                const baseKey: DayType = dow === 0 ? 'sunday' : dow === 6 ? 'saturday' : 'workday';
+                const defaultSlots = defaultScheduleTemplates[baseKey] || [];
+                setScheduleForTab(() => [...defaultSlots]);
+                // Remove any override (custom or __clear__)
+                const resolved = getScheduleForDay(scheduleTemplates, dow, selectedDateStr);
+                if (resolved.source === 'custom' || resolved.source === 'cleared') {
+                  if (resolved.overrideType === 'date') removeCustomFromDate(selectedDateStr);
+                  else removeCustomFromDay(dow);
+                }
+                setConfirmReload(false);
+              }} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm rounded-xl transition-colors">โหลด Default</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Template Picker */}
+      {showCustomPicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-blue-50">
+              <h3 className="font-bold text-blue-800 text-base">เลือก Custom Template</h3>
+              <button onClick={() => setShowCustomPicker(false)} className="p-2 bg-white/80 hover:bg-white rounded-full text-slate-500 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-3 space-y-2 max-h-[300px] overflow-y-auto">
+              {customTemplates.length > 0 ? customTemplates.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    const dow = parseInt(activeTab);
+                    applyCustomToDay(dow, t.id);
+                    setShowCustomPicker(false);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-all text-left active:scale-[0.98]"
+                >
+                  <span className="text-xl">{t.emoji}</span>
+                  <div>
+                    <span className="text-sm font-bold text-slate-700 block">{t.name}</span>
+                    <span className="text-[10px] text-slate-400">{t.slots.length} slots</span>
+                  </div>
+                </button>
+              )) : (
+                <p className="text-xs text-slate-400 text-center py-4">ยังไม่มี custom template<br />สร้างได้จากแท็บ + ด้านบน</p>
+              )}
             </div>
           </div>
         </div>

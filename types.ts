@@ -98,19 +98,28 @@ export interface ScheduleTemplates {
 }
 
 /** Resolve schedule slots for a specific day of week (+ optional date for date-specific overrides) */
+// Special override value: marks a day as "cleared" (no slots)
+export const CLEAR_OVERRIDE = '__clear__';
+
 export function getScheduleForDay(
   templates: ScheduleTemplates,
   dayOfWeek: number,
   dateStr?: string
-): { slots: TimeSlot[]; source: 'base' | 'custom'; templateId?: string; templateName?: string; templateEmoji?: string; overrideType?: 'date' | 'day' } {
+): { slots: TimeSlot[]; source: 'base' | 'custom' | 'cleared'; templateId?: string; templateName?: string; templateEmoji?: string; overrideType?: 'date' | 'day' } {
   // 1. Date-specific override (highest priority)
   if (dateStr && templates.dateOverrides?.[dateStr]) {
+    if (templates.dateOverrides[dateStr] === CLEAR_OVERRIDE) {
+      return { slots: [], source: 'cleared', overrideType: 'date' };
+    }
     const ct = (templates.customTemplates || []).find(t => t.id === templates.dateOverrides![dateStr]);
     if (ct) return { slots: ct.slots, source: 'custom', templateId: ct.id, templateName: ct.name, templateEmoji: ct.emoji, overrideType: 'date' };
   }
   // 2. Day-of-week override
   const overrideId = templates.dayOverrides?.[String(dayOfWeek)];
   if (overrideId) {
+    if (overrideId === CLEAR_OVERRIDE) {
+      return { slots: [], source: 'cleared', overrideType: 'day' };
+    }
     const ct = (templates.customTemplates || []).find(t => t.id === overrideId);
     if (ct) return { slots: ct.slots, source: 'custom', templateId: ct.id, templateName: ct.name, templateEmoji: ct.emoji, overrideType: 'day' };
   }

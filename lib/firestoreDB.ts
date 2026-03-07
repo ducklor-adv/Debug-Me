@@ -1,6 +1,7 @@
 import {
-  doc, setDoc, onSnapshot, collection, addDoc, query, where, orderBy,
+  doc, setDoc, onSnapshot, collection, query, where, orderBy,
   getDocs, deleteDoc, getCountFromServer, Unsubscribe,
+  waitForPendingWrites,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Task, TaskGroup, DailyRecord, Milestone, TimeSlot, ScheduleTemplates, Habit, FocusSession, Project } from '../types';
@@ -25,12 +26,7 @@ export function subscribeAppData(
 ): Unsubscribe {
   const ref = doc(db, 'users', uid, 'config', 'appData');
   return onSnapshot(ref, (snap) => {
-    if (snap.exists()) {
-      const d = snap.data() as AppData;
-      callback(d);
-    } else {
-      callback(null);
-    }
+    callback(snap.exists() ? snap.data() as AppData : null);
   });
 }
 
@@ -48,10 +44,23 @@ function stripUndefined(obj: unknown): unknown {
   return obj;
 }
 
-/** Save tasks/groups/milestones to Firestore (merge) */
-export async function saveAppData(uid: string, data: Partial<AppData>) {
+/** Save app data to Firestore.
+ *  merge=true (default): partial update, only writes included fields.
+ *  merge=false: full overwrite, replaces entire document — use when saving ALL fields.
+ *  Note: With persistentLocalCache, setDoc resolves after local IndexedDB write (fast).
+ *  Server confirmation happens asynchronously via onSnapshot echoes. */
+export async function saveAppData(uid: string, data: Partial<AppData>, merge = true) {
   const ref = doc(db, 'users', uid, 'config', 'appData');
-  await setDoc(ref, stripUndefined(data) as Partial<AppData>, { merge: true });
+  const cleaned = stripUndefined(data) as Partial<AppData>;
+
+  // Flush old pending writes first so they don't overwrite our data on the server
+  await waitForPendingWrites(db);
+
+  if (merge) {
+    await setDoc(ref, cleaned, { merge: true });
+  } else {
+    await setDoc(ref, cleaned);
+  }
 }
 
 // ===== Daily Records =====

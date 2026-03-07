@@ -84,7 +84,7 @@ const DEFAULT_MILESTONES: Milestone[] = [
   { id: 'ms-5', title: 'นอน', emoji: '🌙', time: '22:00', icon: 'moon', color: 'bg-indigo-50 border-indigo-300 text-indigo-700' },
 ];
 
-const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
+export const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
   workday: [
     { id: 'wd-0',  startTime: '00:00', endTime: '05:00', groupKey: 'sleep' },
     { id: 'wd-1',  startTime: '05:00', endTime: '07:00', groupKey: 'home' },
@@ -227,7 +227,6 @@ const App: React.FC = () => {
       const now = new Date().toISOString().split('T')[0];
       setTodayStr(prev => {
         if (prev !== now) {
-          console.log('📅 Day changed:', prev, '→', now);
           return now;
         }
         return prev;
@@ -356,6 +355,7 @@ const App: React.FC = () => {
   const [firestoreLoading, setFirestoreLoading] = useState(true);
   const firestoreReadyRef = useRef(false);
   const isRemoteUpdateRef = useRef(false);
+  const saveVersionRef = useRef(0); // version counter: only latest save can reset isRemoteUpdateRef
   const [isDirty, setIsDirty] = useState(false);
 
   // ===== Online/Offline detection =====
@@ -483,11 +483,14 @@ const App: React.FC = () => {
     loadTodayFocusSessions();
 
     const unsubscribe = subscribeAppData(user.uid, (data) => {
-      console.log('🔄 Firestore data received');
+      const wasOwnSave = isRemoteUpdateRef.current;
       firestoreReadyRef.current = true;
 
-      // If isRemoteUpdateRef is true, this snapshot is from our own write — skip re-saving
-      const wasOwnSave = isRemoteUpdateRef.current;
+      // If this is an echo from our own save, skip all state updates.
+      if (wasOwnSave) {
+        setFirestoreLoading(false);
+        return;
+      }
 
       if (data) {
         // Collect all changes that need to be saved back (consolidated into 1 write)
@@ -548,15 +551,10 @@ const App: React.FC = () => {
           const vSat = validSlots(tpl.saturday);
           const vSun = validSlots(tpl.sunday);
 
-          // If any day uses old group keys, reset all to new category-based defaults
-          // Reset to defaults if: old group keys, not enough slots, or missing 24h coverage (no 00:00 start)
-          const needs24hReset = (slots: any[]) =>
-            slots.length < 3 || !slots.some((s: any) => s.startTime === '00:00');
+          // Migration: Reset to defaults if old group keys (Thai names instead of category keys)
+          const oldKeys = hasOldGroupKeys(vWork) || hasOldGroupKeys(vSat) || hasOldGroupKeys(vSun);
 
-          if (
-            hasOldGroupKeys(vWork) || hasOldGroupKeys(vSat) || hasOldGroupKeys(vSun) ||
-            needs24hReset(vWork) || needs24hReset(vSat) || needs24hReset(vSun)
-          ) {
+          if (!wasOwnSave && oldKeys) {
             const migrated: ScheduleTemplates = {
               ...DEFAULT_SCHEDULE_TEMPLATES,
               customTemplates: Array.isArray(tpl.customTemplates) ? tpl.customTemplates : [],
@@ -577,7 +575,6 @@ const App: React.FC = () => {
             setScheduleTemplates(fixed);
           }
         } else if (data.schedule && data.schedule.length > 0) {
-          // Legacy: single schedule array → reset to new defaults
           setScheduleTemplates(DEFAULT_SCHEDULE_TEMPLATES);
           saveBack.scheduleTemplates = DEFAULT_SCHEDULE_TEMPLATES;
         } else {
@@ -605,9 +602,7 @@ const App: React.FC = () => {
           saveBack.deletedDefaultTaskIds = deletedIds;
         }
 
-        // SINGLE consolidated write (only if not triggered by our own save)
         if (Object.keys(saveBack).length > 0 && !wasOwnSave) {
-          console.log('💾 Consolidated save-back:', Object.keys(saveBack));
           saveAppData(user.uid, saveBack);
         }
       } else {
@@ -628,7 +623,6 @@ const App: React.FC = () => {
         });
       }
       setFirestoreLoading(false);
-      setTimeout(() => { isRemoteUpdateRef.current = false; }, 1000);
     });
 
     return () => unsubscribe();
@@ -638,44 +632,39 @@ const App: React.FC = () => {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    console.log('🔄 Auto-save useEffect triggered. isRemoteUpdate:', isRemoteUpdateRef.current, 'tasks:', tasks.length);
-    if (!firestoreReadyRef.current || isRemoteUpdateRef.current || !user) {
-      console.log('⏭️ Auto-save skipped (not ready or remote update)');
-      return;
-    }
+    if (!firestoreReadyRef.current || !user) return;
 
-    // Clear previous timer
-    if (saveTimerRef.current) {
-      console.log('⏰ Auto-save: Clearing previous timer');
-      clearTimeout(saveTimerRef.current);
-    }
+    // IMMEDIATELY increment version + block echoes when state changes
+    // This ensures old save timeouts can't reset the flag prematurely
+    const myVersion = ++saveVersionRef.current;
+    isRemoteUpdateRef.current = true;
 
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setIsDirty(true);
     setSaveStatus('idle');
-    console.log('⏱️ Auto-save: Setting timer (1.5s)...');
 
     saveTimerRef.current = setTimeout(async () => {
-      console.log('💾 AUTO-SAVE executing! Tasks:', tasks.length, 'DeletedIds:', deletedDefaultTaskIds);
       setSaveStatus('saving');
       try {
-        isRemoteUpdateRef.current = true;
-        await saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects });
+        await saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects }, false);
         setIsDirty(false);
         setSaveStatus('saved');
         setTimeout(() => {
-          setSaveStatus('idle');
-          isRemoteUpdateRef.current = false;
-        }, 500);
+          if (saveVersionRef.current === myVersion) {
+            setSaveStatus('idle');
+            isRemoteUpdateRef.current = false;
+          }
+        }, 2000);
       } catch (err) {
         console.error('[DebugMe] Auto-save failed:', err);
         setSaveStatus('idle');
-        isRemoteUpdateRef.current = false;
+        if (saveVersionRef.current === myVersion) {
+          isRemoteUpdateRef.current = false;
+        }
       }
     }, 1500);
 
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    };
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects, user]);
 
   useEffect(() => { localStorage.setItem(VIEW_KEY, activeView); }, [activeView]);
@@ -732,15 +721,14 @@ const App: React.FC = () => {
   // Immediate save to Firestore (for delete/critical operations)
   const handleImmediateSave = useCallback(async (updatedTasks?: Task[], updatedDeletedIds?: string[]) => {
     if (!user) return;
-    try {
-      // CRITICAL: Cancel any pending auto-save to prevent race condition
-      if (saveTimerRef.current) {
-        console.log('⏰ Cancelled pending auto-save timer');
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
 
-      isRemoteUpdateRef.current = true;
+    const myVersion = ++saveVersionRef.current;
+    isRemoteUpdateRef.current = true;
+    try {
       const dataToSave = {
         tasks: updatedTasks || tasks,
         groups: taskGroups,
@@ -749,17 +737,17 @@ const App: React.FC = () => {
         deletedDefaultTaskIds: updatedDeletedIds || deletedDefaultTaskIds,
         habits
       };
-      console.log('💾 Saving to Firestore:', {
-        taskCount: dataToSave.tasks.length,
-        deletedIdsCount: dataToSave.deletedDefaultTaskIds?.length || 0,
-        deletedIds: dataToSave.deletedDefaultTaskIds
-      });
-      await saveAppData(user.uid, dataToSave);
-      console.log('✅ Firestore save successful');
-      setTimeout(() => { isRemoteUpdateRef.current = false; }, 1000);
+      await saveAppData(user.uid, dataToSave, false);
+      setTimeout(() => {
+        if (saveVersionRef.current === myVersion) {
+          isRemoteUpdateRef.current = false;
+        }
+      }, 2000);
     } catch (err) {
       console.error('[DebugMe] Immediate save failed:', err);
-      isRemoteUpdateRef.current = false;
+      if (saveVersionRef.current === myVersion) {
+        isRemoteUpdateRef.current = false;
+      }
     }
   }, [user, tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects]);
 
@@ -800,7 +788,7 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} />;
-      case 'planner': return <Suspense fallback={<LazyFallback />}><DailyPlanner tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} pendingSlot={pendingSlot} onPendingSlotHandled={() => setPendingSlot(null)} /></Suspense>;
+      case 'planner': return <Suspense fallback={<LazyFallback />}><DailyPlanner tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} pendingSlot={pendingSlot} onPendingSlotHandled={() => setPendingSlot(null)} defaultScheduleTemplates={DEFAULT_SCHEDULE_TEMPLATES} /></Suspense>;
       case 'tasks': return <Suspense fallback={<LazyFallback />}><TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} initialGroupKey={pendingGroupKey} defaultTasks={defaultTasks} /></Suspense>;
       case 'focus': return <Suspense fallback={<LazyFallback />}><FocusTimer onSaveFocusSession={handleSaveFocusSession} todayFocusSessions={todayFocusSessions} /></Suspense>;
       case 'analytics': return <Suspense fallback={<LazyFallback />}><Analytics tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} totalRecordCount={totalRecordCount} userId={user!.uid} /></Suspense>;
