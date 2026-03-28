@@ -4,7 +4,7 @@ import {
   waitForPendingWrites,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Task, TaskGroup, DailyRecord, Milestone, TimeSlot, ScheduleTemplates, Habit, FocusSession, Project, Expense } from '../types';
+import { Task, TaskGroup, DailyRecord, Milestone, TimeSlot, ScheduleTemplates, Habit, FocusSession, Project, Expense, BalanceItem } from '../types';
 
 // ===== App Data (tasks, groups, milestones, schedule) =====
 
@@ -18,6 +18,7 @@ export interface AppData {
   habits?: Habit[];                    // Habit tracker data
   projects?: Project[];               // Project management data
   expenses?: Expense[];               // Expense tracker data
+  balanceItems?: BalanceItem[];       // Balance sheet items (assets & liabilities)
 }
 
 /** Real-time listener on user's appData document */

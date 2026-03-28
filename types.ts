@@ -415,3 +415,92 @@ export const GROUP_COLORS: Record<string, {
   indigo: { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-600', badge: 'bg-indigo-100 text-indigo-700', dot: 'bg-indigo-400', ring: 'ring-indigo-300', iconBg: 'bg-indigo-400', plannerBg: 'bg-indigo-100', plannerText: 'text-indigo-700', plannerBorder: 'border-indigo-300' },
   purple: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600', badge: 'bg-purple-100 text-purple-700', dot: 'bg-purple-400', ring: 'ring-purple-300', iconBg: 'bg-purple-400', plannerBg: 'bg-purple-100', plannerText: 'text-purple-700', plannerBorder: 'border-purple-300' },
 };
+
+// ===== Balance Sheet (งบดุล) =====
+
+export interface BalanceItem {
+  id: string;
+  title: string;
+  amount: number;           // ยอดคงเหลือปัจจุบัน
+  category: string;         // key ของหมวด
+  notes?: string;
+  updatedAt: string;        // ISO timestamp
+  linkedDebtCat?: string;   // ผูกกับหมวดชำระหนี้ (auto ลดยอดเมื่อจ่าย)
+}
+
+export interface BalanceCategory {
+  key: string;
+  label: string;
+  emoji: string;
+  side: 'asset' | 'liability';
+  group: string;
+}
+
+// Default sub-account suggestions per balance category
+export const BALANCE_SUGGESTIONS: Record<string, string[]> = {
+  cash: ['เงินสดติดตัว', 'เงินสดที่บ้าน'],
+  bank_saving: ['กสิกร', 'กรุงไทย', 'ไทยพาณิชย์', 'กรุงเทพ', 'ออมสิน', 'กรุงศรี', 'ทหารไทยธนชาต'],
+  bank_fixed: ['กสิกร', 'กรุงไทย', 'ไทยพาณิชย์', 'กรุงเทพ', 'ออมสิน'],
+  ewallet_balance: ['พร้อมเพย์', 'True Wallet', 'LINE Pay', 'Shopee Pay', 'Rabbit LINE Pay'],
+  lend_friend: [],   // กรอกชื่อเอง
+  lend_family: [],
+  invest_stock: ['SET หุ้นไทย', 'กองทุนรวม', 'US Stock', 'SSF/RMF', 'LTF'],
+  invest_crypto: ['Bitcoin', 'Ethereum', 'Bitkub', 'Binance'],
+  invest_bond: ['พันธบัตรรัฐบาล', 'ตราสารหนี้'],
+  invest_gold: ['ทองคำแท่ง', 'ทองรูปพรรณ', 'Gold Spot'],
+  invest_insurance: [],
+  invest_other: [],
+  property_house: ['บ้าน', 'คอนโด', 'ทาวน์เฮ้าส์', 'ห้องเช่า'],
+  property_land: [],
+  property_car: ['รถยนต์', 'มอเตอร์ไซค์'],
+  property_jewelry: [],
+  property_other: [],
+  credit_card: ['KBANK', 'SCB', 'KTC', 'Citibank', 'กรุงเทพ', 'กรุงศรี'],
+  cash_card: ['KBANK', 'SCB', 'KTC', 'กรุงศรี'],
+  personal_loan: ['KBANK', 'SCB', 'กรุงศรี', 'ทหารไทยธนชาต'],
+  borrow_friend: [],
+  borrow_family: ['พ่อ', 'แม่', 'แฟน', 'พี่', 'น้อง'],
+  borrow_other: [],
+  mortgage: [],
+  car_loan: [],
+  education_loan: ['กยศ.', 'กรอ.'],
+  business_loan: [],
+};
+
+export const BALANCE_CATEGORIES: BalanceCategory[] = [
+  // ═══ สินทรัพย์ (Assets) ═══
+  // สินทรัพย์หมุนเวียน (เป็นเงินสดได้เร็ว)
+  { key: 'cash', label: 'เงินสด', emoji: '💵', side: 'asset', group: 'หมุนเวียน' },
+  { key: 'bank_saving', label: 'เงินฝากออมทรัพย์', emoji: '🏦', side: 'asset', group: 'หมุนเวียน' },
+  { key: 'bank_fixed', label: 'เงินฝากประจำ', emoji: '📋', side: 'asset', group: 'หมุนเวียน' },
+  { key: 'ewallet_balance', label: 'E-Wallet (พร้อมเพย์/True)', emoji: '📲', side: 'asset', group: 'หมุนเวียน' },
+  { key: 'lend_friend', label: 'เงินให้ยืม (เพื่อน/คนรู้จัก)', emoji: '🤝', side: 'asset', group: 'หมุนเวียน' },
+  { key: 'lend_family', label: 'เงินให้ยืม (ครอบครัว)', emoji: '👨‍👩‍👧', side: 'asset', group: 'หมุนเวียน' },
+  // สินทรัพย์ลงทุน
+  { key: 'invest_stock', label: 'หุ้น/กองทุน', emoji: '📈', side: 'asset', group: 'ลงทุน' },
+  { key: 'invest_crypto', label: 'คริปโต', emoji: '₿', side: 'asset', group: 'ลงทุน' },
+  { key: 'invest_bond', label: 'พันธบัตร/ตราสารหนี้', emoji: '📜', side: 'asset', group: 'ลงทุน' },
+  { key: 'invest_gold', label: 'ทองคำ', emoji: '🥇', side: 'asset', group: 'ลงทุน' },
+  { key: 'invest_insurance', label: 'ประกันชีวิต (มูลค่าเวนคืน)', emoji: '🛡️', side: 'asset', group: 'ลงทุน' },
+  { key: 'invest_other', label: 'ลงทุนอื่นๆ', emoji: '💼', side: 'asset', group: 'ลงทุน' },
+  // สินทรัพย์ถาวร
+  { key: 'property_house', label: 'บ้าน/คอนโด', emoji: '🏠', side: 'asset', group: 'ถาวร' },
+  { key: 'property_land', label: 'ที่ดิน', emoji: '🏞️', side: 'asset', group: 'ถาวร' },
+  { key: 'property_car', label: 'รถยนต์/รถมอเตอร์ไซค์', emoji: '🚗', side: 'asset', group: 'ถาวร' },
+  { key: 'property_jewelry', label: 'เครื่องประดับ/ของมีค่า', emoji: '💎', side: 'asset', group: 'ถาวร' },
+  { key: 'property_other', label: 'ทรัพย์สินอื่นๆ', emoji: '📦', side: 'asset', group: 'ถาวร' },
+
+  // ═══ หนี้สิน (Liabilities) ═══
+  // หนี้ระยะสั้น
+  { key: 'credit_card', label: 'หนี้บัตรเครดิต', emoji: '💳', side: 'liability', group: 'ระยะสั้น' },
+  { key: 'cash_card', label: 'บัตรกดเงินสด', emoji: '🏧', side: 'liability', group: 'ระยะสั้น' },
+  { key: 'personal_loan', label: 'สินเชื่อส่วนบุคคล', emoji: '📝', side: 'liability', group: 'ระยะสั้น' },
+  { key: 'borrow_friend', label: 'ยืมเพื่อน/คนรู้จัก', emoji: '🤝', side: 'liability', group: 'ระยะสั้น' },
+  { key: 'borrow_family', label: 'ยืมครอบครัว/แฟน', emoji: '👨‍👩‍👧', side: 'liability', group: 'ระยะสั้น' },
+  { key: 'borrow_other', label: 'หนี้อื่นๆ', emoji: '📋', side: 'liability', group: 'ระยะสั้น' },
+  // หนี้ระยะยาว
+  { key: 'mortgage', label: 'ผ่อนบ้าน/คอนโด', emoji: '🏠', side: 'liability', group: 'ระยะยาว' },
+  { key: 'car_loan', label: 'ผ่อนรถ', emoji: '🚗', side: 'liability', group: 'ระยะยาว' },
+  { key: 'education_loan', label: 'กยศ./สินเชื่อการศึกษา', emoji: '🎓', side: 'liability', group: 'ระยะยาว' },
+  { key: 'business_loan', label: 'สินเชื่อธุรกิจ', emoji: '🏢', side: 'liability', group: 'ระยะยาว' },
+];

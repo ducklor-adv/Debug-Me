@@ -23,7 +23,7 @@ import {
   FolderKanban,
   Wallet,
 } from 'lucide-react';
-import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, CustomScheduleTemplate, getDayType, DEFAULT_CATEGORIES, FocusSession, Project, Expense } from './types';
+import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, CustomScheduleTemplate, getDayType, DEFAULT_CATEGORIES, FocusSession, Project, Expense, BalanceItem } from './types';
 import { subscribeAppData, saveAppData, addDailyRecordFS, getDailyRecordsByDate, getDailyRecordCount, addFocusSessionFS, getFocusSessionsByDate } from './lib/firestoreDB';
 import Dashboard from './components/Dashboard';
 import UndoToast from './components/UndoToast';
@@ -474,6 +474,7 @@ const App: React.FC = () => {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [balanceItems, setBalanceItems] = useState<BalanceItem[]>([]);
   const [firestoreLoading, setFirestoreLoading] = useState(true);
   const firestoreReadyRef = useRef(false);
   const isRemoteUpdateRef = useRef(false);
@@ -730,6 +731,14 @@ const App: React.FC = () => {
           saveBack.expenses = [];
         }
 
+        // Balance items
+        if (data.balanceItems !== undefined) {
+          setBalanceItems(data.balanceItems || []);
+        } else {
+          setBalanceItems([]);
+          saveBack.balanceItems = [];
+        }
+
         // Tasks: save back if migration or new defaults added
         if (needsMigration || mergedTasks.length > migratedTasks.length) {
           saveBack.tasks = mergedTasks;
@@ -783,7 +792,7 @@ const App: React.FC = () => {
     saveTimerRef.current = setTimeout(async () => {
       setSaveStatus('saving');
       try {
-        await saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects, expenses }, false);
+        await saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects, expenses, balanceItems }, false);
         setIsDirty(false);
         setSaveStatus('saved');
         setTimeout(() => {
@@ -802,7 +811,7 @@ const App: React.FC = () => {
     }, 1500);
 
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects, expenses, user]);
+  }, [tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects, expenses, balanceItems, user]);
 
   useEffect(() => { localStorage.setItem(VIEW_KEY, activeView); }, [activeView]);
 
@@ -818,6 +827,7 @@ const App: React.FC = () => {
       habits,
       projects,
       expenses,
+      balanceItems,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -847,6 +857,7 @@ const App: React.FC = () => {
           if (data.habits) setHabits(data.habits);
           if (data.projects) setProjects(data.projects);
           if (data.expenses) setExpenses(data.expenses);
+          if (data.balanceItems) setBalanceItems(data.balanceItems);
           alert('นำเข้าข้อมูลสำเร็จ!');
         } catch {
           alert('ไฟล์ไม่ถูกต้อง');
@@ -877,6 +888,7 @@ const App: React.FC = () => {
         habits,
         projects,
         expenses,
+        balanceItems,
       };
       await saveAppData(user.uid, dataToSave, false);
       setTimeout(() => {
@@ -938,7 +950,7 @@ const App: React.FC = () => {
       case 'search': return <Suspense fallback={<LazyFallback />}><SearchView tasks={tasks} taskGroups={taskGroups} /></Suspense>;
       case 'calendar': return <Suspense fallback={<LazyFallback />}><CalendarView tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} userId={user!.uid} /></Suspense>;
       case 'projects': return <Suspense fallback={<LazyFallback />}><ProjectManager projects={projects} setProjects={setProjects} tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} onImmediateSave={handleImmediateSave} /></Suspense>;
-      case 'expenses': return <Suspense fallback={<LazyFallback />}><ExpenseTracker expenses={expenses} setExpenses={setExpenses} /></Suspense>;
+      case 'expenses': return <Suspense fallback={<LazyFallback />}><ExpenseTracker expenses={expenses} setExpenses={setExpenses} balanceItems={balanceItems} setBalanceItems={setBalanceItems} /></Suspense>;
       default: return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} />;
     }
   };

@@ -1,11 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Expense, ExpenseCategoryKey, EXPENSE_CATEGORIES, EXPENSE_GROUPS, GROUP_COLORS, PaymentMethod, PAYMENT_METHODS, ExpenseCategory } from '../types';
+import { Expense, ExpenseCategoryKey, EXPENSE_CATEGORIES, EXPENSE_GROUPS, GROUP_COLORS, PaymentMethod, PAYMENT_METHODS, ExpenseCategory, BalanceItem, BALANCE_CATEGORIES, BALANCE_SUGGESTIONS } from '../types';
 import { Plus, X, Trash2, CheckCircle2, Circle, RefreshCw, ChevronDown, DollarSign, TrendingUp, TrendingDown, Wallet, Edit3, ArrowUpCircle, ArrowDownCircle, Minus } from 'lucide-react';
 
 interface ExpenseTrackerProps {
   expenses: Expense[];
   setExpenses: React.Dispatch<React.SetStateAction<Expense[]>>;
+  balanceItems: BalanceItem[];
+  setBalanceItems: React.Dispatch<React.SetStateAction<BalanceItem[]>>;
 }
 
 const defaultCatMap = new Map(EXPENSE_CATEGORIES.map(c => [c.key, c]));
@@ -27,10 +29,13 @@ function toMonthly(e: Expense): number {
   return e.amount;
 }
 
-const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ expenses, setExpenses }) => {
+const balCatMap = new Map(BALANCE_CATEGORIES.map(c => [c.key, c]));
+
+const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ expenses, setExpenses, balanceItems, setBalanceItems }) => {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [section, setSection] = useState<'statement' | 'list'>('statement');
+  const [statementTab, setStatementTab] = useState<'pnl' | 'balance' | 'cashflow'>('pnl');
   const [showAddPicker, setShowAddPicker] = useState(false);
   const [drillCat, setDrillCat] = useState<string | null>(null); // category key to drill into
 
@@ -114,27 +119,72 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ expenses, setExpenses }
     setEditingId(null);
     setShowForm(false);
     setLockedCat(null);
+    setLockedGroup(null);
   };
 
-  const openAdd = (flow: 'income' | 'expense') => {
-    setActiveExpTab(EXPENSE_GROUPS[0].key);
-    setForm({ title: '', amount: '', flow, category: '', type: 'one-time', date: todayStr(), recurrence: 'monthly', dueDay: 1, notes: '', method: 'transfer', borrowFrom: '', borrowRepayDate: '', borrowRepayAmount: '' });
-    setEditingId(null);
-    setShowForm(true);
-  };
-
-  // Track which tab is active (for when no category selected yet)
+  // Track which tab is active + locked group (show only that group's categories)
   const [activeExpTab, setActiveExpTab] = useState<string>(EXPENSE_GROUPS[0].key);
+  const [lockedGroup, setLockedGroup] = useState<string | null>(null);
 
-  const openAddDebt = () => {
-    setActiveExpTab('ชำระหนี้');
-    setForm({ title: '', amount: '', flow: 'expense', category: '', type: 'recurring', date: todayStr(), recurrence: 'monthly', dueDay: 1, notes: '', method: 'transfer', borrowFrom: '', borrowRepayDate: '', borrowRepayAmount: '' });
+  const openAdd = (flow: 'income' | 'expense', groupLock?: string) => {
+    const tab = groupLock || EXPENSE_GROUPS[0].key;
+    setActiveExpTab(tab);
+    setLockedGroup(groupLock || null);
+    const isDebtOrInvest = groupLock === 'ชำระหนี้' || groupLock === 'ลงทุน';
+    setForm({ title: '', amount: '', flow, category: '', type: isDebtOrInvest ? 'recurring' : 'one-time', date: todayStr(), recurrence: 'monthly', dueDay: 1, notes: '', method: 'transfer', borrowFrom: '', borrowRepayDate: '', borrowRepayAmount: '' });
     setEditingId(null);
     setShowForm(true);
   };
 
   // Open add form with pre-selected category (from drill-down) — locks to that category
   const [lockedCat, setLockedCat] = useState<string | null>(null);
+
+  // Balance sheet
+  const [balanceDrill, setBalanceDrill] = useState<'asset' | 'liability' | null>(null);
+  const [balanceForm, setBalanceForm] = useState<{ id?: string; category: string; title: string; amount: string; notes: string } | null>(null);
+  const [showAddBank, setShowAddBank] = useState(false);
+  const [newBankName, setNewBankName] = useState('');
+
+  // Custom suggestions stored in localStorage
+  const [customSuggestions, setCustomSuggestions] = useState<Record<string, string[]>>(() => {
+    const saved = localStorage.getItem('debugme-balance-suggestions');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const getMergedSuggestions = (catKey: string): string[] => {
+    const defaults = BALANCE_SUGGESTIONS[catKey] || [];
+    const custom = customSuggestions[catKey] || [];
+    return [...defaults, ...custom.filter(c => !defaults.includes(c))];
+  };
+
+  const addCustomSuggestion = (catKey: string) => {
+    if (!newBankName.trim()) return;
+    const updated = { ...customSuggestions, [catKey]: [...(customSuggestions[catKey] || []), newBankName.trim()] };
+    setCustomSuggestions(updated);
+    localStorage.setItem('debugme-balance-suggestions', JSON.stringify(updated));
+    if (balanceForm) setBalanceForm({ ...balanceForm, title: newBankName.trim() });
+    setNewBankName('');
+    setShowAddBank(false);
+  };
+
+  const saveBalanceItem = () => {
+    if (!balanceForm || !balanceForm.title.trim() || !balanceForm.amount) return;
+    const amount = parseFloat(balanceForm.amount);
+    if (isNaN(amount) || amount < 0) return;
+    if (balanceForm.id) {
+      setBalanceItems(prev => prev.map(b => b.id === balanceForm.id ? { ...b, title: balanceForm.title.trim(), amount, category: balanceForm.category, notes: balanceForm.notes.trim() || undefined, updatedAt: new Date().toISOString() } : b));
+    } else {
+      setBalanceItems(prev => [...prev, { id: `bal-${Date.now()}`, title: balanceForm.title.trim(), amount, category: balanceForm.category, notes: balanceForm.notes.trim() || undefined, updatedAt: new Date().toISOString() }]);
+    }
+    setBalanceForm(null);
+    setShowAddBank(false);
+  };
+
+  const deleteBalanceItem = (id: string) => setBalanceItems(prev => prev.filter(b => b.id !== id));
+
+  const totalAssets = balanceItems.filter(b => balCatMap.get(b.category)?.side === 'asset').reduce((s, b) => s + b.amount, 0);
+  const totalLiabilities = balanceItems.filter(b => balCatMap.get(b.category)?.side === 'liability').reduce((s, b) => s + b.amount, 0);
+  const netWorth = totalAssets - totalLiabilities;
 
   const openAddWithCat = (catKey: string) => {
     const cat = catMap.get(catKey);
@@ -369,13 +419,13 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ expenses, setExpenses }
 
       {/* Tab: Statement vs List */}
       <div className="flex border-b border-slate-200">
-        <button onClick={() => setSection('statement')} className={`flex-1 py-2.5 text-sm font-bold transition-all relative ${section === 'statement' ? 'text-slate-800' : 'text-slate-400 hover:text-slate-500'}`}>
-          งบการเงิน
-          {section === 'statement' && <div className="absolute bottom-0 left-4 right-4 h-[3px] bg-slate-800 rounded-full" />}
-        </button>
         <button onClick={() => setSection('list')} className={`flex-1 py-2.5 text-sm font-bold transition-all relative ${section === 'list' ? 'text-slate-800' : 'text-slate-400 hover:text-slate-500'}`}>
           รายการ
           {section === 'list' && <div className="absolute bottom-0 left-4 right-4 h-[3px] bg-slate-800 rounded-full" />}
+        </button>
+        <button onClick={() => setSection('statement')} className={`flex-1 py-2.5 text-sm font-bold transition-all relative ${section === 'statement' ? 'text-slate-800' : 'text-slate-400 hover:text-slate-500'}`}>
+          งบการเงิน
+          {section === 'statement' && <div className="absolute bottom-0 left-4 right-4 h-[3px] bg-slate-800 rounded-full" />}
         </button>
       </div>
 
@@ -432,18 +482,25 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ expenses, setExpenses }
         // Income totals
         const inc = sumCats(['salary', 'side_income', 'invest_income', 'other_income'], 'income');
         // Expense group totals
-        // Dynamic totals from all expense categories
-        const allExpCatKeys = expenseCats.map(c => c.key);
-        const totalAll = sumCats(allExpCatKeys, 'expense');
+        // งบ P&L: เฉพาะค่าใช้จ่ายจำเป็น + อื่นๆ (ไม่รวม ชำระหนี้ + ลงทุน)
+        const pnlExpCatKeys = expenseCats.filter(c => c.group === 'จำเป็น' || c.group === 'อื่นๆ').map(c => c.key);
+        const totalAll = sumCats(pnlExpCatKeys, 'expense');
         const net = { budget: inc.budget - totalAll.budget, actual: inc.actual - totalAll.actual, diff: 0 };
         net.diff = net.actual - net.budget;
 
         return (
           <>
-            {/* ════════ งบกำไรขาดทุน (P&L) ════════ */}
-            <div className="bg-slate-800 text-white text-center py-2 rounded-t-xl text-xs font-black uppercase tracking-[0.2em]">
-              งบกำไรขาดทุนส่วนบุคคล
+            {/* Sub-tabs */}
+            <div className="flex bg-white rounded-xl border border-slate-200 overflow-hidden">
+              {([['pnl', 'กำไรขาดทุน'], ['balance', 'งบดุล'], ['cashflow', 'กระแสเงินสด']] as [typeof statementTab, string][]).map(([key, label]) => (
+                <button key={key} onClick={() => setStatementTab(key)} className={`flex-1 py-2 text-[11px] font-bold transition-all ${statementTab === key ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-50'}`}>
+                  {label}
+                </button>
+              ))}
             </div>
+
+            {statementTab === 'pnl' && (<>
+            {/* ════════ งบกำไรขาดทุน (P&L) ════════ */}
 
             {/* รายได้ */}
             <div className="bg-white rounded-b-xl border border-slate-200 overflow-hidden">
@@ -468,7 +525,9 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ expenses, setExpenses }
 
               let grandBudget = 0, grandActual = 0;
 
-              const groupSections = EXPENSE_GROUPS.map(grp => {
+              // งบกำไรขาดทุน แสดงเฉพาะ จำเป็น + อื่นๆ (ไม่รวม ชำระหนี้ + ลงทุน)
+              const pnlGroups = EXPENSE_GROUPS.filter(g => g.key === 'จำเป็น' || g.key === 'อื่นๆ');
+              const groupSections = pnlGroups.map(grp => {
                 const cats = expenseCats.filter(c => c.group === grp.key);
                 let grpBudget = 0, grpActual = 0;
                 cats.forEach(c => { const r = getBudgetActual(c.key, 'expense'); grpBudget += r.budget; grpActual += r.actual; });
@@ -511,11 +570,11 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ expenses, setExpenses }
               );
             })()}
 
-            {/* ═══ เงินคงเหลือสุทธิ ═══ */}
+            {/* ═══ กำไรสุทธิ ═══ */}
             <div className={`rounded-xl border-2 p-4 ${net.budget >= 0 ? 'border-emerald-400 bg-emerald-50' : 'border-rose-400 bg-rose-50'}`}>
               <div className="flex items-center justify-between mb-2">
                 <span className={`text-sm font-black ${net.budget >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>
-                  เงินคงเหลือสุทธิ
+                  กำไร(ขาดทุน)สุทธิ
                 </span>
               </div>
               <div className="flex items-center">
@@ -531,49 +590,226 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ expenses, setExpenses }
               </div>
             </div>
 
+            </>)}
+
+            {statementTab === 'balance' && (<>
             {/* ════════ งบดุลส่วนบุคคล (Balance Sheet) ════════ */}
-            <div className="bg-slate-800 text-white text-center py-2 rounded-t-xl text-xs font-black uppercase tracking-[0.2em] mt-4">
-              งบดุลส่วนบุคคล (ประมาณการ)
+
+            {/* สินทรัพย์ + หนี้สิน — แสดงทุกหมวดแม้ไม่มีข้อมูล */}
+            {(['asset', 'liability'] as const).map(side => {
+              const groups = side === 'asset' ? ['หมุนเวียน', 'ลงทุน', 'ถาวร'] : ['ระยะสั้น', 'ระยะยาว'];
+              const sideTotal = side === 'asset' ? totalAssets : totalLiabilities;
+              const color = side === 'asset' ? { bg: 'bg-blue-50', border: 'border-blue-100', text: 'text-blue-700', sub: 'text-blue-600' } : { bg: 'bg-amber-50', border: 'border-amber-100', text: 'text-amber-700', sub: 'text-amber-600' };
+              return (
+                <div key={side} className="bg-white border border-slate-200 overflow-hidden cursor-pointer" onClick={() => setBalanceDrill(side)}>
+                  <div className={`${color.bg} px-3 py-2 ${color.border} border-b flex items-center justify-between`}>
+                    <span className={`text-xs font-black ${color.text} uppercase tracking-widest`}>{side === 'asset' ? 'สินทรัพย์' : 'หนี้สิน'}</span>
+                    <ChevronDown className={`w-4 h-4 -rotate-90 ${color.sub}`} />
+                  </div>
+                  {groups.map(g => {
+                    const cats = BALANCE_CATEGORIES.filter(c => c.side === side && c.group === g);
+                    const groupTotal = cats.reduce((s, c) => s + balanceItems.filter(b => b.category === c.key).reduce((ss, b) => ss + b.amount, 0), 0);
+                    return (
+                      <div key={g} className="px-3 py-1.5 border-b border-slate-50">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-bold text-slate-400">{g}</span>
+                          <span className={`text-[10px] font-bold ${color.sub}`}>{groupTotal > 0 ? fmt(Math.round(groupTotal)) : ''}</span>
+                        </div>
+                        {cats.map(c => {
+                          const items = balanceItems.filter(b => b.category === c.key);
+                          const catTotal = items.reduce((s, b) => s + b.amount, 0);
+                          return items.length > 0 ? items.map(b => (
+                            <div key={b.id} className="flex justify-between pl-3 py-0.5">
+                              <span className="text-[11px] text-slate-600">{c.emoji} {b.title}</span>
+                              <span className="text-[11px] font-bold text-slate-700 tabular-nums">{fmt(Math.round(b.amount))}</span>
+                            </div>
+                          )) : (
+                            <div key={c.key} className="flex justify-between pl-3 py-0.5">
+                              <span className="text-[11px] text-slate-400">{c.emoji} {c.label}</span>
+                              <span className="text-[11px] text-slate-300">-</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                  <div className={`px-3 py-2 ${color.bg} flex justify-between text-xs font-black ${color.text}`}>
+                    <span>รวม{side === 'asset' ? 'สินทรัพย์' : 'หนี้สิน'}</span>
+                    <span>{sideTotal > 0 ? fmt(Math.round(sideTotal)) : '-'}</span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Net Worth */}
+            <div className={`rounded-xl border-2 px-3 py-3 flex justify-between ${netWorth >= 0 ? 'border-emerald-300 bg-emerald-50' : 'border-rose-300 bg-rose-50'}`}>
+              <span className={`text-sm font-black ${netWorth >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>ความมั่งคั่งสุทธิ (Net Worth)</span>
+              <span className={`text-sm font-black ${netWorth >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{netWorth !== 0 ? fmt(Math.round(netWorth)) : '-'}</span>
             </div>
-            <div className="bg-white rounded-b-xl border border-slate-200 overflow-hidden">
-              {/* สินทรัพย์ */}
-              <div className="bg-blue-50 px-3 py-2 border-b border-blue-100">
-                <span className="text-xs font-black text-blue-700 uppercase tracking-widest">สินทรัพย์</span>
-              </div>
-              <div className="px-3 py-2 space-y-1 text-[11px] text-slate-600 border-b border-slate-100">
-                <div className="flex justify-between"><span className="pl-3">เงินสดและเงินฝาก</span><span className="text-slate-400 italic">กรอกข้อมูลจริง</span></div>
-                <div className="flex justify-between"><span className="pl-3">เงินลงทุน (หุ้น/กองทุน)</span><span className="text-slate-400 italic">กรอกข้อมูลจริง</span></div>
-                <div className="flex justify-between"><span className="pl-3">ทรัพย์สิน (บ้าน/รถ/อื่นๆ)</span><span className="text-slate-400 italic">กรอกข้อมูลจริง</span></div>
-                <div className="flex justify-between"><span className="pl-3">ลูกหนี้ (เงินที่ให้ยืม)</span><span className="text-slate-400 italic">กรอกข้อมูลจริง</span></div>
-              </div>
-              <div className="px-3 py-2 bg-blue-50 flex justify-between text-xs font-black text-blue-700">
-                <span>รวมสินทรัพย์</span><span>-</span>
-              </div>
+            </>)}
 
-              {/* หนี้สิน */}
-              <div className="bg-amber-50 px-3 py-2 border-b border-amber-100 border-t border-amber-100">
-                <span className="text-xs font-black text-amber-700 uppercase tracking-widest">หนี้สิน</span>
-              </div>
-              <div className="px-3 py-2 space-y-1 text-[11px] text-slate-600 border-b border-slate-100">
-                <div className="flex justify-between"><span className="pl-3">หนี้บัตรเครดิต</span><span className="text-slate-400 italic">กรอกข้อมูลจริง</span></div>
-                <div className="flex justify-between"><span className="pl-3">สินเชื่อส่วนบุคคล</span><span className="text-slate-400 italic">กรอกข้อมูลจริง</span></div>
-                <div className="flex justify-between"><span className="pl-3">ผ่อนบ้าน/ผ่อนรถ</span><span className="text-slate-400 italic">กรอกข้อมูลจริง</span></div>
-                <div className="flex justify-between"><span className="pl-3">เงินยืม (เพื่อน/ครอบครัว)</span><span className="text-slate-400 italic">กรอกข้อมูลจริง</span></div>
-              </div>
-              <div className="px-3 py-2 bg-amber-50 flex justify-between text-xs font-black text-amber-700">
-                <span>รวมหนี้สิน</span><span>-</span>
-              </div>
+            {statementTab === 'cashflow' && (<>
+            {/* ════════ งบกระแสเงินสด (Cash Flow) ════════ */}
+            {(() => {
+              // กระแสเงินสดจากการดำเนินชีวิต = รายรับ - ค่าใช้จ่ายจำเป็น+อื่นๆ
+              const opCats = expenseCats.filter(c => c.group === 'จำเป็น' || c.group === 'อื่นๆ').map(c => c.key);
+              const opExp = opCats.reduce((s, k) => { const r = getBudgetActual(k, 'expense'); return { b: s.b + r.budget, a: s.a + r.actual }; }, { b: 0, a: 0 });
+              const opCashB = inc.budget - opExp.b;
+              const opCashA = inc.actual - opExp.a;
 
-              {/* ส่วนของเจ้าของ */}
-              <div className="bg-emerald-50 px-3 py-2 border-b border-emerald-100 border-t border-emerald-100">
-                <span className="text-xs font-black text-emerald-700 uppercase tracking-widest">ความมั่งคั่งสุทธิ (Net Worth)</span>
-              </div>
-              <div className="px-3 py-3 bg-emerald-50 flex justify-between text-xs font-black text-emerald-700">
-                <span>สินทรัพย์ - หนี้สิน</span><span>-</span>
-              </div>
-            </div>
+              // กระแสเงินสดจากการลงทุน
+              const invCats = expenseCats.filter(c => c.group === 'ลงทุน').map(c => c.key);
+              const invExp = invCats.reduce((s, k) => { const r = getBudgetActual(k, 'expense'); return { b: s.b + r.budget, a: s.a + r.actual }; }, { b: 0, a: 0 });
 
-            <p className="text-[10px] text-slate-400 text-center italic">* งบดุลเป็นโครงสร้าง — รองรับการกรอกข้อมูลจริงในอนาคต</p>
+              // กระแสเงินสดจากการจัดหาเงิน (ชำระหนี้)
+              const debtCats = expenseCats.filter(c => c.group === 'ชำระหนี้').map(c => c.key);
+              const debtExp = debtCats.reduce((s, k) => { const r = getBudgetActual(k, 'expense'); return { b: s.b + r.budget, a: s.a + r.actual }; }, { b: 0, a: 0 });
+
+              const netCashB = opCashB - invExp.b - debtExp.b;
+              const netCashA = opCashA - invExp.a - debtExp.a;
+
+              // Get actual transactions for a category this month
+              const getTxns = (catKey: string, flow: 'income' | 'expense') => {
+                return expenses.filter(e => (e.flow || 'expense') === flow && e.category === catKey).flatMap(e => {
+                  if (e.type === 'recurring' && e.paidHistory?.[viewMonth]) {
+                    return [{ title: e.title, amount: e.paidHistory[viewMonth].amount, date: e.paidHistory[viewMonth].paidAt.split('T')[0], method: e.paidHistory[viewMonth].method || e.paymentMethod }];
+                  }
+                  if (e.type === 'one-time' && e.date.startsWith(viewMonth)) {
+                    return [{ title: e.title, amount: e.amount, date: e.date, method: e.paymentMethod }];
+                  }
+                  return [];
+                });
+              };
+
+              const CfRow = ({ label, budget, actual, bold, indent, catKey, flow }: { label: string; budget: number; actual: number; bold?: boolean; indent?: boolean; catKey?: string; flow?: 'income' | 'expense' }) => {
+                const txns = catKey && flow ? getTxns(catKey, flow) : [];
+                const [open, setOpen] = React.useState(false);
+                const hasTxns = txns.length > 0;
+                return (
+                  <>
+                    <div className={`flex items-center py-1 ${indent ? 'pl-4' : ''} ${hasTxns ? 'cursor-pointer hover:bg-slate-50 rounded -mx-1 px-1' : ''}`} onClick={hasTxns ? () => setOpen(!open) : undefined}>
+                      <span className={`flex-1 ${bold ? 'text-xs font-black text-slate-800' : 'text-[11px] text-slate-600'} truncate`}>
+                        {label}{hasTxns && <span className="text-[9px] text-slate-400 ml-1">({txns.length})</span>}
+                      </span>
+                      <span className={`w-[80px] text-[11px] ${bold ? 'font-black text-slate-700' : 'text-slate-500'} text-right tabular-nums`}>{budget ? fmt(Math.round(budget)) : '-'}</span>
+                      <span className={`w-[80px] text-[11px] ${bold ? 'font-black text-slate-800' : 'font-bold text-slate-700'} text-right tabular-nums`}>{actual ? fmt(Math.round(actual)) : '-'}</span>
+                    </div>
+                    {open && txns.length > 0 && (
+                      <div className="ml-6 mb-1 border-l-2 border-slate-200 pl-2 space-y-0.5">
+                        {txns.map((tx, i) => (
+                          <div key={i} className="flex items-center gap-1.5 text-[10px]">
+                            <span className="text-slate-400 font-mono w-10 shrink-0">{fmtDate(tx.date)}</span>
+                            <span className="text-slate-600 flex-1 truncate">{tx.title}</span>
+                            {tx.method && <span className="text-slate-400">{PAYMENT_METHODS.find(m => m.key === tx.method)?.emoji}</span>}
+                            <span className="font-bold text-slate-700 tabular-nums shrink-0">{fmt(Math.round(tx.amount))}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                );
+              };
+
+              // Helper: get ALL items for a group (show all even if empty)
+              const cfGroupAll = (groupKey: string) => {
+                const cats = expenseCats.filter(c => c.group === groupKey);
+                return cats.map(c => ({ cat: c, ...getBudgetActual(c.key, 'expense') }));
+              };
+
+              const opDetail = [...cfGroupAll('จำเป็น'), ...cfGroupAll('อื่นๆ')];
+              const invDetail = cfGroupAll('ลงทุน');
+              const debtDetail = cfGroupAll('ชำระหนี้');
+
+              // Income detail — all categories
+              const incDetail = incomeCats.map(c => ({ cat: c, ...getBudgetActual(c.key, 'income') }));
+
+              return (
+                <>
+                  <div className="flex items-center px-3 py-1">
+                    <span className="flex-1" />
+                    <span className="w-[80px] text-[9px] font-black text-slate-400 text-right">BUDGET</span>
+                    <span className="w-[80px] text-[9px] font-black text-slate-400 text-right">ACTUAL</span>
+                  </div>
+
+                  {/* 1. กระแสเงินสดจากการดำเนินชีวิต */}
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="bg-emerald-50 px-3 py-2 border-b border-emerald-100">
+                      <span className="text-xs font-black text-emerald-700">กระแสเงินสดจากการดำเนินชีวิต</span>
+                    </div>
+                    <div className="px-3 py-1">
+                      <CfRow label="รายรับ" budget={inc.budget} actual={inc.actual} bold />
+                      {incDetail.map(r => (
+                        <div key={r.cat.key}><CfRow label={`  ${r.cat.emoji} ${r.cat.label}`} budget={r.budget} actual={r.actual} indent catKey={r.cat.key} flow="income" /></div>
+                      ))}
+                      <div className="border-t border-slate-100 mt-1 pt-1">
+                        <CfRow label="(-) ค่าใช้จ่ายดำเนินชีวิต" budget={opExp.b} actual={opExp.a} bold />
+                        {opDetail.map(r => (
+                          <div key={r.cat.key}><CfRow label={`  ${r.cat.emoji} ${r.cat.label}`} budget={r.budget} actual={r.actual} indent catKey={r.cat.key} flow="expense" /></div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="px-3 py-2 bg-emerald-50 border-t border-emerald-200">
+                      <CfRow label="เงินสดสุทธิจากการดำเนินชีวิต" budget={opCashB} actual={opCashA} bold />
+                    </div>
+                  </div>
+
+                  {/* 2. กระแสเงินสดจากการลงทุน */}
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="bg-indigo-50 px-3 py-2 border-b border-indigo-100">
+                      <span className="text-xs font-black text-indigo-700">กระแสเงินสดจากการลงทุน</span>
+                    </div>
+                    <div className="px-3 py-1">
+                      {invDetail.map(r => (
+                        <div key={r.cat.key}><CfRow label={`(-) ${r.cat.emoji} ${r.cat.label}`} budget={r.budget} actual={r.actual} indent catKey={r.cat.key} flow="expense" /></div>
+                      ))}
+                    </div>
+                    <div className="px-3 py-2 bg-indigo-50 border-t border-indigo-200">
+                      <CfRow label="เงินสดสุทธิจากการลงทุน" budget={-invExp.b} actual={-invExp.a} bold />
+                    </div>
+                  </div>
+
+                  {/* 3. กระแสเงินสดจากการจัดหาเงิน (ชำระหนี้) */}
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="bg-amber-50 px-3 py-2 border-b border-amber-100">
+                      <span className="text-xs font-black text-amber-700">กระแสเงินสดจากการจัดหาเงิน</span>
+                    </div>
+                    <div className="px-3 py-1">
+                      {debtDetail.map(r => (
+                        <div key={r.cat.key}><CfRow label={`(-) ${r.cat.emoji} ${r.cat.label}`} budget={r.budget} actual={r.actual} indent catKey={r.cat.key} flow="expense" /></div>
+                      ))}
+                    </div>
+                    <div className="px-3 py-2 bg-amber-50 border-t border-amber-200">
+                      <CfRow label="เงินสดสุทธิจากการจัดหาเงิน" budget={-debtExp.b} actual={-debtExp.a} bold />
+                    </div>
+                  </div>
+
+                  {/* สรุป */}
+                  <div className={`rounded-xl border-2 p-3 ${netCashB >= 0 ? 'border-emerald-300 bg-emerald-50' : 'border-rose-300 bg-rose-50'}`}>
+                    <CfRow label="เงินสดเพิ่ม(ลด)สุทธิ" budget={netCashB} actual={netCashA} bold />
+                  </div>
+
+                  {/* ยอดเงินสดต้นงวด/ปลายงวด */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-3 space-y-1">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">สรุปเงินสด</p>
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-slate-600">เงินสดต้นงวด</span>
+                      <span className="font-bold text-slate-700 tabular-nums">{fmt(Math.round(totalAssets > 0 ? totalAssets - netCashA : 0))}</span>
+                    </div>
+                    <div className="flex justify-between text-[11px]">
+                      <span className={netCashA >= 0 ? 'text-emerald-600' : 'text-rose-600'}>{netCashA >= 0 ? '(+) เงินสดรับสุทธิ' : '(-) เงินสดจ่ายสุทธิ'}</span>
+                      <span className={`font-bold tabular-nums ${netCashA >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{netCashA >= 0 ? '+' : ''}{fmt(Math.round(netCashA))}</span>
+                    </div>
+                    <div className="flex justify-between text-xs font-black border-t border-slate-200 pt-1 mt-1">
+                      <span className="text-slate-800">เงินสดปลายงวด</span>
+                      <span className="text-slate-800 tabular-nums">{fmt(Math.round(totalAssets > 0 ? totalAssets : netCashA))}</span>
+                    </div>
+                  </div>
+
+                  <p className="text-[9px] text-slate-400 text-center">* กดที่รายการเพื่อดูรายละเอียดธุรกรรม</p>
+                </>
+              );
+            })()}
+            </>)}
           </>
         );
       })() : (
@@ -689,11 +925,14 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ expenses, setExpenses }
             <button onClick={() => { setShowAddPicker(false); openAdd('income'); }} className="w-full py-3.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold text-sm rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2">
               <ArrowUpCircle className="w-5 h-5" /> รายรับ
             </button>
-            <button onClick={() => { setShowAddPicker(false); openAdd('expense'); }} className="w-full py-3.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-sm rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2">
+            <button onClick={() => { setShowAddPicker(false); openAdd('expense', 'จำเป็น'); }} className="w-full py-3.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-sm rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2">
               <ArrowDownCircle className="w-5 h-5" /> รายจ่าย
             </button>
-            <button onClick={() => { setShowAddPicker(false); openAddDebt(); }} className="w-full py-3.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 font-bold text-sm rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2">
+            <button onClick={() => { setShowAddPicker(false); openAdd('expense', 'ชำระหนี้'); }} className="w-full py-3.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 font-bold text-sm rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2">
               🏦 ชำระหนี้
+            </button>
+            <button onClick={() => { setShowAddPicker(false); openAdd('expense', 'ลงทุน'); }} className="w-full py-3.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold text-sm rounded-xl transition-all active:scale-[0.98] flex items-center justify-center gap-2">
+              📊 เงินลงทุน/ออม
             </button>
             <button onClick={() => setShowAddPicker(false)} className="w-full py-2.5 text-slate-400 font-bold text-sm">ยกเลิก</button>
           </div>
@@ -765,13 +1004,17 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ expenses, setExpenses }
                 ) : (
                   /* Expense — tab + checkbox */
                   (() => {
-                    const activeGroup = form.category ? (EXPENSE_GROUPS.find(g => expenseCats.filter(c => c.group === g.key).some(c => c.key === form.category))?.key || activeExpTab) : activeExpTab;
+                    // Which groups to show in tabs
+                    const visibleGroups = lockedGroup
+                      ? (lockedGroup === 'จำเป็น' ? EXPENSE_GROUPS.filter(g => g.key === 'จำเป็น' || g.key === 'อื่นๆ') : EXPENSE_GROUPS.filter(g => g.key === lockedGroup))
+                      : EXPENSE_GROUPS;
+                    const activeGroup = form.category ? (visibleGroups.find(g => expenseCats.filter(c => c.group === g.key).some(c => c.key === form.category))?.key || activeExpTab) : activeExpTab;
                     const tabItems = expenseCats.filter(c => c.group === activeGroup);
                     return (
                       <div className="space-y-2">
-                        {/* Tab bar */}
-                        <div className="flex border-b border-slate-200 overflow-x-auto scrollbar-hide">
-                          {EXPENSE_GROUPS.map(grp => {
+                        {/* Tab bar — hide if only 1 group */}
+                        {visibleGroups.length > 1 && <div className="flex border-b border-slate-200 overflow-x-auto scrollbar-hide">
+                          {visibleGroups.map(grp => {
                             const isActive = grp.key === activeGroup;
                             return (
                               <button key={grp.key} onClick={() => {
@@ -786,7 +1029,7 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ expenses, setExpenses }
                               </button>
                             );
                           })}
-                        </div>
+                        </div>}
                         {/* Checkbox items in active tab */}
                         <div className="space-y-0.5">
                           {tabItems.map(c => (
@@ -936,6 +1179,119 @@ const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ expenses, setExpenses }
               </button>
             </div>
         </div>,
+      document.body)}
+
+      {/* ===== Balance Sheet Drill-down ===== */}
+      {balanceDrill && createPortal(
+        <div className="fixed inset-0 z-[70] bg-white overflow-y-auto">
+          <div className={`sticky top-0 z-10 flex items-center justify-between p-4 border-b ${balanceDrill === 'asset' ? 'bg-blue-50 border-blue-100' : 'bg-amber-50 border-amber-100'}`}>
+            <h3 className="font-bold text-slate-800">{balanceDrill === 'asset' ? '📊 สินทรัพย์' : '📋 หนี้สิน'}</h3>
+            <button onClick={() => { setBalanceDrill(null); setBalanceForm(null); }} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500"><X className="w-4 h-4" /></button>
+          </div>
+          <div className="p-4 space-y-4 pb-24">
+            {(balanceDrill === 'asset' ? ['หมุนเวียน', 'ลงทุน', 'ถาวร'] : ['ระยะสั้น', 'ระยะยาว']).map(group => {
+              const groupCats = BALANCE_CATEGORIES.filter(c => c.side === balanceDrill && c.group === group);
+              const groupItems = balanceItems.filter(b => groupCats.some(c => c.key === b.category));
+              return (
+                <div key={group}>
+                  <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${balanceDrill === 'asset' ? 'text-blue-500' : 'text-amber-600'}`}>{group}</p>
+                  <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-50">
+                    {groupItems.map(b => {
+                      const bc = balCatMap.get(b.category);
+                      return (
+                        <div key={b.id} className="px-3 py-2.5 flex items-center gap-2">
+                          <span className="text-sm">{bc?.emoji}</span>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-bold text-slate-700">{b.title}</span>
+                            {b.notes && <p className="text-[10px] text-slate-400">{b.notes}</p>}
+                          </div>
+                          <span className="text-sm font-black text-slate-800 tabular-nums shrink-0">{fmt(Math.round(b.amount))}</span>
+                          <button onClick={() => setBalanceForm({ id: b.id, category: b.category, title: b.title, amount: String(b.amount), notes: b.notes || '' })} className="p-1 hover:bg-slate-100 rounded text-slate-300 hover:text-blue-500"><Edit3 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => deleteBalanceItem(b.id)} className="p-1 hover:bg-rose-50 rounded text-slate-300 hover:text-rose-500"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                      );
+                    })}
+                    {groupItems.length === 0 && (
+                      <div className="px-3 py-3 text-xs text-slate-400 text-center">ยังไม่มีรายการ</div>
+                    )}
+                  </div>
+                  {/* Quick add buttons for this group */}
+                  <div className="flex gap-1.5 flex-wrap mt-2">
+                    {groupCats.filter(c => !groupItems.some(b => b.category === c.key)).map(c => (
+                      <button key={c.key} onClick={() => setBalanceForm({ category: c.key, title: c.label, amount: '', notes: '' })} className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border border-dashed transition-all ${balanceDrill === 'asset' ? 'border-blue-200 text-blue-500 hover:bg-blue-50' : 'border-amber-200 text-amber-600 hover:bg-amber-50'}`}>
+                        {c.emoji} + {c.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>,
+      document.body)}
+
+      {/* Balance form popup */}
+      {balanceForm && createPortal((() => {
+        const bc = balCatMap.get(balanceForm.category);
+        const isLend = balanceForm.category.startsWith('lend_') || balanceForm.category.startsWith('borrow_');
+        const isBank = balanceForm.category.startsWith('bank_') || balanceForm.category === 'credit_card' || balanceForm.category === 'cash_card' || balanceForm.category.endsWith('_loan');
+        const isEwallet = balanceForm.category === 'ewallet_balance';
+        const titleLabel = isLend ? 'ชื่อคน' : isBank ? 'ธนาคาร/สถาบัน' : isEwallet ? 'ชื่อ Wallet' : 'ชื่อรายการ';
+        const suggestions = getMergedSuggestions(balanceForm.category);
+        const amountLabel = bc?.side === 'liability' ? 'ยอดหนี้คงเหลือ (บาท)' : 'ยอดคงเหลือ (บาท)';
+
+        return (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-slate-800">{balanceForm.id ? 'แก้ไข' : 'เพิ่ม'} {bc?.emoji} {bc?.label}</h3>
+                <button onClick={() => setBalanceForm(null)} className="p-1.5 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500"><X className="w-4 h-4" /></button>
+              </div>
+
+              {/* Title with suggestions */}
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1 block">{titleLabel}</label>
+                <div className="flex gap-1.5 flex-wrap mb-2">
+                  {suggestions.map(s => (
+                    <button key={s} onClick={() => setBalanceForm({ ...balanceForm, title: s })} className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${balanceForm.title === s ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                      {s}
+                    </button>
+                  ))}
+                  {showAddBank ? (
+                    <div className="flex gap-1 items-center w-full mt-1">
+                      <input value={newBankName} onChange={e => setNewBankName(e.target.value)} placeholder={isLend ? 'ชื่อคน' : isBank ? 'ชื่อธนาคาร' : 'ชื่อ'} className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" autoFocus onKeyDown={e => e.key === 'Enter' && addCustomSuggestion(balanceForm.category)} />
+                      <button onClick={() => addCustomSuggestion(balanceForm.category)} className="px-3 py-1.5 bg-slate-700 text-white text-xs font-bold rounded-lg">เพิ่ม</button>
+                      <button onClick={() => setShowAddBank(false)} className="p-1 text-slate-400"><X className="w-4 h-4" /></button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setShowAddBank(true)} className="px-2.5 py-1 rounded-lg text-[11px] font-bold border border-dashed border-slate-300 text-slate-400 hover:bg-slate-50">
+                      <Plus className="w-3 h-3 inline" /> เพิ่ม
+                    </button>
+                  )}
+                </div>
+                <input value={balanceForm.title} onChange={e => setBalanceForm({ ...balanceForm, title: e.target.value })} placeholder={isLend ? 'เช่น สมชาย, น้องเอ...' : isBank ? 'เช่น กสิกร, SCB...' : 'ระบุชื่อ'} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              </div>
+
+              {/* Amount */}
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1 block">{amountLabel}</label>
+                <input type="number" inputMode="decimal" value={balanceForm.amount} onChange={e => setBalanceForm({ ...balanceForm, amount: e.target.value })} placeholder="0" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-lg font-black text-center focus:outline-none focus:ring-2 focus:ring-slate-400" autoFocus />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1 block">หมายเหตุ</label>
+                <input value={balanceForm.notes} onChange={e => setBalanceForm({ ...balanceForm, notes: e.target.value })} placeholder={isLend ? 'วันที่ให้ยืม, เหตุผล...' : 'ไม่บังคับ'} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
+              </div>
+
+              <div className="flex gap-2">
+                <button onClick={() => setBalanceForm(null)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl">ยกเลิก</button>
+                <button onClick={saveBalanceItem} disabled={!balanceForm.title.trim() || !balanceForm.amount} className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-sm rounded-xl disabled:opacity-40">บันทึก</button>
+              </div>
+            </div>
+          </div>
+        );
+      })(),
       document.body)}
 
       {/* ===== Drill-down popup — show items in a category ===== */}

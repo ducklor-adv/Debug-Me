@@ -47,7 +47,12 @@
       "Bash(git -C e:/Debugme commit -m \"$\\(cat <<''EOF''\nSwitch Planner slots from task groups to categories, add sleep & 24h coverage\n\n- DailyPlanner slot form now selects categories instead of individual task groups\n- Added resolveSlotInfo/getGroupKeysForSlot for category-aware slot display & filtering\n- Added ''sleep'' category \\(🌙 นอน\\) with indigo color theme\n- Default templates now cover full 24h \\(00:00-00:00\\) with sleep bookends\n- Migration: auto-reset old group-key or non-24h templates to new defaults\n- TaskManager: งานด่วน/นัดหมาย folder tabs, task persistence fix \\(onImmediateSave\\)\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git -C e:/Debugme push)",
       "Bash(git -C e:/Debugme push --set-upstream origin main)",
-      "Bash(npx:*)"
+      "Bash(npx:*)",
+      "Bash(git log:*)",
+      "Bash(wc:*)",
+      "Bash(ls -la /e/Debugme/*.ts /e/Debugme/*.tsx)",
+      "Bash(pip install:*)",
+      "Bash(python3 -c \":*)"
     ]
   }
 }
