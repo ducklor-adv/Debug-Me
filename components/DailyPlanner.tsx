@@ -189,6 +189,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       setScheduleTemplates(prev => {
         const resolved = getScheduleForDay(prev, dow);
         if (resolved.source === 'custom' && resolved.templateId) {
+          // Editing a custom template overlay — edit the custom template itself
           const newSlots = updater(resolved.slots || []);
           return {
             ...prev,
@@ -196,24 +197,21 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               t.id === resolved.templateId ? { ...t, slots: newSlots } : t
             ),
           };
-        } else if (resolved.source === 'cleared') {
-          // Day was cleared via override — remove override and set base to new slots
-          const baseKey: DayType = dow === 0 ? 'sunday' : dow === 6 ? 'saturday' : 'workday';
-          const newSlots = updater([]);
-          const newOverrides = { ...(prev.dayOverrides || {}) };
-          delete newOverrides[String(dow)];
+        } else {
+          // For 'base', 'dayPlan', or 'cleared' — write to dayPlans[dow]
+          const currentSlots = resolved.slots || [];
+          const newSlots = updater(currentSlots);
           return {
             ...prev,
-            [baseKey]: newSlots,
-            dayOverrides: Object.keys(newOverrides).length > 0 ? newOverrides : {},
+            dayPlans: {
+              ...(prev.dayPlans || {}),
+              [String(dow)]: newSlots,
+            },
           };
-        } else {
-          const baseKey: DayType = dow === 0 ? 'sunday' : dow === 6 ? 'saturday' : 'workday';
-          const newSlots = updater(prev[baseKey] || []);
-          return { ...prev, [baseKey]: newSlots };
         }
       });
     } else {
+      // Custom tab: edit the custom template directly
       setScheduleTemplates(prev => ({
         ...prev,
         customTemplates: (prev.customTemplates || []).map(t =>
@@ -304,7 +302,9 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         id: `custom-${Date.now()}`,
         name,
         emoji: customForm.emoji,
-        slots: [],
+        slots: saveAsCustomSlots
+          ? saveAsCustomSlots.map(s => ({ ...s, id: `${s.id}-copy-${Date.now()}` }))
+          : [],
       };
       setScheduleTemplates(prev => ({
         ...prev,
@@ -312,7 +312,9 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       }));
       setActiveTab(newTemplate.id);
     }
+    setSaveAsCustomSlots(null);
     setCustomFormOpen(false);
+    setScheduleDirty(true);
   };
   const deleteCustomTemplate = (id: string) => {
     setScheduleTemplates(prev => {
@@ -341,6 +343,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       ...prev,
       dayOverrides: { ...(prev.dayOverrides || {}), [String(dayOfWeek)]: templateId },
     }));
+    setScheduleDirty(true);
   };
 
   const removeCustomFromDay = (dayOfWeek: number) => {
@@ -352,6 +355,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         dayOverrides: Object.keys(newOverrides).length > 0 ? newOverrides : {},
       };
     });
+    setScheduleDirty(true);
   };
 
   // Apply/remove custom template override for a specific date
@@ -360,6 +364,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       ...prev,
       dateOverrides: { ...(prev.dateOverrides || {}), [dateStr]: templateId },
     }));
+    setScheduleDirty(true);
   };
 
   const removeCustomFromDate = (dateStr: string) => {
@@ -371,6 +376,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         dateOverrides: Object.keys(newOverrides).length > 0 ? newOverrides : {},
       };
     });
+    setScheduleDirty(true);
   };
 
   // State for custom apply mode (day vs date) + pending selections
@@ -503,6 +509,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [confirmReload, setConfirmReload] = useState(false);
   const [showCustomPicker, setShowCustomPicker] = useState(false);
+  const [saveAsCustomSlots, setSaveAsCustomSlots] = useState<TimeSlot[] | null>(null);
 
   // Task Picker for adding tasks to a slot
   const [pickerSlot, setPickerSlot] = useState<TimeSlot | null>(null);
@@ -998,6 +1005,9 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
             {resolvedDay?.source === 'cleared' && (
               <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-600 text-[9px] font-bold">Cleared</span>
             )}
+            {resolvedDay?.source === 'dayPlan' && (
+              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-600 text-[9px] font-bold">แก้ไขแล้ว</span>
+            )}
           </div>
         )}
         {isDayTab && !isShowingToday && (
@@ -1007,6 +1017,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
             </span>
           ) : resolvedDay?.source === 'cleared' ? (
             <span className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-600 text-[10px] font-bold">Cleared</span>
+          ) : resolvedDay?.source === 'dayPlan' ? (
+            <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-600 text-[10px] font-bold">แก้ไขแล้ว</span>
           ) : (
             <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${activeDayColor ? `${activeDayColor.activeBg} text-white` : 'bg-blue-100 text-blue-600'}`}>Daily Template</span>
           )
@@ -1024,13 +1036,15 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               ? <>{resolvedDay.templateEmoji} {resolvedDay.templateName} <span className="text-[9px] text-slate-400">({resolvedDay.overrideType === 'date' ? 'เฉพาะวันนี้' : 'ทุกสัปดาห์'})</span></>
               : resolvedDay.source === 'cleared'
               ? <span className="text-rose-500">🗑️ เคลียร์แล้ว</span>
+              : resolvedDay.source === 'dayPlan'
+              ? <>📝 ตารางวัน{dayNames[parseInt(activeTab)]} <span className="text-[9px] text-slate-400">(แก้ไขแล้ว)</span></>
               : <>📋 {parseInt(activeTab) >= 1 && parseInt(activeTab) <= 5 ? 'ตารางวันทำงาน' : parseInt(activeTab) === 6 ? 'ตารางวันเสาร์' : 'ตารางวันอาทิตย์'}</>
             }
           </span>
           <span className="text-[10px] font-bold text-slate-400">
             กิจกรรมรวม {formatDuration(totalAllMins)} ทั้งวัน
           </span>
-          {resolvedDay.source === 'custom' && (
+          {(resolvedDay.source === 'custom' || resolvedDay.source === 'cleared') && (
             <button
               onClick={() => {
                 if (resolvedDay.overrideType === 'date') {
@@ -1042,6 +1056,25 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-400 hover:text-rose-500 hover:border-rose-200 transition-colors"
             >
               กลับค่าเดิม
+            </button>
+          )}
+          {resolvedDay.source === 'dayPlan' && (
+            <button
+              onClick={() => {
+                const dow = parseInt(activeTab);
+                setScheduleTemplates(prev => {
+                  const newDayPlans = { ...(prev.dayPlans || {}) };
+                  delete newDayPlans[String(dow)];
+                  return {
+                    ...prev,
+                    dayPlans: Object.keys(newDayPlans).length > 0 ? newDayPlans : undefined,
+                  };
+                });
+                setScheduleDirty(true);
+              }}
+              className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-400 hover:text-amber-500 hover:border-amber-200 transition-colors"
+            >
+              กลับตาราง Default
             </button>
           )}
         </div>
@@ -1310,6 +1343,20 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                 className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-600 text-[11px] font-bold hover:bg-blue-100 transition-colors active:scale-95"
               >
                 <Layers className="w-3.5 h-3.5" /> ใช้ Custom Template
+              </button>
+            )}
+            {isDayTab && schedule.length > 0 && (
+              <button
+                onClick={() => {
+                  const dayLabel = dayNames[parseInt(activeTab)];
+                  setEditingCustomId(null);
+                  setCustomForm({ name: `ตาราง${dayLabel}`, emoji: '💾' });
+                  setSaveAsCustomSlots([...schedule]);
+                  setCustomFormOpen(true);
+                }}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-violet-200 bg-violet-50 text-violet-600 text-[11px] font-bold hover:bg-violet-100 transition-colors active:scale-95"
+              >
+                <Save className="w-3.5 h-3.5" /> บันทึกเป็น Custom Day
               </button>
             )}
             {isDayTab && defaultScheduleTemplates && (
@@ -1820,11 +1867,18 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               <button onClick={() => {
                 if (isDayTab) {
                   const dow = parseInt(activeTab);
-                  // Use override mechanism (same as Custom Template) — doesn't modify base array
-                  setScheduleTemplates(prev => ({
-                    ...prev,
-                    dayOverrides: { ...(prev.dayOverrides || {}), [String(dow)]: CLEAR_OVERRIDE },
-                  }));
+                  setScheduleTemplates(prev => {
+                    const newDayOverrides = { ...(prev.dayOverrides || {}) };
+                    delete newDayOverrides[String(dow)];
+                    return {
+                      ...prev,
+                      dayPlans: {
+                        ...(prev.dayPlans || {}),
+                        [String(dow)]: [],
+                      },
+                      dayOverrides: Object.keys(newDayOverrides).length > 0 ? newDayOverrides : {},
+                    };
+                  });
                   setScheduleDirty(true);
                 } else {
                   // Custom tab: directly clear the template's slots
@@ -1847,15 +1901,21 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               <button onClick={() => setConfirmReload(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm rounded-xl transition-colors">ยกเลิก</button>
               <button onClick={() => {
                 const dow = parseInt(activeTab);
-                const baseKey: DayType = dow === 0 ? 'sunday' : dow === 6 ? 'saturday' : 'workday';
-                const defaultSlots = defaultScheduleTemplates[baseKey] || [];
-                setScheduleForTab(() => [...defaultSlots]);
-                // Remove any override (custom or __clear__)
-                const resolved = getScheduleForDay(scheduleTemplates, dow, selectedDateStr);
-                if (resolved.source === 'custom' || resolved.source === 'cleared') {
-                  if (resolved.overrideType === 'date') removeCustomFromDate(selectedDateStr);
-                  else removeCustomFromDay(dow);
-                }
+                setScheduleTemplates(prev => {
+                  const newDayPlans = { ...(prev.dayPlans || {}) };
+                  delete newDayPlans[String(dow)];
+                  const newDayOverrides = { ...(prev.dayOverrides || {}) };
+                  delete newDayOverrides[String(dow)];
+                  const newDateOverrides = { ...(prev.dateOverrides || {}) };
+                  delete newDateOverrides[selectedDateStr];
+                  return {
+                    ...prev,
+                    dayPlans: Object.keys(newDayPlans).length > 0 ? newDayPlans : undefined,
+                    dayOverrides: Object.keys(newDayOverrides).length > 0 ? newDayOverrides : {},
+                    dateOverrides: Object.keys(newDateOverrides).length > 0 ? newDateOverrides : {},
+                  };
+                });
+                setScheduleDirty(true);
                 setConfirmReload(false);
               }} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm rounded-xl transition-colors">โหลด Default</button>
             </div>
@@ -1904,11 +1964,16 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
           <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl animate-fadeIn overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/50">
               <h3 className="font-bold text-slate-800 text-base">{editingCustomId ? 'แก้ไข Template' : 'สร้าง Template ใหม่'}</h3>
-              <button onClick={() => setCustomFormOpen(false)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
+              <button onClick={() => { setCustomFormOpen(false); setSaveAsCustomSlots(null); }} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="p-5 space-y-4">
+              {saveAsCustomSlots && (
+                <div className="bg-violet-50 border border-violet-200 rounded-xl px-3 py-2 text-[11px] font-bold text-violet-600">
+                  💾 คัดลอก {saveAsCustomSlots.length} slots จากตารางปัจจุบัน
+                </div>
+              )}
               <div>
                 <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ชื่อ Template</label>
                 <input
@@ -1938,7 +2003,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               </div>
             </div>
             <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
-              <button onClick={() => setCustomFormOpen(false)} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-sm rounded-xl transition-colors">ยกเลิก</button>
+              <button onClick={() => { setCustomFormOpen(false); setSaveAsCustomSlots(null); }} className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-sm rounded-xl transition-colors">ยกเลิก</button>
               <button
                 onClick={saveCustomTemplate}
                 disabled={!customForm.name.trim()}

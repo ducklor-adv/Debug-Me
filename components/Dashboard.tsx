@@ -48,6 +48,8 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
   const [focusRunning, setFocusRunning] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const focusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+  const [showFocusPicker, setShowFocusPicker] = useState(false);
 
   const focusStartedAtRef = useRef<string | null>(null);
 
@@ -66,13 +68,13 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
             // Save focus session on completion
             if (onSaveFocusSession) {
               const planned = focusMode === 'focus' ? 25 * 60 : 5 * 60;
-              const activeTask = activeTaskId ? todayTasks.find(t => t.id === activeTaskId) : slotTasks[0];
+              const focusedTask = focusTaskId ? todayTasks.find(t => t.id === focusTaskId) : undefined;
               onSaveFocusSession({
                 id: `focus-${Date.now()}`,
                 date: todayStr,
-                taskId: activeTask?.id,
-                taskTitle: activeTask?.title,
-                category: activeTask?.category,
+                taskId: focusedTask?.id,
+                taskTitle: focusedTask?.title,
+                category: focusedTask?.category,
                 mode: focusMode,
                 durationPlanned: planned,
                 durationActual: planned,
@@ -104,6 +106,63 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
     setFocusSeconds(mode === 'focus' ? 25 * 60 : 5 * 60);
   };
 
+  // Start focus for a specific task
+  const startFocusForTask = (taskId: string) => {
+    setFocusTaskId(taskId);
+    setShowFocusPicker(false);
+    setShowFocus(true);
+  };
+
+  // Handle Focus button click — if multiple tasks in slot, show picker
+  const handleFocusClick = (taskId?: string) => {
+    if (taskId) {
+      startFocusForTask(taskId);
+      return;
+    }
+    // No specific task — check how many undone tasks in current slot
+    const undoneTasks = slotTasks.filter(t => !checkedTasks.has(t.id));
+    if (undoneTasks.length === 0) {
+      setFocusTaskId(null);
+      setShowFocus(true);
+    } else if (undoneTasks.length === 1) {
+      startFocusForTask(undoneTasks[0].id);
+    } else {
+      setShowFocusPicker(true);
+    }
+  };
+
+  // Stop focus & save partial session
+  const stopFocusAndSave = () => {
+    if (onSaveFocusSession && focusStartedAtRef.current && focusMode === 'focus') {
+      const planned = 25 * 60;
+      const actual = planned - focusSeconds;
+      if (actual > 30) { // Only save if focused > 30 seconds
+        const focusedTask = focusTaskId ? todayTasks.find(t => t.id === focusTaskId) : undefined;
+        onSaveFocusSession({
+          id: `focus-${Date.now()}`,
+          date: todayStr,
+          taskId: focusedTask?.id,
+          taskTitle: focusedTask?.title,
+          category: focusedTask?.category,
+          mode: 'focus',
+          durationPlanned: planned,
+          durationActual: actual,
+          completed: false,
+          startedAt: focusStartedAtRef.current,
+          completedAt: new Date().toISOString(),
+          slotStart: currentSlot?.startTime,
+          slotEnd: currentSlot?.endTime,
+        });
+      }
+    }
+    setFocusRunning(false);
+    setFocusSeconds(focusMode === 'focus' ? 25 * 60 : 5 * 60);
+    focusStartedAtRef.current = null;
+    setShowFocus(false);
+    setFocusTaskId(null);
+  };
+
+
   const focusMM = Math.floor(focusSeconds / 60).toString().padStart(2, '0');
   const focusSS = (focusSeconds % 60).toString().padStart(2, '0');
 
@@ -124,6 +183,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
   // Today's tasks
   const todayStr = new Date().toISOString().split('T')[0];
   const todayTasks = getTasksForDate(tasks, todayStr);
+  const focusedTaskObj = focusTaskId ? todayTasks.find(t => t.id === focusTaskId) : undefined;
 
   // Today's appointments (นัดหมาย) — only those with startDate set to today
   const todayAppointments = tasks
@@ -523,14 +583,54 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
         </div>
       )}
 
+      {/* ===== Focus Task Picker ===== */}
+      {showFocusPicker && currentSlot && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full shadow-2xl border border-indigo-100 animate-fadeIn overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-indigo-50/50">
+              <div className="flex items-center gap-2">
+                <Brain className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-bold text-slate-800 text-base">เลือก Task ที่จะ Focus</h3>
+              </div>
+              <button onClick={() => setShowFocusPicker(false)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              {slotTasks.filter(t => !checkedTasks.has(t.id)).map(task => (
+                <button
+                  key={task.id}
+                  onClick={() => startFocusForTask(task.id)}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-xl transition-all active:scale-[0.98]"
+                >
+                  <Play className="w-4 h-4 text-indigo-500 shrink-0" />
+                  <span className="text-sm font-bold text-slate-700 truncate flex-1 text-left">{task.title}</span>
+                  {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration}น.</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ===== Focus Timer Popup ===== */}
       {showFocus && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl max-w-sm w-full shadow-2xl border border-emerald-100 animate-fadeIn overflow-hidden relative">
-            <button onClick={() => setShowFocus(false)} className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors z-10">
+            <button onClick={() => { if (focusRunning) { stopFocusAndSave(); } else { setShowFocus(false); setFocusTaskId(null); } }} className="absolute top-4 right-4 p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-colors z-10">
               <X className="w-4 h-4" />
             </button>
-            <div className="flex items-center justify-center gap-2 pt-8 pb-4">
+
+            {/* Focused task indicator */}
+            {focusedTaskObj && (
+              <div className="mx-6 mt-6 px-4 py-2.5 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center gap-2">
+                <Brain className="w-4 h-4 text-indigo-500 shrink-0" />
+                <span className="text-xs font-bold text-indigo-700 truncate">{focusedTaskObj.title}</span>
+                {focusRunning && <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse shrink-0 ml-auto" />}
+              </div>
+            )}
+
+            <div className="flex items-center justify-center gap-2 pt-6 pb-4">
               <button onClick={() => switchFocusMode('focus')} className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold transition-all ${focusMode === 'focus' ? 'bg-slate-800 text-white shadow-lg' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                 <Brain className="w-4 h-4" /> Focus
               </button>
@@ -542,11 +642,13 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
               <div className="text-7xl font-black text-slate-800 tracking-tight tabular-nums">
                 {focusMM}<span className="text-slate-300">:</span>{focusSS}
               </div>
-              <p className="mt-4 text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                {focusMode === 'focus' ? (currentSlot ? `Deep Work: ${resolveSlotInfo(currentSlot.groupKey).label}` : 'Deep Work: Coding Time') : 'Break Time'}
+              <p className={`mt-4 text-sm font-black tracking-wide ${focusMode === 'focus' ? 'text-indigo-600' : 'text-emerald-600'}`}>
+                {focusMode === 'focus'
+                  ? (focusedTaskObj ? `🎯 ${focusedTaskObj.title}` : 'Deep Work')
+                  : 'Break Time'}
               </p>
             </div>
-            <div className="flex items-center justify-center gap-5 pb-10">
+            <div className="flex items-center justify-center gap-5 pb-6">
               <button onClick={focusReset} className="w-12 h-12 bg-slate-100 hover:bg-slate-200 rounded-xl flex items-center justify-center text-slate-500 transition-all active:scale-90">
                 <RotateCcw className="w-5 h-5" />
               </button>
@@ -557,6 +659,14 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
                 {soundOn ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
               </button>
             </div>
+            {/* Stop & save button when running */}
+            {focusRunning && focusMode === 'focus' && (
+              <div className="px-6 pb-6">
+                <button onClick={stopFocusAndSave} className="w-full py-3 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 font-bold text-sm rounded-xl transition-colors">
+                  หยุด & บันทึกเวลา
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -655,10 +765,17 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
                                 </span>
                               )}
                               {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400">{task.estimatedDuration}น.</span>}
-                              {!isDone && (
+                              {focusRunning && focusTaskId === task.id && (
+                                <span className="text-[9px] font-black bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full animate-pulse flex items-center gap-1">
+                                  <Brain className="w-2.5 h-2.5" /> Focusing {focusMM}:{focusSS}
+                                </span>
+                              )}
+                              {!isDone && !(focusRunning && focusTaskId === task.id) && (
                                 <>
                                   <span className="text-slate-200">|</span>
-                                  <button onClick={() => setShowFocus(true)} className="text-[11px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors">Focus</button>
+                                  <button onClick={() => handleFocusClick(task.id)} className="text-[11px] font-bold text-indigo-500 hover:text-indigo-700 transition-colors flex items-center gap-0.5">
+                                    <Play className="w-3 h-3" /> Focus
+                                  </button>
                                   <button onClick={() => handleMarkAsDoneClick(task.id)} className="text-[11px] font-bold text-emerald-500 hover:text-emerald-700 transition-colors">Done</button>
                                   <button onClick={() => handleSkipClick(task.id)} className="text-[11px] font-bold text-amber-500 hover:text-amber-700 transition-colors">Skip</button>
                                 </>

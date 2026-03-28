@@ -1,14 +1,14 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Task, TaskGroup, DailyRecord, ScheduleTemplates, GROUP_COLORS, TimeSlot, getTasksForDate } from '../types';
-import { getDailyRecordsInRange } from '../lib/firestoreDB';
+import { Task, TaskGroup, DailyRecord, FocusSession, ScheduleTemplates, GROUP_COLORS, TimeSlot, getTasksForDate, getScheduleForDay } from '../types';
+import { getDailyRecordsInRange, getFocusSessionsInRange } from '../lib/firestoreDB';
 import {
   BarChart, Bar,
   PieChart, Pie, Cell,
   AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, Flame, CheckCircle2, Clock, Target, BarChart3, FileText, Download } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Flame, CheckCircle2, Clock, Target, BarChart3, FileText, Download, Brain } from 'lucide-react';
 
 // Tailwind color → hex for Recharts
 const COLOR_HEX: Record<string, string> = {
@@ -101,8 +101,10 @@ const Analytics: React.FC<AnalyticsProps> = ({
 }) => {
   const [dateRange, setDateRange] = useState<DateRange>('7d');
   const [records, setRecords] = useState<DailyRecord[]>([]);
+  const [focusSessions, setFocusSessions] = useState<FocusSession[]>([]);
   const [loading, setLoading] = useState(true);
   const cacheRef = useRef<Map<string, DailyRecord[]>>(new Map());
+  const focusCacheRef = useRef<Map<string, FocusSession[]>>(new Map());
 
   const today = new Date();
   const todayS = dateStr(today);
@@ -116,19 +118,26 @@ const Analytics: React.FC<AnalyticsProps> = ({
   useEffect(() => {
     const fetchData = async () => {
       const cacheKey = dateRange;
-      if (cacheRef.current.has(cacheKey)) {
+      if (cacheRef.current.has(cacheKey) && focusCacheRef.current.has(cacheKey)) {
         setRecords(cacheRef.current.get(cacheKey)!);
+        setFocusSessions(focusCacheRef.current.get(cacheKey)!);
         setLoading(false);
         return;
       }
       setLoading(true);
       try {
-        const data = await getDailyRecordsInRange(userId, prevStartDate, todayS);
+        const [data, focusData] = await Promise.all([
+          getDailyRecordsInRange(userId, prevStartDate, todayS),
+          getFocusSessionsInRange(userId, prevStartDate, todayS),
+        ]);
         cacheRef.current.set(cacheKey, data);
+        focusCacheRef.current.set(cacheKey, focusData);
         setRecords(data);
+        setFocusSessions(focusData);
       } catch (err) {
         console.error('Analytics fetch error:', err);
         setRecords([]);
+        setFocusSessions([]);
       }
       setLoading(false);
     };
@@ -260,9 +269,12 @@ const Analytics: React.FC<AnalyticsProps> = ({
         }
       });
     };
-    addSlots(scheduleTemplates.workday || [], days.workdays);
-    addSlots(scheduleTemplates.saturday || [], days.saturdays);
-    addSlots(scheduleTemplates.sunday || [], days.sundays);
+    // Resolve per-day schedules (respects dayPlans + overrides)
+    for (let dow = 0; dow < 7; dow++) {
+      const resolved = getScheduleForDay(scheduleTemplates, dow);
+      const dayCount = dow === 0 ? days.sundays : dow === 6 ? days.saturdays : Math.ceil(days.workdays / 5);
+      addSlots(resolved.slots || [], dayCount);
+    }
 
     const actualMap = new Map<string, number>();
     currentRecords.filter(r => r.completed && r.timeStart && r.timeEnd).forEach(r => {
@@ -390,6 +402,18 @@ const Analytics: React.FC<AnalyticsProps> = ({
           (r.attachments || []).map(a => `${a.type}:${a.label}`).join(' | '),
         ]),
       );
+
+      // 5. Focus Sessions (ALL from Firestore)
+      const allFocus = await getFocusSessionsInRange(userId, '2020-01-01', todayS);
+      allFocus.sort((a, b) => a.date.localeCompare(b.date) || (a.startedAt || '').localeCompare(b.startedAt || ''));
+      downloadCSV(`debugme-focus-${todayS}.csv`,
+        ['id', 'date', 'taskId', 'taskTitle', 'category', 'mode', 'durationPlanned', 'durationActual', 'completed', 'startedAt', 'completedAt', 'slotStart', 'slotEnd'],
+        allFocus.map(f => [
+          f.id, f.date, f.taskId || '', f.taskTitle || '', f.category || '',
+          f.mode, f.durationPlanned, f.durationActual, f.completed,
+          f.startedAt || '', f.completedAt || '', f.slotStart || '', f.slotEnd || '',
+        ]),
+      );
     } catch (err) {
       console.error('Export error:', err);
     }
@@ -403,6 +427,74 @@ const Analytics: React.FC<AnalyticsProps> = ({
     if (completionRate > 0) return 'ลองตั้งเป้าที่ 60% สัปดาห์หน้า — ทำได้!';
     return 'เริ่มทำกิจกรรมใน Planner เพื่อดูสถิติ';
   }, [completionRate]);
+
+  // ====== FOCUS SESSION ANALYTICS ======
+
+  const currentFocus = useMemo(() =>
+    focusSessions.filter(s => s.date >= startDate && s.date <= todayS),
+    [focusSessions, startDate, todayS]);
+
+  const prevFocus = useMemo(() =>
+    focusSessions.filter(s => s.date >= prevStartDate && s.date < startDate),
+    [focusSessions, prevStartDate, startDate]);
+
+  // Focus stats
+  const focusStats = useMemo(() => {
+    const sessions = currentFocus.filter(s => s.mode === 'focus');
+    const completed = sessions.filter(s => s.completed);
+    const totalMins = Math.round(sessions.reduce((s, f) => s + f.durationActual, 0) / 60);
+    const completionRate = sessions.length > 0 ? Math.round((completed.length / sessions.length) * 100) : 0;
+    return { sessions: sessions.length, completed: completed.length, totalMins, completionRate };
+  }, [currentFocus]);
+
+  const prevFocusStats = useMemo(() => {
+    const sessions = prevFocus.filter(s => s.mode === 'focus');
+    const completed = sessions.filter(s => s.completed);
+    const totalMins = Math.round(sessions.reduce((s, f) => s + f.durationActual, 0) / 60);
+    return { sessions: sessions.length, completed: completed.length, totalMins };
+  }, [prevFocus]);
+
+  // Focus time by task (top 8)
+  const focusByTask = useMemo(() => {
+    const map = new Map<string, { title: string; mins: number; sessions: number }>();
+    currentFocus.filter(s => s.mode === 'focus' && s.taskId).forEach(s => {
+      const key = s.taskId!;
+      const prev = map.get(key) || { title: s.taskTitle || 'Unknown', mins: 0, sessions: 0 };
+      prev.mins += Math.round(s.durationActual / 60);
+      prev.sessions++;
+      map.set(key, prev);
+    });
+    return Array.from(map.values())
+      .sort((a, b) => b.mins - a.mins)
+      .slice(0, 8);
+  }, [currentFocus]);
+
+  // Focus daily trend
+  const focusDailyData = useMemo(() => {
+    const grouped = new Map<string, number>();
+    currentFocus.filter(s => s.mode === 'focus').forEach(s => {
+      grouped.set(s.date, (grouped.get(s.date) || 0) + Math.round(s.durationActual / 60));
+    });
+    return getDateRange(startDate, todayS).map(d => {
+      const dt = new Date(d);
+      return { date: `${dt.getDate()}/${dt.getMonth() + 1}`, mins: grouped.get(d) || 0 };
+    });
+  }, [currentFocus, startDate, todayS]);
+
+  // Focus by hour of day
+  const focusHourlyData = useMemo(() => {
+    const buckets = new Array(18).fill(0); // 05:00 to 22:00
+    currentFocus.filter(s => s.mode === 'focus' && s.startedAt).forEach(s => {
+      const hour = new Date(s.startedAt).getHours();
+      if (hour >= 5 && hour < 23) buckets[hour - 5] += Math.round(s.durationActual / 60);
+    });
+    return buckets.map((mins, i) => ({
+      hour: `${String(i + 5).padStart(2, '0')}:00`,
+      mins,
+    }));
+  }, [currentFocus]);
+
+  const hasFocusData = currentFocus.filter(s => s.mode === 'focus').length > 0;
 
   // ====== RENDER ======
 
@@ -486,7 +578,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
       <div className="bg-white rounded-xl border border-slate-200 p-4">
         <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">แนวโน้มรายวัน</h4>
         <div className="h-48">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
             <BarChart data={dailyChartData} barSize={dateRange === '30d' ? 8 : dateRange === 'all' ? 4 : 16}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} interval={dateRange === '30d' ? 4 : dateRange === 'all' ? 29 : 0} />
@@ -506,7 +598,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
             <>
               <div className="h-52 flex items-center">
                 <div className="flex-1 h-full">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                     <PieChart>
                       <Pie data={categoryTimeData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={3} dataKey="value">
                         {categoryTimeData.map((c, i) => <Cell key={i} fill={c.color} />)}
@@ -537,7 +629,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
           <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">แผน vs จริง (ชม.)</h4>
           {planVsActualData.length > 0 ? (
             <div className="h-52">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                 <BarChart data={planVsActualData} layout="vertical" barSize={8}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                   <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
@@ -589,7 +681,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
       <div className="bg-white rounded-xl border border-slate-200 p-4">
         <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">ช่วงเวลาที่ทำได้ดี</h4>
         <div className="h-40">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
             <AreaChart data={hourlyData}>
               <defs>
                 <linearGradient id="hourGrad" x1="0" y1="0" x2="0" y2="1">
@@ -607,6 +699,115 @@ const Analytics: React.FC<AnalyticsProps> = ({
         </div>
       </div>
 
+      {/* ===== FOCUS ANALYTICS ===== */}
+      <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 flex items-center gap-2 mt-2">
+        <Brain className="w-5 h-5 text-indigo-600" />
+        <span className="text-xs font-black text-indigo-700 uppercase tracking-widest">Focus Analytics</span>
+      </div>
+
+      {hasFocusData ? (
+        <>
+          {/* Focus Stat Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <StatCard
+              icon={<Brain className="w-4 h-4 text-indigo-500" />}
+              title="Focus Sessions"
+              value={`${focusStats.sessions}`}
+              trend={trendStr(focusStats.sessions, prevFocusStats.sessions)}
+            />
+            <StatCard
+              icon={<Clock className="w-4 h-4 text-indigo-500" />}
+              title="เวลา Focus รวม"
+              value={fmtMins(focusStats.totalMins)}
+              trend={trendStr(focusStats.totalMins, prevFocusStats.totalMins)}
+            />
+            <StatCard
+              icon={<Target className="w-4 h-4 text-indigo-500" />}
+              title="อัตราสำเร็จ"
+              value={`${focusStats.completionRate}%`}
+              trend={focusStats.completionRate >= 80 ? 'ดีมาก' : focusStats.completionRate >= 50 ? 'ปานกลาง' : 'ต้องปรับปรุง'}
+              trendColor={focusStats.completionRate >= 80 ? 'emerald' : 'slate'}
+            />
+            <StatCard
+              icon={<Flame className="w-4 h-4 text-indigo-500" />}
+              title="เฉลี่ย/วัน"
+              value={fmtMins(Math.round(focusStats.totalMins / Math.max(1, new Set(currentFocus.filter(s => s.mode === 'focus').map(s => s.date)).size)))}
+              trend={`${new Set(currentFocus.filter(s => s.mode === 'focus').map(s => s.date)).size} วัน`}
+              trendColor="slate"
+            />
+          </div>
+
+          {/* Focus Time by Task */}
+          {focusByTask.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">Deep Work แต่ละ Task</h4>
+              <div className="space-y-2">
+                {focusByTask.map((t, i) => {
+                  const maxMins = focusByTask[0].mins;
+                  const pct = maxMins > 0 ? Math.round((t.mins / maxMins) * 100) : 0;
+                  return (
+                    <div key={i}>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-xs font-bold text-slate-700 truncate flex-1 mr-2">{t.title}</span>
+                        <span className="text-[10px] font-black text-indigo-600 shrink-0">{fmtMins(t.mins)} ({t.sessions} sessions)</span>
+                      </div>
+                      <div className="h-2 bg-indigo-50 rounded-full overflow-hidden">
+                        <div className="h-full bg-indigo-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Focus Daily Trend */}
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">Focus รายวัน (นาที)</h4>
+              <div className="h-40">
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                  <AreaChart data={focusDailyData}>
+                    <defs>
+                      <linearGradient id="focusGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} interval={dateRange === '30d' ? 4 : dateRange === 'all' ? 29 : 0} />
+                    <YAxis hide />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`${v} นาที`, 'Focus']} />
+                    <Area type="monotone" dataKey="mins" stroke="#6366f1" strokeWidth={2} fillOpacity={1} fill="url(#focusGrad)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Focus by Hour */}
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">ช่วงเวลาที่ Focus ได้ดี</h4>
+              <div className="h-40">
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                  <BarChart data={focusHourlyData} barSize={dateRange === '30d' ? 8 : 12}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 9 }} interval={2} />
+                    <YAxis hide />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`${v} นาที`, 'Focus']} />
+                    <Bar dataKey="mins" fill="#818cf8" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="bg-white rounded-xl border border-slate-200 p-6 text-center">
+          <Brain className="w-10 h-10 text-indigo-200 mx-auto mb-2" />
+          <p className="text-xs text-slate-400 font-bold">ยังไม่มีข้อมูล Focus — กดปุ่ม Focus ที่ Task ในการ์ด NOW เพื่อเริ่มบันทึก</p>
+        </div>
+      )}
+
       {/* G: Export All Data as CSV */}
       <button
         onClick={exportAllCSV}
@@ -621,7 +822,7 @@ const Analytics: React.FC<AnalyticsProps> = ({
             {exporting ? 'กำลังโหลด...' : 'ดาวน์โหลดข้อมูลทั้งหมด (CSV)'}
           </h4>
           <p className="text-[10px] text-slate-400 font-bold">
-            4 ไฟล์: Tasks, Groups, Schedule, DailyRecords — เปิดใน Google Sheets ได้เลย
+            5 ไฟล์: Tasks, Groups, Schedule, Records, Focus — เปิดใน Google Sheets ได้เลย
           </p>
         </div>
         <Download className={`w-5 h-5 text-indigo-400 shrink-0 ${exporting ? 'animate-spin' : ''}`} />

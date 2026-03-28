@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { ScheduleTemplates, TaskGroup, getDayType } from '../types';
+import { ScheduleTemplates, TaskGroup, getScheduleForDay } from '../types';
 import { sendNotification } from '../services/notificationService';
 import { BehaviorPattern, minToTime } from '../services/behaviorAnalysis';
 
@@ -14,8 +14,9 @@ export function useNotificationScheduler(
     if (!enabled || Notification.permission !== 'granted') return;
 
     const timers: ReturnType<typeof setTimeout>[] = [];
-    const dayType = getDayType(new Date());
-    const slots = scheduleTemplates[dayType] || [];
+    const now0 = new Date();
+    const resolved = getScheduleForDay(scheduleTemplates, now0.getDay(), now0.toISOString().split('T')[0]);
+    const slots = resolved.slots || [];
     const now = Date.now();
 
     slots.forEach(slot => {

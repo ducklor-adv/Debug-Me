@@ -93,8 +93,9 @@ export interface ScheduleTemplates {
   saturday: TimeSlot[];
   sunday: TimeSlot[];
   customTemplates?: CustomScheduleTemplate[];
-  dayOverrides?: { [dayOfWeek: string]: string }; // "0"-"6" → custom template ID
-  dateOverrides?: { [date: string]: string };      // "YYYY-MM-DD" → custom template ID
+  dayPlans?: { [dayOfWeek: string]: TimeSlot[] };  // "0"-"6" → per-day customized schedule
+  dayOverrides?: { [dayOfWeek: string]: string };   // "0"-"6" → custom template overlay (removable)
+  dateOverrides?: { [date: string]: string };       // "YYYY-MM-DD" → custom template ID
 }
 
 /** Resolve schedule slots for a specific day of week (+ optional date for date-specific overrides) */
@@ -105,7 +106,7 @@ export function getScheduleForDay(
   templates: ScheduleTemplates,
   dayOfWeek: number,
   dateStr?: string
-): { slots: TimeSlot[]; source: 'base' | 'custom' | 'cleared'; templateId?: string; templateName?: string; templateEmoji?: string; overrideType?: 'date' | 'day' } {
+): { slots: TimeSlot[]; source: 'base' | 'custom' | 'cleared' | 'dayPlan'; templateId?: string; templateName?: string; templateEmoji?: string; overrideType?: 'date' | 'day' } {
   // 1. Date-specific override (highest priority)
   if (dateStr && templates.dateOverrides?.[dateStr]) {
     if (templates.dateOverrides[dateStr] === CLEAR_OVERRIDE) {
@@ -114,7 +115,7 @@ export function getScheduleForDay(
     const ct = (templates.customTemplates || []).find(t => t.id === templates.dateOverrides![dateStr]);
     if (ct) return { slots: ct.slots, source: 'custom', templateId: ct.id, templateName: ct.name, templateEmoji: ct.emoji, overrideType: 'date' };
   }
-  // 2. Day-of-week override
+  // 2. Day-of-week custom template overlay
   const overrideId = templates.dayOverrides?.[String(dayOfWeek)];
   if (overrideId) {
     if (overrideId === CLEAR_OVERRIDE) {
@@ -123,7 +124,12 @@ export function getScheduleForDay(
     const ct = (templates.customTemplates || []).find(t => t.id === overrideId);
     if (ct) return { slots: ct.slots, source: 'custom', templateId: ct.id, templateName: ct.name, templateEmoji: ct.emoji, overrideType: 'day' };
   }
-  // 3. Fallback to base template
+  // 3. Per-day plan (user's edits for this specific day of week)
+  const dayPlan = templates.dayPlans?.[String(dayOfWeek)];
+  if (dayPlan !== undefined) {
+    return { slots: dayPlan, source: 'dayPlan' };
+  }
+  // 4. Fallback to base template
   if (dayOfWeek === 0) return { slots: templates.sunday, source: 'base' };
   if (dayOfWeek === 6) return { slots: templates.saturday, source: 'base' };
   return { slots: templates.workday, source: 'base' };
@@ -238,7 +244,102 @@ export interface TimeEntry {
   hours: number;
 }
 
-export type View = 'dashboard' | 'tasks' | 'focus' | 'analytics' | 'ai-coach' | 'planner' | 'habits' | 'calendar' | 'search' | 'projects';
+export type View = 'dashboard' | 'tasks' | 'focus' | 'analytics' | 'ai-coach' | 'planner' | 'habits' | 'calendar' | 'search' | 'projects' | 'expenses';
+
+// ===== Expense Tracker =====
+
+export interface Expense {
+  id: string;
+  title: string;
+  amount: number;
+  flow: 'income' | 'expense';       // รายรับ หรือ รายจ่าย
+  category: ExpenseCategoryKey;
+  type: 'recurring' | 'one-time';
+  date: string;                    // YYYY-MM-DD (วันที่จ่าย / วันครบกำหนด)
+  recurrence?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+  dueDay?: number;                 // วันที่ครบกำหนดจ่ายในเดือน (1-31)
+  paymentMethod?: PaymentMethod;     // วิธีจ่าย
+  borrowFrom?: string;               // ยืมจากใคร
+  borrowRepayDate?: string;           // วันที่จะคืน YYYY-MM-DD
+  borrowRepayAmount?: number;         // จำนวนที่จะคืน
+  borrowRepaid?: boolean;             // คืนแล้วหรือยัง
+  paid?: boolean;
+  paidAt?: string;                 // ISO timestamp
+  notes?: string;
+  createdAt: string;               // ISO timestamp
+  paidHistory?: Record<string, { amount: number; paidAt: string; method?: PaymentMethod }>;  // "YYYY-MM" → actual payment
+}
+
+export type ExpenseCategoryKey = string;  // allow custom categories
+
+export type PaymentMethod = 'cash' | 'transfer' | 'credit' | 'debit' | 'ewallet' | 'auto' | 'borrow';
+
+export const PAYMENT_METHODS: { key: PaymentMethod; label: string; emoji: string }[] = [
+  { key: 'transfer', label: 'โอนเงิน', emoji: '📱' },
+  { key: 'cash', label: 'เงินสด', emoji: '💵' },
+  { key: 'credit', label: 'บัตรเครดิต', emoji: '💳' },
+  { key: 'debit', label: 'บัตรเดบิต', emoji: '🏧' },
+  { key: 'ewallet', label: 'E-Wallet', emoji: '📲' },
+  { key: 'auto', label: 'หักอัตโนมัติ', emoji: '🔄' },
+  { key: 'borrow', label: 'ยืม', emoji: '🤲' },
+];
+
+export interface ExpenseCategory {
+  key: ExpenseCategoryKey;
+  label: string;
+  emoji: string;
+  color: string;
+  flow: 'income' | 'expense';
+  group?: string;
+  isCustom?: boolean;  // user-created
+}
+
+// กลุ่มค่าใช้จ่าย — เรียงจากจำเป็นสุด
+export const EXPENSE_GROUPS = [
+  { key: 'จำเป็น', label: 'ค่าใช้จ่ายจำเป็น', emoji: '📌' },
+  { key: 'อื่นๆ', label: 'ค่าใช้จ่ายอื่นๆ', emoji: '📋' },
+  { key: 'ชำระหนี้', label: 'ชำระหนี้สิน', emoji: '🏦' },
+  { key: 'ลงทุน', label: 'เงินลงทุน/ออม', emoji: '📊' },
+];
+
+export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  // ══ รายรับ ══
+  { key: 'salary', label: 'เงินเดือน/ค่าจ้าง', emoji: '💰', color: 'green', flow: 'income' },
+  { key: 'side_income', label: 'รายได้เสริม/ฟรีแลนซ์', emoji: '💻', color: 'teal', flow: 'income' },
+  { key: 'invest_income', label: 'ผลตอบแทนลงทุน', emoji: '📈', color: 'indigo', flow: 'income' },
+  { key: 'other_income', label: 'รายรับอื่นๆ', emoji: '🎁', color: 'cyan', flow: 'income' },
+
+  // ══ ค่าใช้จ่ายจำเป็น (ปัจจัย 4) ══
+  { key: 'housing', label: 'ที่อยู่อาศัย', emoji: '🏠', color: 'amber', flow: 'expense', group: 'จำเป็น' },
+  { key: 'food', label: 'อาหาร/เครื่องดื่ม (หลัก)', emoji: '🍚', color: 'orange', flow: 'expense', group: 'จำเป็น' },
+  { key: 'food_extra', label: 'อาหาร/เครื่องดื่ม (เสริม)', emoji: '☕', color: 'orange', flow: 'expense', group: 'จำเป็น' },
+  { key: 'clothing', label: 'เครื่องนุ่งห่ม', emoji: '👕', color: 'pink', flow: 'expense', group: 'จำเป็น' },
+  { key: 'health', label: 'ยารักษาโรค', emoji: '💊', color: 'rose', flow: 'expense', group: 'จำเป็น' },
+
+  // ══ ค่าใช้จ่ายอื่นๆ (เรียงจากจำเป็น) ══
+  { key: 'transport', label: 'เดินทาง', emoji: '🚗', color: 'blue', flow: 'expense', group: 'อื่นๆ' },
+  { key: 'family', label: 'ครอบครัว/ให้พ่อแม่', emoji: '👨‍👩‍👧', color: 'rose', flow: 'expense', group: 'อื่นๆ' },
+  { key: 'subscription', label: 'Subscription', emoji: '📺', color: 'violet', flow: 'expense', group: 'อื่นๆ' },
+  { key: 'social', label: 'สังคม/งานเลี้ยง', emoji: '🤝', color: 'green', flow: 'expense', group: 'อื่นๆ' },
+  { key: 'self_dev', label: 'พัฒนาตัวเอง/สัมมนา', emoji: '📚', color: 'indigo', flow: 'expense', group: 'อื่นๆ' },
+  { key: 'luxury', label: 'ของฟุ่มเฟือย', emoji: '✨', color: 'pink', flow: 'expense', group: 'อื่นๆ' },
+  { key: 'repair', label: 'ซ่อมแซมต่างๆ', emoji: '🔨', color: 'amber', flow: 'expense', group: 'อื่นๆ' },
+  { key: 'work_expense', label: 'จ่ายในงาน', emoji: '🧾', color: 'blue', flow: 'expense', group: 'อื่นๆ' },
+  { key: 'phone', label: 'ค่าโทรศัพท์/เน็ต', emoji: '📱', color: 'indigo', flow: 'expense', group: 'อื่นๆ' },
+  { key: 'unexpected', label: 'ไม่คาดคิด', emoji: '⚡', color: 'rose', flow: 'expense', group: 'อื่นๆ' },
+  { key: 'other_expense', label: 'อื่นๆ', emoji: '📦', color: 'purple', flow: 'expense', group: 'อื่นๆ' },
+
+  // ══ ชำระหนี้สิน ══
+  { key: 'debt_credit', label: 'บัตรเครดิต/กดเงินสด', emoji: '💳', color: 'rose', flow: 'expense', group: 'ชำระหนี้' },
+  { key: 'debt_loan', label: 'สินเชื่อ/ผ่อนชำระ', emoji: '🏦', color: 'rose', flow: 'expense', group: 'ชำระหนี้' },
+  { key: 'debt_mortgage', label: 'ผ่อนบ้าน/ผ่อนรถ', emoji: '🏡', color: 'amber', flow: 'expense', group: 'ชำระหนี้' },
+  { key: 'debt_friend', label: 'คืนเงินยืม', emoji: '🤝', color: 'orange', flow: 'expense', group: 'ชำระหนี้' },
+
+  // ══ เงินลงทุน/ออม ══
+  { key: 'insurance', label: 'ประกันภัย/ประกันชีวิต', emoji: '🛡️', color: 'teal', flow: 'expense', group: 'ลงทุน' },
+  { key: 'invest_out', label: 'ลงทุนหลักทรัพย์/ธุรกิจ', emoji: '📊', color: 'indigo', flow: 'expense', group: 'ลงทุน' },
+  { key: 'saving', label: 'เงินออม/กองทุน', emoji: '🐷', color: 'green', flow: 'expense', group: 'ลงทุน' },
+];
 
 // ===== Project Management =====
 

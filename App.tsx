@@ -21,8 +21,9 @@ import {
   Bell,
   WifiOff,
   FolderKanban,
+  Wallet,
 } from 'lucide-react';
-import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, CustomScheduleTemplate, getDayType, DEFAULT_CATEGORIES, FocusSession, Project } from './types';
+import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, CustomScheduleTemplate, getDayType, DEFAULT_CATEGORIES, FocusSession, Project, Expense } from './types';
 import { subscribeAppData, saveAppData, addDailyRecordFS, getDailyRecordsByDate, getDailyRecordCount, addFocusSessionFS, getFocusSessionsByDate } from './lib/firestoreDB';
 import Dashboard from './components/Dashboard';
 import UndoToast from './components/UndoToast';
@@ -43,6 +44,7 @@ const HabitTracker = lazy(() => import('./components/HabitTracker'));
 const SearchView = lazy(() => import('./components/SearchView'));
 const CalendarView = lazy(() => import('./components/CalendarView'));
 const ProjectManager = lazy(() => import('./components/ProjectManager'));
+const ExpenseTracker = lazy(() => import('./components/ExpenseTracker'));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center py-20">
@@ -234,7 +236,8 @@ const NAV_ITEMS: { view: View; icon: string; label: string }[] = [
   { view: 'dashboard', icon: 'Activity', label: 'TODAY' },
   { view: 'planner', icon: 'BookOpen', label: 'Planner' },
   { view: 'tasks', icon: 'CheckSquare', label: 'Tasks' },
-  { view: 'focus', icon: 'Timer', label: 'Focus' },
+  { view: 'projects', icon: 'FolderKanban', label: 'Projects' },
+  { view: 'expenses', icon: 'Wallet', label: 'EXP' },
   { view: 'analytics', icon: 'BarChart3', label: 'Analyst' },
 ];
 
@@ -312,7 +315,7 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>(() => {
     try {
       const saved = localStorage.getItem(VIEW_KEY);
-      if (saved && ['dashboard','tasks','focus','analytics','ai-coach','planner','habits','calendar','search','projects'].includes(saved)) return saved as View;
+      if (saved && ['dashboard','tasks','focus','analytics','ai-coach','planner','habits','calendar','search','projects','expenses'].includes(saved)) return saved as View;
     } catch {}
     return 'dashboard';
   });
@@ -421,6 +424,20 @@ const App: React.FC = () => {
     // 📝 งานรอง (career) — งาน side / freelance / รายได้เสริม
     { id: 'd-34', title: 'งานรอง / Freelance / รายได้เสริม', description: 'ทำงานเสริม ตอบลูกค้า หรือพัฒนาช่องทางรายได้', priority: Priority.MEDIUM, completed: false, category: 'งานรอง', dayTypes: ['workday'], estimatedDuration: 60 },
     { id: 'd-35', title: 'วางแผนการเงิน / ทบทวนรายรับ-รายจ่าย', description: 'สรุปค่าใช้จ่าย ดูยอดเงินออม วางแผนเป้าหมายการเงิน', priority: Priority.MEDIUM, completed: false, category: 'งานรอง', dayTypes: ['sunday'], estimatedDuration: 30 },
+    { id: 'd-58', title: 'Debug-Me App — พัฒนาแอป Life Planner', description: 'พัฒนาแอป Debug-Me ระบบวางแผนชีวิตประจำวัน (React + TypeScript + Firebase + Gemini AI) ให้ครบ features: Task management, Daily planner, Dashboard, AI Coach, Project timeline, Analytics', priority: Priority.HIGH, completed: false, category: 'งานรอง', dayTypes: ['workday', 'saturday'], estimatedDuration: 240, subtasks: [
+      { id: 'ds-1', title: 'ระบบ Task CRUD + Bubble UI + TaskEditModal (3 tabs)', completed: true },
+      { id: 'ds-2', title: 'ตารางวัน (Daily Planner) + Custom Day + dayPlans layer', completed: true },
+      { id: 'ds-3', title: 'หน้า Dashboard (TODAY) — Hero + Countdown + Done/Skip', completed: true },
+      { id: 'ds-4', title: 'AI Coach (Gemini) + Project AI Analyzer', completed: true },
+      { id: 'ds-5', title: 'AI Prompt Generator + Import JSON → Timeline', completed: true },
+      { id: 'ds-6', title: 'Project Kanban + Timeline view', completed: true },
+      { id: 'ds-7', title: 'Analytics Dashboard + Charts', completed: true },
+      { id: 'ds-8', title: 'Notification Scheduler (smart timing)', completed: true },
+      { id: 'ds-9', title: 'เพิ่มระบบ isUrgent flag สำหรับงานด่วน', completed: false, note: 'ยังไม่ implement — task-level flag สำหรับเน้นงานด่วน' },
+      { id: 'ds-10', title: 'ระบบ Habit Tracker + Streak', completed: false, note: 'ติดตาม habit รายวัน แสดง streak calendar' },
+      { id: 'ds-11', title: 'Export/Backup ข้อมูลเป็น CSV/JSON', completed: false },
+      { id: 'ds-12', title: 'PWA + Offline support', completed: false, note: 'Service Worker, install prompt, offline cache' },
+    ] },
 
     // 🤝 เข้าสังคม (relationship) — เพื่อน / ชุมชน / networking
     { id: 'd-36', title: 'โทร / แชทเพื่อนสนิท', description: 'ติดต่อเพื่อนสนิท ถามไถ่ความเป็นอยู่ รักษาความสัมพันธ์', priority: Priority.LOW, completed: false, category: 'เข้าสังคม', estimatedDuration: 15 },
@@ -456,6 +473,7 @@ const App: React.FC = () => {
   const [deletedDefaultTaskIds, setDeletedDefaultTaskIds] = useState<string[]>([]);
   const [habits, setHabits] = useState<Habit[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [firestoreLoading, setFirestoreLoading] = useState(true);
   const firestoreReadyRef = useRef(false);
   const isRemoteUpdateRef = useRef(false);
@@ -664,6 +682,7 @@ const App: React.FC = () => {
             const migrated: ScheduleTemplates = {
               ...DEFAULT_SCHEDULE_TEMPLATES,
               customTemplates: mergedCTs,
+              dayPlans: tpl.dayPlans || undefined,
               dayOverrides: tpl.dayOverrides || undefined,
               dateOverrides: tpl.dateOverrides || undefined,
             };
@@ -675,6 +694,7 @@ const App: React.FC = () => {
               saturday: vSat,
               sunday: vSun,
               customTemplates: mergedCTs,
+              dayPlans: tpl.dayPlans || undefined,
               dayOverrides: tpl.dayOverrides || undefined,
               dateOverrides: tpl.dateOverrides || undefined,
             };
@@ -695,10 +715,19 @@ const App: React.FC = () => {
         }
 
         // Projects
-        if (data.projects) {
-          setProjects(data.projects);
+        if (data.projects !== undefined) {
+          setProjects(data.projects || []);
         } else {
           setProjects([]);
+          saveBack.projects = [];
+        }
+        // Expenses
+        if (data.expenses !== undefined) {
+          setExpenses(data.expenses || []);
+        } else {
+          // Field missing in Firestore — initialize it so future saves don't lose data
+          setExpenses([]);
+          saveBack.expenses = [];
         }
 
         // Tasks: save back if migration or new defaults added
@@ -725,7 +754,9 @@ const App: React.FC = () => {
           milestones: DEFAULT_MILESTONES,
           scheduleTemplates: DEFAULT_SCHEDULE_TEMPLATES,
           deletedDefaultTaskIds: [],
-          habits: []
+          habits: [],
+          projects: [],
+          expenses: [],
         });
       }
       setFirestoreLoading(false);
@@ -752,7 +783,7 @@ const App: React.FC = () => {
     saveTimerRef.current = setTimeout(async () => {
       setSaveStatus('saving');
       try {
-        await saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects }, false);
+        await saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects, expenses }, false);
         setIsDirty(false);
         setSaveStatus('saved');
         setTimeout(() => {
@@ -771,7 +802,7 @@ const App: React.FC = () => {
     }, 1500);
 
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects, user]);
+  }, [tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects, expenses, user]);
 
   useEffect(() => { localStorage.setItem(VIEW_KEY, activeView); }, [activeView]);
 
@@ -786,6 +817,7 @@ const App: React.FC = () => {
       deletedDefaultTaskIds,
       habits,
       projects,
+      expenses,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -814,6 +846,7 @@ const App: React.FC = () => {
           if (data.deletedDefaultTaskIds) setDeletedDefaultTaskIds(data.deletedDefaultTaskIds);
           if (data.habits) setHabits(data.habits);
           if (data.projects) setProjects(data.projects);
+          if (data.expenses) setExpenses(data.expenses);
           alert('นำเข้าข้อมูลสำเร็จ!');
         } catch {
           alert('ไฟล์ไม่ถูกต้อง');
@@ -841,7 +874,9 @@ const App: React.FC = () => {
         milestones,
         scheduleTemplates,
         deletedDefaultTaskIds: updatedDeletedIds || deletedDefaultTaskIds,
-        habits
+        habits,
+        projects,
+        expenses,
       };
       await saveAppData(user.uid, dataToSave, false);
       setTimeout(() => {
@@ -855,7 +890,7 @@ const App: React.FC = () => {
         isRemoteUpdateRef.current = false;
       }
     }
-  }, [user, tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects]);
+  }, [user, tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects, expenses]);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
@@ -903,6 +938,7 @@ const App: React.FC = () => {
       case 'search': return <Suspense fallback={<LazyFallback />}><SearchView tasks={tasks} taskGroups={taskGroups} /></Suspense>;
       case 'calendar': return <Suspense fallback={<LazyFallback />}><CalendarView tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} userId={user!.uid} /></Suspense>;
       case 'projects': return <Suspense fallback={<LazyFallback />}><ProjectManager projects={projects} setProjects={setProjects} tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} onImmediateSave={handleImmediateSave} /></Suspense>;
+      case 'expenses': return <Suspense fallback={<LazyFallback />}><ExpenseTracker expenses={expenses} setExpenses={setExpenses} /></Suspense>;
       default: return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} />;
     }
   };
@@ -958,18 +994,9 @@ const App: React.FC = () => {
           </div>
 
           <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto scrollbar-hide">
-            <NavItem icon={<Activity />} label="TODAY" active={activeView === 'dashboard'} onClick={() => handleNavItemClick('dashboard')} />
-            <NavItem icon={<BookOpen />} label="Planner" active={activeView === 'planner'} onClick={() => handleNavItemClick('planner')} />
-            <NavItem icon={<CheckSquare />} label="Tasks" active={activeView === 'tasks'} onClick={() => handleNavItemClick('tasks')} />
-            <NavItem icon={<Timer />} label="Focus" active={activeView === 'focus'} onClick={() => handleNavItemClick('focus')} />
-            <NavItem icon={<BarChart3 />} label="Analyst" active={activeView === 'analytics'} onClick={() => handleNavItemClick('analytics')} />
-            <div className="pt-4 mt-4 border-t border-slate-100/60 px-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">More</p>
-              <NavItem icon={<Flame />} label="Habits" active={activeView === 'habits'} onClick={() => handleNavItemClick('habits')} />
-              <NavItem icon={<CalendarDays />} label="Calendar" active={activeView === 'calendar'} onClick={() => handleNavItemClick('calendar')} />
-              <NavItem icon={<Search />} label="Search" active={activeView === 'search'} onClick={() => handleNavItemClick('search')} />
-              <NavItem icon={<FolderKanban />} label="Projects" active={activeView === 'projects'} onClick={() => handleNavItemClick('projects')} />
-            </div>
+            <NavItem icon={<Search />} label="Search" active={activeView === 'search'} onClick={() => handleNavItemClick('search')} />
+            <NavItem icon={<Flame />} label="Habits" active={activeView === 'habits'} onClick={() => handleNavItemClick('habits')} />
+            <NavItem icon={<CalendarDays />} label="Calendar" active={activeView === 'calendar'} onClick={() => handleNavItemClick('calendar')} />
             <div className="pt-4 mt-4 border-t border-slate-100/60 px-2">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">AI Assistant</p>
               <NavItem icon={<Sparkles className="text-fuchsia-500" />} label="AI Life Coach" active={activeView === 'ai-coach'} onClick={() => handleNavItemClick('ai-coach')} isSpecial />
@@ -1073,7 +1100,8 @@ const App: React.FC = () => {
                 const Icon = item.icon === 'Activity' ? Activity
                   : item.icon === 'CheckSquare' ? CheckSquare
                   : item.icon === 'BookOpen' ? BookOpen
-                  : item.icon === 'Timer' ? Timer
+                  : item.icon === 'FolderKanban' ? FolderKanban
+                  : item.icon === 'Wallet' ? Wallet
                   : BarChart3;
                 return (
                   <button
