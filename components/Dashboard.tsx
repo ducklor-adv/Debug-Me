@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Task, SubTask, TaskAttachment, TaskGroup, GROUP_COLORS, getTasksForDate, ScheduleTemplates, TimeSlot, DailyRecord, DEFAULT_CATEGORIES, Category, isTaskRecurring, FocusSession, getScheduleForDay } from '../types';
-import { CheckCircle2, Circle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, Trash2, Square, Image, Coffee, Brain, Play, Pause, RotateCcw, Volume2, VolumeX, AlertTriangle, Plus, RefreshCw, ChevronDown } from 'lucide-react';
+import { Task, SubTask, TaskAttachment, TaskGroup, GROUP_COLORS, getTasksForDate, ScheduleTemplates, TimeSlot, DailyRecord, DEFAULT_CATEGORIES, Category, isTaskRecurring, FocusSession, getScheduleForDay, Expense, EXPENSE_CATEGORIES } from '../types';
+import { CheckCircle2, Circle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, Trash2, Square, Image, Coffee, Brain, Play, Pause, RotateCcw, Volume2, VolumeX, AlertTriangle, Plus, RefreshCw, ChevronDown, Wallet, ChevronUp } from 'lucide-react';
 
 interface DashboardProps {
   tasks: Task[];
@@ -12,9 +12,10 @@ interface DashboardProps {
   onSaveFocusSession?: (session: FocusSession) => void;
   onNavigateToPlanner?: (startTime: string, endTime: string) => void;
   onNavigateToGroup?: (groupKey: string) => void;
+  expenses?: Expense[];
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTemplates, todayRecords = [], onSaveDailyRecord, onTaskComplete, onSaveFocusSession, onNavigateToPlanner, onNavigateToGroup }) => {
+const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTemplates, todayRecords = [], onSaveDailyRecord, onTaskComplete, onSaveFocusSession, onNavigateToPlanner, onNavigateToGroup, expenses = [] }) => {
   const [showDoneModal, setShowDoneModal] = useState(false);
   const [showEditView, setShowEditView] = useState(false);
   const [notes, setNotes] = useState('');
@@ -50,6 +51,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
   const focusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
   const [showFocusPicker, setShowFocusPicker] = useState(false);
+  const [showWeeklyBills, setShowWeeklyBills] = useState(false);
 
   const focusStartedAtRef = useRef<string | null>(null);
 
@@ -692,6 +694,58 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
           <div className="flex items-center gap-2 mb-3">
             <Clock className="w-4 h-4 text-yellow-300" />
             <span className="text-xs font-bold tracking-widest uppercase text-emerald-100">ตอนนี้ทำอะไร</span>
+
+            {/* Weekly Bills Button — between label and urgent buttons */}
+            {(() => {
+              const today = new Date();
+              const dayOfWeek = today.getDay();
+              const startOfWeek = new Date(today);
+              startOfWeek.setDate(today.getDate() - dayOfWeek);
+              const endOfWeek = new Date(startOfWeek);
+              endOfWeek.setDate(startOfWeek.getDate() + 6);
+              const toStr = (d: Date) => d.toISOString().slice(0, 10);
+              const wStart = toStr(startOfWeek);
+              const wEnd = toStr(endOfWeek);
+
+              const weeklyBills = expenses.filter(exp => {
+                if (exp.flow !== 'expense') return false;
+                if (exp.paid) return false;
+                if (exp.type === 'one-time') return exp.date >= wStart && exp.date <= wEnd;
+                if (exp.type === 'recurring' && exp.dueDay) {
+                  const thisMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+                  if (exp.paidHistory?.[thisMonth]) return false;
+                  const dueDate = new Date(today.getFullYear(), today.getMonth(), exp.dueDay);
+                  return toStr(dueDate) >= wStart && toStr(dueDate) <= wEnd;
+                }
+                return false;
+              });
+
+              const totalDue = weeklyBills.reduce((sum, e) => sum + e.amount, 0);
+
+              // Store in ref-like variable so dropdown can access
+              (window as any).__weeklyBills = weeklyBills;
+              (window as any).__weeklyTotal = totalDue;
+              (window as any).__weeklyRange = { wStart, wEnd };
+
+              return (
+                <button
+                  onClick={() => setShowWeeklyBills(!showWeeklyBills)}
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-full transition-all active:scale-95 shadow-sm min-w-[210px] justify-center ${
+                    weeklyBills.length > 0
+                      ? 'bg-orange-500 text-white hover:bg-orange-600'
+                      : 'bg-white/20 text-white/70 hover:bg-white/30'
+                  }`}
+                >
+                  <Wallet className="w-4 h-4" />
+                  <span className="text-xs font-bold">
+                    {weeklyBills.length > 0 ? `รายจ่าย ฿${totalDue.toLocaleString()}` : 'ไม่มีรายจ่าย'}
+                  </span>
+                  {weeklyBills.length > 0 && <span className="text-[10px] font-black bg-white/25 px-1.5 py-0.5 rounded-full">{weeklyBills.length}</span>}
+                  {showWeeklyBills ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+              );
+            })()}
+
             <div className="flex-1" />
             {(() => {
               const catKeys = new Set(DEFAULT_CATEGORIES.map(c => c.key));
@@ -699,7 +753,11 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
               return uncatGroups.map(g => {
                 const count = tasks.filter(t => t.category === g.key).length;
                 return (
-                  <button key={g.key} onClick={() => onNavigateToGroup?.(g.key)} className="flex items-center gap-1 px-2 py-1 rounded-full bg-orange-400 text-white hover:bg-orange-500 transition-all active:scale-95 shadow-sm">
+                  <button key={g.key} onClick={() => onNavigateToGroup?.(g.key)} className={`flex items-center gap-1 px-2 py-1 rounded-full transition-all active:scale-95 shadow-sm ${
+                    count > 0
+                      ? 'bg-orange-500 text-white hover:bg-orange-600'
+                      : 'bg-white/20 text-white/70 hover:bg-white/30'
+                  }`}>
                     <span className="text-xs">{g.emoji}</span>
                     <span className="text-[10px] font-bold">{g.label}</span>
                     {count > 0 && <span className="text-[9px] font-black bg-orange-600/40 px-1.5 py-0.5 rounded-full">{count}</span>}
@@ -708,6 +766,53 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
               });
             })()}
           </div>
+
+          {/* Weekly Bills Expanded List */}
+          {showWeeklyBills && (() => {
+            const weeklyBills = (window as any).__weeklyBills || [];
+            const totalDue = (window as any).__weeklyTotal || 0;
+            const range = (window as any).__weeklyRange || {};
+
+            if (weeklyBills.length === 0) {
+              return (
+                <div className="mb-3 bg-white/10 rounded-xl px-4 py-3 text-center">
+                  <p className="text-xs text-white/60">ไม่มีรายการที่ต้องจ่ายสัปดาห์นี้ 🎉</p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="mb-3 bg-white rounded-2xl shadow-xl overflow-hidden">
+                <div className="bg-rose-50 px-4 py-2.5 border-b border-rose-100 flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-black text-rose-700">ต้องจ่ายสัปดาห์นี้</p>
+                    <p className="text-[9px] text-rose-400">{range.wStart} — {range.wEnd}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-base font-black text-rose-600">฿{totalDue.toLocaleString()}</p>
+                    <p className="text-[9px] text-rose-400">{weeklyBills.length} รายการ</p>
+                  </div>
+                </div>
+                <div className="max-h-48 overflow-y-auto divide-y divide-slate-50">
+                  {weeklyBills.map((bill: Expense) => {
+                    const cat = EXPENSE_CATEGORIES.find(c => c.key === bill.category);
+                    return (
+                      <div key={bill.id} className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-slate-50">
+                        <span className="text-base">{cat?.emoji || '💸'}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-700 truncate">{bill.title}</p>
+                          <p className="text-[9px] text-slate-400">
+                            {bill.type === 'recurring' ? `ทุกเดือน วันที่ ${bill.dueDay}` : bill.date}
+                          </p>
+                        </div>
+                        <span className="text-xs font-black text-rose-600 shrink-0">฿{bill.amount.toLocaleString()}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {currentSlot ? (() => {
             const slotInfo = resolveSlotInfo(currentSlot.groupKey);
