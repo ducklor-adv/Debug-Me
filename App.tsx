@@ -7,7 +7,6 @@ import {
   CheckSquare,
   Timer,
   BarChart3,
-  Sparkles,
   Menu,
   X,
   BookOpen,
@@ -15,9 +14,7 @@ import {
   Upload,
   Database,
   Cloud,
-  Flame,
   CalendarDays,
-  Search,
   Bell,
   WifiOff,
   FolderKanban,
@@ -38,10 +35,7 @@ import { useUndoStack } from './hooks/useUndoStack';
 const TaskManager = lazy(() => import('./components/TaskManager'));
 const FocusTimer = lazy(() => import('./components/FocusTimer'));
 const Analytics = lazy(() => import('./components/Analytics'));
-const AICoach = lazy(() => import('./components/AICoach'));
 const DailyPlanner = lazy(() => import('./components/DailyPlanner'));
-const HabitTracker = lazy(() => import('./components/HabitTracker'));
-const SearchView = lazy(() => import('./components/SearchView'));
 const CalendarView = lazy(() => import('./components/CalendarView'));
 const ProjectManager = lazy(() => import('./components/ProjectManager'));
 const ExpenseTracker = lazy(() => import('./components/ExpenseTracker'));
@@ -236,8 +230,6 @@ const NAV_ITEMS: { view: View; icon: string; label: string }[] = [
   { view: 'dashboard', icon: 'Activity', label: 'TODAY' },
   { view: 'planner', icon: 'BookOpen', label: 'Planner' },
   { view: 'tasks', icon: 'CheckSquare', label: 'Tasks' },
-  { view: 'projects', icon: 'FolderKanban', label: 'Projects' },
-  { view: 'expenses', icon: 'Wallet', label: 'EXP' },
   { view: 'analytics', icon: 'BarChart3', label: 'Analyst' },
 ];
 
@@ -945,9 +937,6 @@ const App: React.FC = () => {
       case 'tasks': return <Suspense fallback={<LazyFallback />}><TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} initialGroupKey={pendingGroupKey} defaultTasks={defaultTasks} /></Suspense>;
       case 'focus': return <Suspense fallback={<LazyFallback />}><FocusTimer onSaveFocusSession={handleSaveFocusSession} todayFocusSessions={todayFocusSessions} /></Suspense>;
       case 'analytics': return <Suspense fallback={<LazyFallback />}><Analytics tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} totalRecordCount={totalRecordCount} userId={user!.uid} /></Suspense>;
-      case 'ai-coach': return <Suspense fallback={<LazyFallback />}><AICoach tasks={tasks} /></Suspense>;
-      case 'habits': return <Suspense fallback={<LazyFallback />}><HabitTracker habits={habits} setHabits={setHabits} /></Suspense>;
-      case 'search': return <Suspense fallback={<LazyFallback />}><SearchView tasks={tasks} taskGroups={taskGroups} /></Suspense>;
       case 'calendar': return <Suspense fallback={<LazyFallback />}><CalendarView tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} userId={user!.uid} /></Suspense>;
       case 'projects': return <Suspense fallback={<LazyFallback />}><ProjectManager projects={projects} setProjects={setProjects} tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} onImmediateSave={handleImmediateSave} /></Suspense>;
       case 'expenses': return <Suspense fallback={<LazyFallback />}><ExpenseTracker expenses={expenses} setExpenses={setExpenses} balanceItems={balanceItems} setBalanceItems={setBalanceItems} /></Suspense>;
@@ -1006,13 +995,9 @@ const App: React.FC = () => {
           </div>
 
           <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto scrollbar-hide">
-            <NavItem icon={<Search />} label="Search" active={activeView === 'search'} onClick={() => handleNavItemClick('search')} />
-            <NavItem icon={<Flame />} label="Habits" active={activeView === 'habits'} onClick={() => handleNavItemClick('habits')} />
+            <NavItem icon={<FolderKanban />} label="Projects" active={activeView === 'projects'} onClick={() => handleNavItemClick('projects')} />
+            <NavItem icon={<Wallet />} label="Expenses" active={activeView === 'expenses'} onClick={() => handleNavItemClick('expenses')} />
             <NavItem icon={<CalendarDays />} label="Calendar" active={activeView === 'calendar'} onClick={() => handleNavItemClick('calendar')} />
-            <div className="pt-4 mt-4 border-t border-slate-100/60 px-2">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">AI Assistant</p>
-              <NavItem icon={<Sparkles className="text-fuchsia-500" />} label="AI Life Coach" active={activeView === 'ai-coach'} onClick={() => handleNavItemClick('ai-coach')} isSpecial />
-            </div>
           </nav>
 
           <div className="p-4 shrink-0">
@@ -1084,7 +1069,7 @@ const App: React.FC = () => {
               <Menu className="w-5 h-5" />
             </button>
             <h2 className="text-lg font-bold text-white capitalize tracking-tight lg:text-2xl flex-1">
-              {activeView === 'dashboard' ? 'TODAY' : activeView === 'planner' ? 'Daily Planner' : activeView === 'ai-coach' ? 'AI Coach' : activeView === 'habits' ? 'Habits' : activeView === 'calendar' ? 'Calendar' : activeView === 'search' ? 'Search' : activeView === 'projects' ? 'Projects' : activeView}
+              {activeView === 'dashboard' ? 'TODAY' : activeView === 'planner' ? 'Daily Planner' : activeView === 'calendar' ? 'Calendar' : activeView === 'projects' ? 'Projects' : activeView === 'expenses' ? 'Expenses' : activeView}
             </h2>
             <button onClick={() => setShowNotifSettings(true)} className="p-2 rounded-lg hover:bg-emerald-500 text-white/80">
               <Bell className="w-5 h-5" />
@@ -1112,8 +1097,6 @@ const App: React.FC = () => {
                 const Icon = item.icon === 'Activity' ? Activity
                   : item.icon === 'CheckSquare' ? CheckSquare
                   : item.icon === 'BookOpen' ? BookOpen
-                  : item.icon === 'FolderKanban' ? FolderKanban
-                  : item.icon === 'Wallet' ? Wallet
                   : BarChart3;
                 return (
                   <button

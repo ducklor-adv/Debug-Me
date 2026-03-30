@@ -34,6 +34,28 @@
   scrollbar-width: none;  /* Firefox */
 }
 
+/* Custom scrollbar for project list table */
+.project-scroll::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+.project-scroll::-webkit-scrollbar-track {
+  background: #e2e8f0;
+  border-radius: 8px;
+}
+.project-scroll::-webkit-scrollbar-thumb {
+  background: #818cf8;
+  border-radius: 8px;
+  border: 2px solid #e2e8f0;
+}
+.project-scroll::-webkit-scrollbar-thumb:hover {
+  background: #6366f1;
+}
+.project-scroll {
+  scrollbar-width: auto;
+  scrollbar-color: #818cf8 #e2e8f0;
+}
+
 /* PWA Full Screen Support */
 html, body, #root {
   width: 100%;

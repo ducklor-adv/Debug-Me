@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project List — Debugme Revolution</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; background: #0a0a0f; color: #e2e8f0; min-height: 100vh; }
+
+  .header {
+    background: linear-gradient(135deg, #1a1a2e, #0f3460);
+    padding: 24px; text-align: center; border-bottom: 2px solid #e94560;
+  }
+  .header h1 { font-size: 22px; font-weight: 900; color: #fff; }
+  .header h1 span { color: #e94560; }
+  .header p { color: #64748b; font-size: 11px; margin-top: 4px; }
+  .header .stats { display: flex; justify-content: center; gap: 28px; margin-top: 12px; }
+  .stat-num { font-size: 20px; font-weight: 800; color: #e94560; }
+  .stat-label { font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+
+  .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+
+  .sync-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; font-size: 10px; color: #475569; }
+  .sync-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .sync-dot.ok { background: #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.4); }
+  .sync-dot.off { background: #f87171; }
+  .sync-dot.loading { background: #fbbf24; animation: blink 1s infinite; }
+  @keyframes blink { 0%,100%{opacity:1}50%{opacity:0.3} }
+
+  /* ===== CARD LIST ===== */
+  .card-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .card {
+    background: #1e293b; border-radius: 12px; border: 2px solid #334155;
+    transition: all 0.15s; cursor: grab; user-select: none;
+  }
+  .card:hover { border-color: #475569; }
+  .card.dragging { opacity: 0.4; border-color: #e94560; }
+  .card.drag-over { border-color: #4ade80; box-shadow: 0 0 12px rgba(74,222,128,0.15); }
+
+  .card-inner { display: flex; align-items: stretch; }
+
+  /* Priority number */
+  .card-rank {
+    width: 40px; display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 900; color: #334155; border-right: 1px solid #334155;
+    flex-shrink: 0; cursor: grab;
+  }
+  .card-rank:hover { color: #e94560; }
+
+  /* Table row inside card */
+  .card-table {
+    display: grid;
+    grid-template-columns: 1.4fr 0.8fr 1fr 1fr 1fr 1fr;
+    flex: 1; min-width: 0;
+  }
+
+  .cell-select {
+    background: transparent; border: none; color: #f8fafc; font-size: 11px; font-weight: 600;
+    font-family: inherit; outline: none; width: 100%; padding: 0; cursor: pointer;
+    appearance: none; -webkit-appearance: none;
+  }
+  .cell-select option { background: #1e293b; color: #e2e8f0; }
+  .card-cell {
+    padding: 10px 12px; display: flex; flex-direction: column; justify-content: center;
+    border-right: 1px solid #1a2332; min-width: 0;
+  }
+  .card-cell:last-child { border-right: none; }
+  .cell-label { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #475569; margin-bottom: 3px; }
+  .cell-value { font-size: 12px; font-weight: 600; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cell-value.dim { color: #475569; font-style: italic; font-weight: 400; }
+  .cell-input {
+    background: transparent; border: none; color: #f8fafc; font-size: 12px; font-weight: 600;
+    font-family: inherit; outline: none; width: 100%; padding: 0;
+  }
+  .cell-input::placeholder { color: #334155; font-style: italic; font-weight: 400; }
+  .cell-input:focus { color: #e94560; }
+
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 4px; flex-shrink: 0; }
+  .status-row { display: flex; align-items: center; gap: 0; }
+
+  /* Table header */
+  .table-header {
+    display: flex; align-items: center;
+    padding: 0; margin-bottom: 6px;
+  }
+  .table-header .card-rank { color: #475569; font-size: 9px; font-weight: 700; cursor: default; }
+  .table-header .card-table { background: none; }
+  .table-header .card-cell { padding: 6px 12px; }
+  .table-header .cell-label { margin: 0; font-size: 9px; color: #64748b; }
+
+  /* Edit modal */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 100; padding: 24px; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: #1e293b; border-radius: 16px; border: 2px solid #334155; width: 100%; max-width: 460px; }
+  .modal-header { padding: 16px 20px; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; }
+  .modal-header h2 { font-size: 16px; font-weight: 800; color: #f8fafc; }
+  .modal-close { background: none; border: none; color: #64748b; font-size: 22px; cursor: pointer; }
+  .modal-close:hover { color: #fff; }
+  .modal-body { padding: 20px; }
+  .fg { margin-bottom: 12px; }
+  .fg label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 4px; }
+  .fg input { width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; font-size: 13px; font-family: inherit; outline: none; }
+  .fg input:focus { border-color: #e94560; }
+  .modal-footer { padding: 14px 20px; border-top: 1px solid #334155; display: flex; gap: 10px; justify-content: flex-end; }
+  .btn { padding: 8px 18px; border-radius: 10px; font-size: 12px; font-weight: 700; border: none; cursor: pointer; transition: all 0.15s; }
+  .btn:active { transform: scale(0.96); }
+  .btn-primary { background: #e94560; color: white; }
+  .btn-secondary { background: #334155; color: #94a3b8; }
+
+  .saved-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #064e3b; color: #6ee7b7; padding: 8px 20px; border-radius: 10px; font-size: 11px; font-weight: 700; opacity: 0; transition: opacity 0.3s; z-index: 200; border: 1px solid #4ade80; }
+  .saved-toast.show { opacity: 1; }
+
+  @media (max-width: 700px) {
+    .card-table { grid-template-columns: 1fr 1fr; }
+    .card-cell { padding: 6px 8px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Project <span>List</span></h1>
+  <p>Debugme Revolution — drag to reorder priority</p>
+  <div class="stats">
+    <div><div class="stat-num" id="sTotal">0</div><div class="stat-label">Projects</div></div>
+    <div><div class="stat-num" id="sAgent">0</div><div class="stat-label">Assigned</div></div>
+    <div><div class="stat-num" id="sNone">0</div><div class="stat-label">No Agent</div></div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="sync-bar">
+    <div class="sync-dot loading" id="syncDot"></div>
+    <span id="syncText">Connecting...</span>
+  </div>
+
+  <!-- Column headers -->
+  <div class="table-header">
+    <div class="card-rank">#</div>
+    <div class="card-table">
+      <div class="card-cell"><span class="cell-label">Project</span></div>
+      <div class="card-cell"><span class="cell-label">Status</span></div>
+      <div class="card-cell"><span class="cell-label">Folder</span></div>
+      <div class="card-cell"><span class="cell-label">Local</span></div>
+      <div class="card-cell"><span class="cell-label">Production</span></div>
+      <div class="card-cell"><span class="cell-label">Agent</span></div>
+    </div>
+  </div>
+
+  <div class="card-list" id="cardList"></div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">Edit</h2>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="eId" />
+      <div class="fg"><label>Project Name</label><input id="eName" /></div>
+      <div class="fg"><label>Status</label><select id="eStatus" class="form-input" style="appearance:auto;cursor:pointer"></select></div>
+      <div class="fg"><label>Folder</label><input id="eFolder" placeholder="Project/xxx/" /></div>
+      <div class="fg"><label>Local Server</label><input id="eLocal" placeholder="localhost:5173" /></div>
+      <div class="fg"><label>Production Server</label><input id="eProd" placeholder="https://xxx.web.app" /></div>
+      <div class="fg"><label>Agent Name</label><input id="eAgent" placeholder="Agent name..." /></div>
+      <div class="fg"><label>Platform</label><input id="ePlatform" placeholder="Claude, Gemini, GPT..." /></div>
+      <div class="fg"><label>Note</label><input id="eNote" placeholder="Role or note..." /></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="saved-toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+const app = initializeApp({
+  apiKey: "AIzaSyAvVyJCNS3GPvSeY-RfhoplxaucnG7lHOo",
+  authDomain: "debug-me-8036c.firebaseapp.com",
+  projectId: "debug-me-8036c",
+  storageBucket: "debug-me-8036c.firebasestorage.app",
+});
+const firestore = getFirestore(app);
+const docRef = doc(firestore, "public", "agentFamilyBoard");
+
+// ===== DATA =====
+const DEFAULT_ORDER = [
+  "debug-me","truck-kub","trackmydesk","cuteped","fingame","pnc","doograde",
+  "c-root","health-desk","taokaeyai","layered-time","fingrowv5",
+  "smart-menu","easy-plan","mindmap-agent","fridge-app","bueaty-book",
+  "growcraft","phassa","flirt-card","finny","budtboy"
+];
+
+const PROJECT_META = {
+  "debug-me":       { name: "Debug-Me",              folder: "Root",                                 status: "production" },
+  "truck-kub":      { name: "Truck-Kub",             folder: "Project/Truck-Kub/",                   status: "blueprint" },
+  "trackmydesk":    { name: "Trackmydesk (TMD)",     folder: "Project/Trackmydesk-fresh/",           status: "production" },
+  "cuteped":        { name: "Cuteped",               folder: "Project/cuteped/",                     status: "app" },
+  "fingame":        { name: "Fingame",               folder: "Project/Fingame/",                     status: "production" },
+  "pnc":            { name: "PNC",                   folder: "Project/PNC/",                         status: "production" },
+  "doograde":       { name: "DooGrade",              folder: "Project/DooGrade/",                    status: "production" },
+  "c-root":         { name: "C-Root",                folder: "Project/C-Root/",                      status: "research" },
+  "health-desk":    { name: "Health Desk",           folder: "Project/Health Desk/",                 status: "blueprint" },
+  "taokaeyai":      { name: "Taokaeyai",             folder: "Project/Taokaeyai/",                   status: "app" },
+  "layered-time":   { name: "Layered Time Theory",   folder: "Project/Layered Time Theory/",         status: "research" },
+  "fingrowv5":      { name: "FingrowV5",             folder: "Project/FingrowV5/",                   status: "other" },
+  "smart-menu":     { name: "Smart Menu",            folder: "",                                     status: "idea" },
+  "easy-plan":      { name: "EASY PLAN",             folder: "",                                     status: "idea" },
+  "mindmap-agent":  { name: "Mindmap Agent",         folder: "",                                     status: "idea" },
+  "fridge-app":     { name: "APP บริหารตู้เย็น",       folder: "",                                     status: "idea" },
+  "bueaty-book":    { name: "Bueaty book",           folder: "",                                     status: "idea" },
+  "growcraft":      { name: "Growcraft",             folder: "",                                     status: "idea" },
+  "phassa":         { name: "ผัสสะ",                  folder: "",                                     status: "idea" },
+  "flirt-card":     { name: "Flirt Card",            folder: "Project/I-LOVE-YOU-BENNIE-WANG/",      status: "other" },
+  "finny":          { name: "Finny",                 folder: "Project/Finny/",                       status: "other" },
+  "budtboy":        { name: "Budtboy",               folder: "Project/Budtboy/",                     status: "other" },
+};
+
+const STATUS_OPTIONS = [
+  { value: "production",  label: "Production",  color: "#4ade80" },
+  { value: "development", label: "Development", color: "#facc15" },
+  { value: "blueprint",   label: "Blueprint",   color: "#c084fc" },
+  { value: "prototype",   label: "Prototype",   color: "#38bdf8" },
+  { value: "research",    label: "Research",    color: "#a78bfa" },
+  { value: "idea",        label: "Idea",        color: "#fbbf24" },
+  { value: "onhold",      label: "On Hold",     color: "#94a3b8" },
+  { value: "archived",    label: "Archived",    color: "#475569" },
+];
+const STATUS_COLORS = Object.fromEntries(STATUS_OPTIONS.map(s => [s.value, s.color]));
+// legacy compat
+STATUS_COLORS.app = "#38bdf8";
+STATUS_COLORS.other = "#64748b";
+
+// State
+let order = [...DEFAULT_ORDER];
+let data = {}; // { id: { agent, platform, note, local, prod } }
+let isRemote = false;
+
+// ===== FIREBASE =====
+onSnapshot(docRef, (snap) => {
+  if (snap.exists()) {
+    const d = snap.data();
+    isRemote = true;
+    if (d.order) order = d.order;
+    if (d.data) data = d.data;
+    render();
+    setTimeout(() => { isRemote = false; }, 500);
+  }
+  document.getElementById("syncDot").className = "sync-dot ok";
+  document.getElementById("syncText").textContent = "Synced — realtime";
+}, () => {
+  document.getElementById("syncDot").className = "sync-dot off";
+  document.getElementById("syncText").textContent = "Offline";
+});
+
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    setDoc(docRef, { order, data, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+    toast("Saved");
+  }, 600);
+}
+
+// ===== RENDER =====
+function render() {
+  const total = order.length;
+  const assigned = order.filter(id => data[id]?.agent).length;
+  document.getElementById("sTotal").textContent = total;
+  document.getElementById("sAgent").textContent = assigned;
+  document.getElementById("sNone").textContent = total - assigned;
+
+  const list = document.getElementById("cardList");
+  list.innerHTML = order.map((id, i) => {
+    const m = PROJECT_META[id] || { name: id, folder: "", status: "other" };
+    const d = data[id] || {};
+    const currentStatus = d.status || m.status || 'other';
+    const sc = STATUS_COLORS[currentStatus] || "#64748b";
+
+    return `
+      <div class="card" draggable="true" data-id="${id}"
+           ondragstart="onDragStart(event)" ondragend="onDragEnd(event)"
+           ondragover="onDragOver(event)" ondrop="onDrop(event)"
+           ondblclick="openModal('${id}')">
+        <div class="card-inner">
+          <div class="card-rank" title="Drag to reorder">${i + 1}</div>
+          <div class="card-table">
+            <div class="card-cell">
+              <span class="cell-value">${esc(m.name)}</span>
+            </div>
+            <div class="card-cell">
+              <div class="status-row">
+                <span class="status-dot" style="background:${sc}"></span>
+                <select class="cell-select" style="color:${sc}"
+                  data-id="${id}" onchange="onStatusChange(this)" onclick="event.stopPropagation()">
+                  ${STATUS_OPTIONS.map(s => `<option value="${s.value}" ${(d.status || m.status) === s.value ? 'selected' : ''} style="color:${s.color}">${s.label}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div class="card-cell">
+              <span class="cell-value ${m.folder ? '' : 'dim'}">${m.folder ? esc(m.folder) : '—'}</span>
+            </div>
+            <div class="card-cell">
+              <input class="cell-input" value="${esc(d.local || '')}" placeholder="—"
+                data-id="${id}" data-field="local" oninput="onFieldInput(this)" onclick="event.stopPropagation()" />
+            </div>
+            <div class="card-cell">
+              <input class="cell-input" value="${esc(d.prod || '')}" placeholder="—"
+                data-id="${id}" data-field="prod" oninput="onFieldInput(this)" onclick="event.stopPropagation()" />
+            </div>
+            <div class="card-cell">
+              <input class="cell-input" value="${esc(d.agent || '')}" placeholder="—"
+                data-id="${id}" data-field="agent" oninput="onFieldInput(this)" onclick="event.stopPropagation()"
+                style="${d.agent ? 'color:#4ade80;font-weight:700' : ''}" />
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+// ===== STATUS CHANGE =====
+window.onStatusChange = function(el) {
+  if (isRemote) return;
+  const id = el.dataset.id;
+  if (!data[id]) data[id] = {};
+  data[id].status = el.value;
+  render();
+  save();
+};
+
+// ===== INLINE EDIT =====
+window.onFieldInput = function(el) {
+  if (isRemote) return;
+  const id = el.dataset.id;
+  const field = el.dataset.field;
+  if (!data[id]) data[id] = {};
+  data[id][field] = el.value;
+  if (field === 'agent') el.style.color = el.value ? '#4ade80' : '';
+  save();
+};
+
+// ===== DRAG & DROP =====
+let dragId = null;
+
+window.onDragStart = function(e) {
+  dragId = e.currentTarget.dataset.id;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+};
+
+window.onDragEnd = function(e) {
+  e.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('drag-over'));
+  dragId = null;
+};
+
+window.onDragOver = function(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const card = e.currentTarget;
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('drag-over'));
+  if (card.dataset.id !== dragId) card.classList.add('drag-over');
+};
+
+window.onDrop = function(e) {
+  e.preventDefault();
+  const targetId = e.currentTarget.dataset.id;
+  if (!dragId || dragId === targetId) return;
+
+  const fromIdx = order.indexOf(dragId);
+  const toIdx = order.indexOf(targetId);
+  if (fromIdx === -1 || toIdx === -1) return;
+
+  order.splice(fromIdx, 1);
+  order.splice(toIdx, 0, dragId);
+
+  render();
+  save();
+};
+
+// ===== MODAL (double-click to edit all fields) =====
+window.openModal = function(id) {
+  const m = PROJECT_META[id] || {};
+  const d = data[id] || {};
+  document.getElementById("eId").value = id;
+  document.getElementById("eName").value = m.name || '';
+  const statusSel = document.getElementById("eStatus");
+  statusSel.innerHTML = STATUS_OPTIONS.map(s => `<option value="${s.value}">${s.label}</option>`).join('');
+  statusSel.value = d.status || m.status || 'idea';
+  document.getElementById("eFolder").value = m.folder || '';
+  document.getElementById("eLocal").value = d.local || '';
+  document.getElementById("eProd").value = d.prod || '';
+  document.getElementById("eAgent").value = d.agent || '';
+  document.getElementById("ePlatform").value = d.platform || '';
+  document.getElementById("eNote").value = d.note || '';
+  document.getElementById("modalTitle").textContent = m.name || id;
+  document.getElementById("modal").classList.add("show");
+};
+
+window.closeModal = function() {
+  document.getElementById("modal").classList.remove("show");
+};
+
+window.saveModal = function() {
+  const id = document.getElementById("eId").value;
+  if (!data[id]) data[id] = {};
+  data[id].status = document.getElementById("eStatus").value;
+  data[id].local = document.getElementById("eLocal").value.trim();
+  data[id].prod = document.getElementById("eProd").value.trim();
+  data[id].agent = document.getElementById("eAgent").value.trim();
+  data[id].platform = document.getElementById("ePlatform").value.trim();
+  data[id].note = document.getElementById("eNote").value.trim();
+  closeModal();
+  render();
+  save();
+};
+
+// ===== TOAST =====
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 1500);
+}
+
+// Init
+render();
+</script>
+</body>
+</html>

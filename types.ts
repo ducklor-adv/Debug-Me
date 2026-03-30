@@ -244,7 +244,7 @@ export interface TimeEntry {
   hours: number;
 }
 
-export type View = 'dashboard' | 'tasks' | 'focus' | 'analytics' | 'ai-coach' | 'planner' | 'habits' | 'calendar' | 'search' | 'projects' | 'expenses';
+export type View = 'dashboard' | 'tasks' | 'focus' | 'analytics' | 'planner' | 'calendar' | 'projects' | 'expenses';
 
 // ===== Expense Tracker =====
 
