@@ -1,0 +1,247 @@
+{
+  "tasks": [
+    {
+      "id": "proj-001",
+      "title": "Debug-Me",
+      "description": "Core platform — debug ชีวิต creator แล้ว spawn apps จาก real pain points\nระบบรวม Task, Schedule, Focus Timer, Habit, Expense, Analytics, AI Coach\n\nTech: React 19 + TypeScript + Vite + Tailwind + Firebase + Gemini AI\nStatus: Production\nRepo: ducklor-adv/Debug-Me.git",
+      "priority": "High",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-002",
+      "title": "Truck-Kub",
+      "description": "ระบบโลจิสติกส์ขนส่งผลไม้ตู้เย็นข้ามแดน TH→LA→VN→CN\nI'AM Blueprint Tool, 29 actions, 12 roles, 16 entities, 247 fields\n\nTech: React 18 + TypeScript + Vite + Tailwind + Firebase + i18next\nStatus: Blueprint phase\nRepo: ducklor-adv/Truckkub.git\nFolder: Project/Truck-Kub/",
+      "priority": "High",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-003",
+      "title": "Trackmydesk (TMD)",
+      "description": "ระบบ track activity พนักงาน, ปฏิทิน, จัดการเอกสาร, admin panel\nรองรับหลายภาษา + export PDF/XLSX\n\nTech: React 19 + TypeScript + Ant Design + Recharts\nStatus: Production\nFolder: Project/Trackmydesk-fresh/",
+      "priority": "High",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-004",
+      "title": "Cuteped",
+      "description": "แชทคู่รัก + AI 'คิวท์-เป็ด' กามเทพในร่างเป็ดเบรกก่อนพิมพ์คำทำร้ายจิตใจ\nVideo Call, Mood Tracker, Secret Vault, Chat Analyzer\n\nTech: React 19 + Firebase + Gemini AI + Framer Motion\nStatus: มี App แล้ว\nRelation: Data sync กับ Debug-Me (Mood + Calendar)\nFolder: Project/cuteped/",
+      "priority": "Medium",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-005",
+      "title": "Fingame",
+      "description": "แพลตฟอร์มการเงิน + ตลาดมือสอง + ระบบ MLM (ACF)\nFinpoint transactions, ประกัน, real-time dashboard\n\nTech: React + Node.js/Express + PostgreSQL + Socket.io\nStatus: Production\nFolder: Project/Fingame/",
+      "priority": "Medium",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-006",
+      "title": "PNC",
+      "description": "IT Service Management (ITSM) + AI Ticket Triage ด้วย Gemini 3\nจัดการ asset/vendor, CRM integration\n\nTech: React 19 + TypeScript + Ant Design + Gemini API\nStatus: Production\nFolder: Project/PNC/",
+      "priority": "Medium",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-007",
+      "title": "DooGrade",
+      "description": "ระบบจัดการเกรดนักเรียน import Excel, upload PDF\nเก็บข้อมูลห้องเรียน\n\nTech: Python Flask + SQLite + HTML/CSS/JS\nStatus: Production\nFolder: Project/DooGrade/",
+      "priority": "Medium",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-008",
+      "title": "C-Root",
+      "description": "'สร้างรากไปดูดเงิน' — AI Automated Affiliate Content\nROI Gate ก่อนสร้าง content ทุกครั้ง, 5 platforms, 18 niches\n\nTech: OpenClaw Skills + Static HTML\nStatus: Research phase\nRelation: Data sync กับ Debug-Me (Revenue + ROI)\nFolder: Project/C-Root/",
+      "priority": "Medium",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-009",
+      "title": "Health Desk",
+      "description": "ระบบสุขภาพชุมชนสำหรับ อสม.\nAI พยากรณ์ความเสี่ยงสุขภาพ, รายงานอัตโนมัติ, Mobile PWA\n\nTech: HTML5/CSS3 (planned: Node.js + PostgreSQL + Python/TensorFlow)\nStatus: Design phase\nFolder: Project/Health Desk/",
+      "priority": "Medium",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-010",
+      "title": "Taokaeyai",
+      "description": "React + TypeScript web app template/framework\nพร้อม routing + charting\n\nTech: React 19 + React Router + Recharts + Tailwind\nStatus: Framework ready\nFolder: Project/Taokaeyai/",
+      "priority": "Low",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-011",
+      "title": "Layered Time Theory",
+      "description": "ทฤษฎีจักรวาลวิทยาทางเลือก + วิเคราะห์ข้อมูลดาราศาสตร์\nPaper ArXiv พร้อมส่ง (67% evidence support)\n\nTech: Python (NumPy/Pandas/SciPy) + LaTeX\nStatus: Research + Paper ready\nFolder: Project/Layered Time Theory/ + Project/layered_time_arxiv_package/",
+      "priority": "Low",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-012",
+      "title": "FingrowV5",
+      "description": "น่าจะ version ใหม่ของ Fingame/Fingrow platform\n\nStatus: ไม่ชัดเจน\nFolder: Project/FingrowV5/",
+      "priority": "Low",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-013",
+      "title": "Smart Menu",
+      "description": "รายละเอียดยังไม่มี\n\nStatus: Idea\nFolder: ยังไม่มี",
+      "priority": "Medium",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-014",
+      "title": "EASY PLAN",
+      "description": "ใช้ AI ออกแบบบ้านสำหรับ อบต.\n\nStatus: Idea\nFolder: ยังไม่มี",
+      "priority": "Medium",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-015",
+      "title": "Mindmap Agent",
+      "description": "Agent สร้าง mind map อัตโนมัติ\n\nStatus: Idea\nFolder: ยังไม่มี",
+      "priority": "Medium",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-016",
+      "title": "APP บริหารตู้เย็น",
+      "description": "บริหารตู้เย็น/ค่าใช้จ่าย\nต่อยอดไปบริหารตู้เสื้อผ้า\n\nStatus: Idea\nFolder: ยังไม่มี",
+      "priority": "Low",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-017",
+      "title": "Bueaty book",
+      "description": "จองคิวร้านเสริมสวย\n\nStatus: Idea\nFolder: ยังไม่มี",
+      "priority": "Low",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-018",
+      "title": "Growcraft",
+      "description": "ปลูกพืชแบบ craft\n\nStatus: Idea\nFolder: ยังไม่มี",
+      "priority": "Low",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-019",
+      "title": "ผัสสะ",
+      "description": "Custom newspaper — เลือกรับข่าวสารเฉพาะที่ตัวเองสนใจ\n\nStatus: Idea\nFolder: ยังไม่มี",
+      "priority": "Low",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-020",
+      "title": "Flirt Card",
+      "description": "Google Cloud Storage integration + Google Auth\n\nStatus: ไม่ชัดเจน\nFolder: Project/I-LOVE-YOU-BENNIE-WANG/",
+      "priority": "Low",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-021",
+      "title": "Finny",
+      "description": "Video clips + images (AI-generated content)\nไม่ใช่ app — เป็น media assets\n\nStatus: Media collection\nFolder: Project/Finny/",
+      "priority": "Low",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    },
+    {
+      "id": "proj-022",
+      "title": "Budtboy",
+      "description": "ยังไม่มีรายละเอียด\n\nStatus: Empty folder\nFolder: Project/Budtboy/",
+      "priority": "Low",
+      "completed": false,
+      "category": "งานหลัก",
+      "dayTypes": ["workday", "saturday", "sunday"],
+      "subtasks": [],
+      "attachments": []
+    }
+  ],
+  "projects": []
+}

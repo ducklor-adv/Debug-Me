@@ -29,3 +29,6 @@ dist-ssr
 
 # Analysis (local only)
 Debug-Me-App-analysis.html
+
+# Sub-projects (each has its own git repo, push independently)
+Project/

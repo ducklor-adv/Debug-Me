@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Debugme Revolution — Project Overview</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #0a0a0f;
+    color: #e2e8f0;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ===== HEADER ===== */
+  .header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    padding: 40px;
+    text-align: center;
+    border-bottom: 2px solid #e94560;
+    position: relative;
+    overflow: hidden;
+  }
+  .header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at 30% 50%, rgba(233,69,96,0.08) 0%, transparent 50%),
+                radial-gradient(circle at 70% 50%, rgba(83,215,105,0.05) 0%, transparent 50%);
+    animation: pulse 8s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+  .header h1 {
+    font-size: 36px;
+    font-weight: 900;
+    position: relative;
+    z-index: 1;
+    background: linear-gradient(135deg, #fff 0%, #e94560 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .header p {
+    color: #94a3b8;
+    margin-top: 8px;
+    font-size: 14px;
+    position: relative;
+    z-index: 1;
+  }
+  .header .date {
+    color: #64748b;
+    font-size: 12px;
+    margin-top: 4px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+
+  /* ===== STATS BAR ===== */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+  .stat-card {
+    background: #1e293b;
+    border-radius: 16px;
+    padding: 20px;
+    text-align: center;
+    border: 1px solid #334155;
+    transition: all 0.3s;
+  }
+  .stat-card:hover { transform: translateY(-2px); border-color: #e94560; }
+  .stat-num { font-size: 32px; font-weight: 800; }
+  .stat-label { font-size: 11px; color: #94a3b8; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+
+  /* ===== SECTION ===== */
+  .section { margin-bottom: 40px; }
+  .section-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title .line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, #334155 0%, transparent 100%);
+  }
+
+  /* ===== PROJECT CARDS ===== */
+  .projects-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 20px;
+  }
+
+  .project-card {
+    background: #1e293b;
+    border-radius: 16px;
+    padding: 24px;
+    border: 2px solid #334155;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+  .project-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+  }
+  .project-card.core { border-color: #e94560; }
+  .project-card.core:hover { box-shadow: 0 8px 30px rgba(233,69,96,0.2); }
+  .project-card.production { border-color: #4ade80; }
+  .project-card.production:hover { box-shadow: 0 8px 30px rgba(74,222,128,0.15); }
+  .project-card.has-app { border-color: #38bdf8; }
+  .project-card.has-app:hover { box-shadow: 0 8px 30px rgba(56,189,248,0.15); }
+  .project-card.research { border-color: #a78bfa; }
+  .project-card.research:hover { box-shadow: 0 8px 30px rgba(167,139,250,0.15); }
+  .project-card.idea { border-color: #475569; }
+  .project-card.idea:hover { border-color: #fbbf24; box-shadow: 0 8px 30px rgba(251,191,36,0.1); }
+
+  .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+  .card-title { font-size: 18px; font-weight: 700; color: #f8fafc; }
+  .card-desc { font-size: 13px; color: #94a3b8; line-height: 1.6; margin-bottom: 16px; min-height: 40px; }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge-production { background: #064e3b; color: #6ee7b7; }
+  .badge-app { background: #0c4a6e; color: #7dd3fc; }
+  .badge-blueprint { background: #3b0764; color: #c084fc; }
+  .badge-research { background: #2e1065; color: #a78bfa; }
+  .badge-idea { background: #422006; color: #fbbf24; }
+  .badge-empty { background: #1e293b; color: #64748b; border: 1px solid #475569; }
+  .badge-core { background: #4c0519; color: #fda4af; }
+
+  .card-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .meta-tag {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: #0f172a;
+    color: #64748b;
+    border: 1px solid #1e293b;
+  }
+  .meta-tag.yes { color: #4ade80; border-color: #064e3b; }
+  .meta-tag.no { color: #64748b; border-color: #334155; }
+
+  .card-indicators {
+    display: flex;
+    gap: 6px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #334155;
+  }
+  .indicator {
+    font-size: 10px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .indicator.in-tasks { background: #1e3a5f; color: #93c5fd; }
+  .indicator.in-folder { background: #064e3b; color: #6ee7b7; }
+  .indicator.missing { background: #1e293b; color: #475569; }
+
+  .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .dot.green { background: #4ade80; }
+  .dot.red { background: #f87171; }
+  .dot.gray { background: #475569; }
+
+  /* ===== RELATIONSHIP MAP ===== */
+  .rel-section { margin-bottom: 40px; }
+  .rel-map {
+    background: #1e293b;
+    border-radius: 16px;
+    padding: 32px;
+    border: 1px solid #334155;
+    overflow-x: auto;
+  }
+  .rel-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+  }
+  .rel-hub {
+    background: linear-gradient(135deg, #e94560, #c62a4a);
+    color: white;
+    padding: 20px 40px;
+    border-radius: 20px;
+    font-weight: 800;
+    font-size: 20px;
+    box-shadow: 0 4px 20px rgba(233,69,96,0.3);
+    text-align: center;
+  }
+  .rel-hub small { display: block; font-size: 11px; font-weight: 400; opacity: 0.8; margin-top: 4px; }
+  .rel-branches {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 16px;
+    max-width: 900px;
+  }
+  .rel-branch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .rel-line {
+    width: 2px;
+    height: 24px;
+    border-left: 2px dashed #475569;
+  }
+  .rel-line.solid { border-left-style: solid; }
+  .rel-line.green { border-color: #4ade80; }
+  .rel-line.blue { border-color: #38bdf8; }
+  .rel-line.purple { border-color: #a78bfa; }
+  .rel-line.yellow { border-color: #fbbf24; }
+  .rel-node {
+    padding: 10px 18px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    min-width: 120px;
+    border: 2px solid;
+  }
+  .rel-node.data-sync { background: #064e3b; border-color: #4ade80; color: #6ee7b7; }
+  .rel-node.timeline { background: #0c4a6e; border-color: #38bdf8; color: #7dd3fc; }
+  .rel-node.experimental { background: #2e1065; border-color: #a78bfa; color: #c084fc; }
+  .rel-node.idea-node { background: #422006; border-color: #fbbf24; color: #fde68a; }
+  .rel-node.standalone { background: #1e293b; border-color: #475569; color: #94a3b8; }
+  .rel-label { font-size: 9px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; }
+
+  /* ===== LEGEND ===== */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 20px;
+    background: #1e293b;
+    border-radius: 12px;
+    border: 1px solid #334155;
+    margin-bottom: 40px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; }
+  .legend-color { width: 14px; height: 14px; border-radius: 4px; border: 2px solid; }
+
+  /* ===== TECH STACK TABLE ===== */
+  .tech-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #1e293b;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .tech-table th {
+    background: #0f172a;
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #64748b;
+    border-bottom: 2px solid #334155;
+  }
+  .tech-table td {
+    padding: 12px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid #1e293b;
+  }
+  .tech-table tr:hover { background: #334155; }
+  .tech-table tr:nth-child(even) { background: #1a2332; }
+
+  .footer {
+    text-align: center;
+    padding: 32px;
+    color: #475569;
+    font-size: 12px;
+    border-top: 1px solid #1e293b;
+    margin-top: 40px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Debugme Revolution</h1>
+  <p>"Debug your life, spawn your apps"</p>
+  <div class="date">Project Portfolio Overview — 30 March 2026</div>
+</div>
+
+<div class="container">
+
+  <!-- ===== STATS ===== -->
+  <div class="stats-bar">
+    <div class="stat-card">
+      <div class="stat-num" style="color:#e94560">22</div>
+      <div class="stat-label">Total Projects</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:#4ade80">5</div>
+      <div class="stat-label">Production</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:#38bdf8">3</div>
+      <div class="stat-label">Has App</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:#a78bfa">4</div>
+      <div class="stat-label">Research</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:#fbbf24">7</div>
+      <div class="stat-label">Ideas</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:#64748b">3</div>
+      <div class="stat-label">Unknown</div>
+    </div>
+  </div>
+
+  <!-- ===== LEGEND ===== -->
+  <div class="legend">
+    <div class="legend-item"><div class="legend-color" style="background:#4c0519; border-color:#e94560"></div> Core Platform</div>
+    <div class="legend-item"><div class="legend-color" style="background:#064e3b; border-color:#4ade80"></div> Production</div>
+    <div class="legend-item"><div class="legend-color" style="background:#0c4a6e; border-color:#38bdf8"></div> Has App/Design</div>
+    <div class="legend-item"><div class="legend-color" style="background:#2e1065; border-color:#a78bfa"></div> Research/Blueprint</div>
+    <div class="legend-item"><div class="legend-color" style="background:#422006; border-color:#fbbf24"></div> Idea</div>
+    <div class="legend-item"><div class="legend-color" style="background:#1e293b; border-color:#475569"></div> Unknown/Empty</div>
+    <div class="legend-item"><span class="dot green"></span> In Debugme Tasks</div>
+    <div class="legend-item"><span class="dot" style="background:#38bdf8"></span> Has Folder</div>
+    <div class="legend-item"><span class="dot red"></span> Missing</div>
+  </div>
+
+  <!-- ===== RELATIONSHIP MAP ===== -->
+  <div class="section rel-section">
+    <div class="section-title">Relationship Map <span class="line"></span></div>
+    <div class="rel-map">
+      <div class="rel-center">
+        <div class="rel-hub">Debug-Me<small>Core Platform</small></div>
+
+        <div style="display:flex; gap:40px; flex-wrap:wrap; justify-content:center">
+          <!-- Data Sync -->
+          <div style="text-align:center">
+            <div class="rel-label">Data Sync</div>
+            <div style="display:flex; gap:12px; margin-top:8px">
+              <div class="rel-branch">
+                <div class="rel-line solid green"></div>
+                <div class="rel-node data-sync">Cuteped<br><span style="font-size:10px;opacity:0.7">Mood + Calendar</span></div>
+              </div>
+              <div class="rel-branch">
+                <div class="rel-line solid green"></div>
+                <div class="rel-node data-sync">C-Root<br><span style="font-size:10px;opacity:0.7">Revenue + ROI</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Timeline -->
+          <div style="text-align:center">
+            <div class="rel-label">Timeline / Task</div>
+            <div style="display:flex; gap:12px; margin-top:8px">
+              <div class="rel-branch">
+                <div class="rel-line solid blue"></div>
+                <div class="rel-node timeline">Truck-Kub<br><span style="font-size:10px;opacity:0.7">Milestones</span></div>
+              </div>
+              <div class="rel-branch">
+                <div class="rel-line solid blue"></div>
+                <div class="rel-node timeline">Trackmydesk<br><span style="font-size:10px;opacity:0.7">Activity</span></div>
+              </div>
+              <div class="rel-branch">
+                <div class="rel-line solid blue"></div>
+                <div class="rel-node timeline">Fingame<br><span style="font-size:10px;opacity:0.7">Finance</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Standalone -->
+          <div style="text-align:center">
+            <div class="rel-label">Standalone</div>
+            <div style="display:flex; gap:12px; margin-top:8px; flex-wrap:wrap; justify-content:center">
+              <div class="rel-branch">
+                <div class="rel-line" style="border-color:#475569"></div>
+                <div class="rel-node standalone">PNC</div>
+              </div>
+              <div class="rel-branch">
+                <div class="rel-line" style="border-color:#475569"></div>
+                <div class="rel-node standalone">DooGrade</div>
+              </div>
+              <div class="rel-branch">
+                <div class="rel-line" style="border-color:#475569"></div>
+                <div class="rel-node standalone">Health Desk</div>
+              </div>
+              <div class="rel-branch">
+                <div class="rel-line" style="border-color:#475569"></div>
+                <div class="rel-node standalone">Layered Time</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ideas -->
+        <div style="text-align:center; margin-top:12px">
+          <div class="rel-label">Ideas (Not Started)</div>
+          <div style="display:flex; gap:10px; margin-top:8px; flex-wrap:wrap; justify-content:center">
+            <div class="rel-node idea-node" style="padding:6px 12px; font-size:11px">Smart Menu</div>
+            <div class="rel-node idea-node" style="padding:6px 12px; font-size:11px">EASY PLAN</div>
+            <div class="rel-node idea-node" style="padding:6px 12px; font-size:11px">Mindmap Agent</div>
+            <div class="rel-node idea-node" style="padding:6px 12px; font-size:11px">APP ตู้เย็น</div>
+            <div class="rel-node idea-node" style="padding:6px 12px; font-size:11px">Bueaty book</div>
+            <div class="rel-node idea-node" style="padding:6px 12px; font-size:11px">Growcraft</div>
+            <div class="rel-node idea-node" style="padding:6px 12px; font-size:11px">ผัสสะ</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CORE ===== -->
+  <div class="section">
+    <div class="section-title">Core Platform <span class="line"></span></div>
+    <div class="projects-grid">
+      <div class="project-card core">
+        <div class="card-header">
+          <div class="card-title">Debug-Me</div>
+          <span class="badge badge-core">CORE</span>
+        </div>
+        <div class="card-desc">Core platform — debug ชีวิต creator แล้ว spawn apps จาก real pain points ระบบรวม Task, Schedule, Focus Timer, Habit, Expense, Analytics, AI Coach</div>
+        <div class="card-meta">
+          <span class="meta-tag">React 19</span>
+          <span class="meta-tag">TypeScript</span>
+          <span class="meta-tag">Vite</span>
+          <span class="meta-tag">Tailwind</span>
+          <span class="meta-tag">Firebase</span>
+          <span class="meta-tag">Gemini AI</span>
+        </div>
+        <div class="card-indicators">
+          <span class="indicator in-tasks"><span class="dot green"></span> In Tasks</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Root Repo</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PRODUCTION ===== -->
+  <div class="section">
+    <div class="section-title">Production Ready <span class="line"></span></div>
+    <div class="projects-grid">
+
+      <div class="project-card production">
+        <div class="card-header">
+          <div class="card-title">Trackmydesk (TMD)</div>
+          <span class="badge badge-production">PRODUCTION</span>
+        </div>
+        <div class="card-desc">ระบบ track activity พนักงาน, ปฏิทิน, จัดการเอกสาร, admin panel รองรับหลายภาษา + export PDF/XLSX</div>
+        <div class="card-meta">
+          <span class="meta-tag">React 19</span>
+          <span class="meta-tag">TypeScript</span>
+          <span class="meta-tag">Ant Design</span>
+          <span class="meta-tag">Recharts</span>
+        </div>
+        <div class="card-indicators">
+          <span class="indicator in-tasks"><span class="dot green"></span> In Tasks</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card production">
+        <div class="card-header">
+          <div class="card-title">Fingame</div>
+          <span class="badge badge-production">PRODUCTION</span>
+        </div>
+        <div class="card-desc">แพลตฟอร์มการเงิน + ตลาดมือสอง + ระบบ MLM (ACF), Finpoint transactions, ประกัน, real-time dashboard</div>
+        <div class="card-meta">
+          <span class="meta-tag">React</span>
+          <span class="meta-tag">Node.js/Express</span>
+          <span class="meta-tag">PostgreSQL</span>
+          <span class="meta-tag">Socket.io</span>
+        </div>
+        <div class="card-indicators">
+          <span class="indicator missing"><span class="dot red"></span> No Task</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card production">
+        <div class="card-header">
+          <div class="card-title">PNC</div>
+          <span class="badge badge-production">PRODUCTION</span>
+        </div>
+        <div class="card-desc">IT Service Management (ITSM) + AI Ticket Triage ด้วย Gemini 3, จัดการ asset/vendor, CRM</div>
+        <div class="card-meta">
+          <span class="meta-tag">React 19</span>
+          <span class="meta-tag">TypeScript</span>
+          <span class="meta-tag">Ant Design</span>
+          <span class="meta-tag">Gemini API</span>
+        </div>
+        <div class="card-indicators">
+          <span class="indicator missing"><span class="dot red"></span> No Task</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card production">
+        <div class="card-header">
+          <div class="card-title">DooGrade</div>
+          <span class="badge badge-production">PRODUCTION</span>
+        </div>
+        <div class="card-desc">ระบบจัดการเกรดนักเรียน import Excel, upload PDF, เก็บข้อมูลห้องเรียน</div>
+        <div class="card-meta">
+          <span class="meta-tag">Python Flask</span>
+          <span class="meta-tag">SQLite</span>
+          <span class="meta-tag">HTML/CSS/JS</span>
+        </div>
+        <div class="card-indicators">
+          <span class="indicator missing"><span class="dot red"></span> No Task</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== HAS APP ===== -->
+  <div class="section">
+    <div class="section-title">Has App / Design Phase <span class="line"></span></div>
+    <div class="projects-grid">
+
+      <div class="project-card has-app">
+        <div class="card-header">
+          <div class="card-title">Cuteped</div>
+          <span class="badge badge-app">HAS APP</span>
+        </div>
+        <div class="card-desc">แชทคู่รัก + AI "คิวท์-เป็ด" กามเทพในร่างเป็ดเบรกก่อนพิมพ์คำทำร้ายจิตใจ มี Video Call, Mood Tracker, Secret Vault</div>
+        <div class="card-meta">
+          <span class="meta-tag">React 19</span>
+          <span class="meta-tag">Firebase</span>
+          <span class="meta-tag">Gemini AI</span>
+          <span class="meta-tag">Framer Motion</span>
+        </div>
+        <div class="card-indicators">
+          <span class="indicator missing"><span class="dot red"></span> No Task</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card has-app">
+        <div class="card-header">
+          <div class="card-title">Health Desk</div>
+          <span class="badge badge-app">DESIGN</span>
+        </div>
+        <div class="card-desc">ระบบสุขภาพชุมชนสำหรับ อสม. AI พยากรณ์ความเสี่ยงสุขภาพ, รายงานอัตโนมัติ, Mobile PWA</div>
+        <div class="card-meta">
+          <span class="meta-tag">HTML5/CSS3</span>
+          <span class="meta-tag">PWA</span>
+          <span class="meta-tag">Mobile-first</span>
+        </div>
+        <div class="card-indicators">
+          <span class="indicator missing"><span class="dot red"></span> No Task</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card has-app">
+        <div class="card-header">
+          <div class="card-title">Taokaeyai</div>
+          <span class="badge badge-app">FRAMEWORK</span>
+        </div>
+        <div class="card-desc">React + TypeScript web app template/framework พร้อม routing + charting</div>
+        <div class="card-meta">
+          <span class="meta-tag">React 19</span>
+          <span class="meta-tag">React Router</span>
+          <span class="meta-tag">Recharts</span>
+          <span class="meta-tag">Tailwind</span>
+        </div>
+        <div class="card-indicators">
+          <span class="indicator missing"><span class="dot red"></span> No Task</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== RESEARCH ===== -->
+  <div class="section">
+    <div class="section-title">Blueprint / Research <span class="line"></span></div>
+    <div class="projects-grid">
+
+      <div class="project-card research">
+        <div class="card-header">
+          <div class="card-title">Truck-Kub</div>
+          <span class="badge badge-blueprint">BLUEPRINT</span>
+        </div>
+        <div class="card-desc">ระบบโลจิสติกส์ขนส่งผลไม้ตู้เย็นข้ามแดน TH→LA→VN→CN มี I'AM Blueprint Tool, 29 actions, 12 roles, 16 entities</div>
+        <div class="card-meta">
+          <span class="meta-tag">React 18</span>
+          <span class="meta-tag">TypeScript</span>
+          <span class="meta-tag">Firebase</span>
+          <span class="meta-tag">i18next</span>
+          <span class="meta-tag">Google Maps</span>
+        </div>
+        <div class="card-indicators">
+          <span class="indicator in-tasks"><span class="dot green"></span> In Tasks</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card research">
+        <div class="card-header">
+          <div class="card-title">C-Root</div>
+          <span class="badge badge-research">RESEARCH</span>
+        </div>
+        <div class="card-desc">"สร้างรากไปดูดเงิน" — AI Automated Affiliate Content + ROI Gate, 5 platforms, 18 niches analyzed</div>
+        <div class="card-meta">
+          <span class="meta-tag">OpenClaw Skills</span>
+          <span class="meta-tag">Static HTML</span>
+          <span class="meta-tag">Mermaid</span>
+        </div>
+        <div class="card-indicators">
+          <span class="indicator missing"><span class="dot red"></span> No Task</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card research">
+        <div class="card-header">
+          <div class="card-title">Layered Time Theory</div>
+          <span class="badge badge-research">RESEARCH</span>
+        </div>
+        <div class="card-desc">ทฤษฎีจักรวาลวิทยาทางเลือก + วิเคราะห์ข้อมูลดาราศาสตร์ + Paper ArXiv พร้อมส่ง (67% evidence support)</div>
+        <div class="card-meta">
+          <span class="meta-tag">Python</span>
+          <span class="meta-tag">NumPy/Pandas</span>
+          <span class="meta-tag">LaTeX</span>
+          <span class="meta-tag">Cosmology</span>
+        </div>
+        <div class="card-indicators">
+          <span class="indicator missing"><span class="dot red"></span> No Task</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card research">
+        <div class="card-header">
+          <div class="card-title">FingrowV5</div>
+          <span class="badge badge-research">UNCLEAR</span>
+        </div>
+        <div class="card-desc">น่าจะ version ใหม่ของ Fingame/Fingrow platform (folder ซ้อน)</div>
+        <div class="card-meta">
+          <span class="meta-tag">Unknown</span>
+        </div>
+        <div class="card-indicators">
+          <span class="indicator missing"><span class="dot red"></span> No Task</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== IDEAS ===== -->
+  <div class="section">
+    <div class="section-title">Ideas (Not Started) <span class="line"></span></div>
+    <div class="projects-grid">
+
+      <div class="project-card idea">
+        <div class="card-header">
+          <div class="card-title">Smart Menu</div>
+          <span class="badge badge-idea">IDEA</span>
+        </div>
+        <div class="card-desc">งานหลัก — ยังไม่มี description</div>
+        <div class="card-indicators">
+          <span class="indicator in-tasks"><span class="dot green"></span> In Tasks</span>
+          <span class="indicator missing"><span class="dot red"></span> No Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card idea">
+        <div class="card-header">
+          <div class="card-title">EASY PLAN</div>
+          <span class="badge badge-idea">IDEA</span>
+        </div>
+        <div class="card-desc">ใช้ AI ออกแบบบ้านสำหรับ อบต.</div>
+        <div class="card-indicators">
+          <span class="indicator in-tasks"><span class="dot green"></span> In Tasks</span>
+          <span class="indicator missing"><span class="dot red"></span> No Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card idea">
+        <div class="card-header">
+          <div class="card-title">Mindmap Agent</div>
+          <span class="badge badge-idea">IDEA</span>
+        </div>
+        <div class="card-desc">Agent สร้าง mind map อัตโนมัติ</div>
+        <div class="card-indicators">
+          <span class="indicator in-tasks"><span class="dot green"></span> In Tasks</span>
+          <span class="indicator missing"><span class="dot red"></span> No Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card idea">
+        <div class="card-header">
+          <div class="card-title">APP บริหารตู้เย็น</div>
+          <span class="badge badge-idea">IDEA</span>
+        </div>
+        <div class="card-desc">บริหารตู้เย็น/ค่าใช้จ่าย ต่อยอดไปบริหารตู้เสื้อผ้า</div>
+        <div class="card-indicators">
+          <span class="indicator in-tasks"><span class="dot green"></span> In Tasks</span>
+          <span class="indicator missing"><span class="dot red"></span> No Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card idea">
+        <div class="card-header">
+          <div class="card-title">Bueaty book</div>
+          <span class="badge badge-idea">IDEA</span>
+        </div>
+        <div class="card-desc">จองคิวร้านเสริมสวย</div>
+        <div class="card-indicators">
+          <span class="indicator in-tasks"><span class="dot green"></span> In Tasks</span>
+          <span class="indicator missing"><span class="dot red"></span> No Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card idea">
+        <div class="card-header">
+          <div class="card-title">Growcraft</div>
+          <span class="badge badge-idea">IDEA</span>
+        </div>
+        <div class="card-desc">ปลูกพืชแบบ craft</div>
+        <div class="card-indicators">
+          <span class="indicator in-tasks"><span class="dot green"></span> In Tasks</span>
+          <span class="indicator missing"><span class="dot red"></span> No Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card idea">
+        <div class="card-header">
+          <div class="card-title">ผัสสะ</div>
+          <span class="badge badge-idea">IDEA</span>
+        </div>
+        <div class="card-desc">Custom newspaper — เลือกรับข่าวสารเฉพาะที่ตัวเองสนใจ</div>
+        <div class="card-indicators">
+          <span class="indicator in-tasks"><span class="dot green"></span> In Tasks</span>
+          <span class="indicator missing"><span class="dot red"></span> No Folder</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== OTHERS ===== -->
+  <div class="section">
+    <div class="section-title">Others / Unclear <span class="line"></span></div>
+    <div class="projects-grid">
+
+      <div class="project-card">
+        <div class="card-header">
+          <div class="card-title">I-LOVE-YOU-BENNIE-WANG</div>
+          <span class="badge badge-empty">OTHER</span>
+        </div>
+        <div class="card-desc">Google Cloud Storage integration + Google Auth</div>
+        <div class="card-indicators">
+          <span class="indicator missing"><span class="dot gray"></span> No Task</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card">
+        <div class="card-header">
+          <div class="card-title">Finny</div>
+          <span class="badge badge-empty">MEDIA</span>
+        </div>
+        <div class="card-desc">Video clips + images (AI-generated content) ไม่ใช่ app</div>
+        <div class="card-indicators">
+          <span class="indicator missing"><span class="dot gray"></span> No Task</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card">
+        <div class="card-header">
+          <div class="card-title">Budtboy</div>
+          <span class="badge badge-empty">EMPTY</span>
+        </div>
+        <div class="card-desc">Folder ว่าง ไม่มีไฟล์</div>
+        <div class="card-indicators">
+          <span class="indicator missing"><span class="dot gray"></span> No Task</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+      <div class="project-card">
+        <div class="card-header">
+          <div class="card-title">test_codex</div>
+          <span class="badge badge-empty">TEST</span>
+        </div>
+        <div class="card-desc">ทดสอบ/clone experiment (minimal HTML)</div>
+        <div class="card-indicators">
+          <span class="indicator missing"><span class="dot gray"></span> No Task</span>
+          <span class="indicator in-folder"><span class="dot green"></span> Has Folder</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== TECH STACK COMPARISON ===== -->
+  <div class="section">
+    <div class="section-title">Tech Stack Comparison <span class="line"></span></div>
+    <div style="overflow-x:auto; border-radius:12px; border:1px solid #334155;">
+      <table class="tech-table">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Frontend</th>
+            <th>Backend/DB</th>
+            <th>AI</th>
+            <th>Share กับ Debugme?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="font-weight:700; color:#e94560">Debug-Me</td>
+            <td>React 19 + Vite + Tailwind</td>
+            <td>Firebase/Firestore</td>
+            <td>Gemini</td>
+            <td style="color:#4ade80">— Core —</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600">Cuteped</td>
+            <td>React 19 + Vite + Tailwind</td>
+            <td>Firebase + Express</td>
+            <td>Gemini</td>
+            <td style="color:#4ade80">Stack เหมือนกัน</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600">Truck-Kub</td>
+            <td>React 18 + Vite + Tailwind</td>
+            <td>Firebase/Firestore</td>
+            <td>—</td>
+            <td style="color:#4ade80">Stack ใกล้เคียง</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600">Trackmydesk</td>
+            <td>React 19 + Vite + Tailwind + Ant Design</td>
+            <td>—</td>
+            <td>—</td>
+            <td style="color:#fbbf24">บางส่วน</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600">PNC</td>
+            <td>React 19 + Vite + Tailwind + Ant Design</td>
+            <td>localStorage</td>
+            <td>Gemini</td>
+            <td style="color:#fbbf24">บางส่วน</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600">Fingame</td>
+            <td>React + Vite + Tailwind</td>
+            <td>Node.js + PostgreSQL + Socket.io</td>
+            <td>—</td>
+            <td style="color:#f87171">Stack ต่างกัน (PG)</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600">DooGrade</td>
+            <td>HTML/CSS/JS</td>
+            <td>Python Flask + SQLite</td>
+            <td>—</td>
+            <td style="color:#f87171">Stack ต่างกัน (Python)</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600">Health Desk</td>
+            <td>HTML5/CSS3</td>
+            <td>— (planned)</td>
+            <td>— (planned)</td>
+            <td style="color:#f87171">ยังเป็น mockup</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600">C-Root</td>
+            <td>Static HTML</td>
+            <td>OpenClaw Skills</td>
+            <td>OpenClaw</td>
+            <td style="color:#f87171">Stack ต่างกัน</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600">Layered Time</td>
+            <td>—</td>
+            <td>Python + LaTeX</td>
+            <td>—</td>
+            <td style="color:#f87171">ไม่เกี่ยวกัน</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  Debugme Revolution — Project Portfolio Overview<br>
+  Generated 30 March 2026 by Claude
+</div>
+
+</body>
+</html>
