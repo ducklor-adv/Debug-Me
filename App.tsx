@@ -19,6 +19,8 @@ import {
   WifiOff,
   FolderKanban,
   Wallet,
+  PenLine,
+  Search,
 } from 'lucide-react';
 import { View, Task, Habit, Priority, TaskGroup, Milestone, DailyRecord, ScheduleTemplates, CustomScheduleTemplate, getDayType, DEFAULT_CATEGORIES, FocusSession, Project, Expense, BalanceItem } from './types';
 import { subscribeAppData, saveAppData, addDailyRecordFS, getDailyRecordsByDate, getDailyRecordCount, addFocusSessionFS, getFocusSessionsByDate } from './lib/firestoreDB';
@@ -39,6 +41,7 @@ const DailyPlanner = lazy(() => import('./components/DailyPlanner'));
 const CalendarView = lazy(() => import('./components/CalendarView'));
 const ProjectManager = lazy(() => import('./components/ProjectManager'));
 const ExpenseTracker = lazy(() => import('./components/ExpenseTracker'));
+const DiaryView = lazy(() => import('./components/DiaryView'));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center py-20">
@@ -230,6 +233,7 @@ const NAV_ITEMS: { view: View; icon: string; label: string }[] = [
   { view: 'dashboard', icon: 'Activity', label: 'TODAY' },
   { view: 'planner', icon: 'BookOpen', label: 'Planner' },
   { view: 'tasks', icon: 'CheckSquare', label: 'Tasks' },
+  { view: 'diary', icon: 'PenLine', label: 'Diary' },
   { view: 'analytics', icon: 'BarChart3', label: 'Analyst' },
 ];
 
@@ -466,6 +470,7 @@ const App: React.FC = () => {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [diarySearch, setDiarySearch] = useState('');
   const [balanceItems, setBalanceItems] = useState<BalanceItem[]>([]);
   const [firestoreLoading, setFirestoreLoading] = useState(true);
   const firestoreReadyRef = useRef(false);
@@ -940,6 +945,7 @@ const App: React.FC = () => {
       case 'calendar': return <Suspense fallback={<LazyFallback />}><CalendarView tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} userId={user!.uid} /></Suspense>;
       case 'projects': return <Suspense fallback={<LazyFallback />}><ProjectManager projects={projects} setProjects={setProjects} tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} onImmediateSave={handleImmediateSave} /></Suspense>;
       case 'expenses': return <Suspense fallback={<LazyFallback />}><ExpenseTracker expenses={expenses} setExpenses={setExpenses} balanceItems={balanceItems} setBalanceItems={setBalanceItems} /></Suspense>;
+      case 'diary': return <Suspense fallback={<LazyFallback />}><DiaryView userId={user!.uid} searchQuery={diarySearch} /></Suspense>;
       default: return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} />;
     }
   };
@@ -1063,17 +1069,36 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        {(activeView !== 'dashboard') && (
+        {(activeView !== 'dashboard' && activeView !== 'diary') && (
           <header className="h-12 flex items-center px-4 shrink-0 sticky top-0 z-30 bg-emerald-600 lg:h-16 lg:px-10">
             <button onClick={toggleSidebar} className="p-2 rounded-lg hover:bg-emerald-500 lg:hidden text-white/80 mr-3">
               <Menu className="w-5 h-5" />
             </button>
             <h2 className="text-lg font-bold text-white capitalize tracking-tight lg:text-2xl flex-1">
-              {activeView === 'dashboard' ? 'TODAY' : activeView === 'planner' ? 'Daily Planner' : activeView === 'calendar' ? 'Calendar' : activeView === 'projects' ? 'Projects' : activeView === 'expenses' ? 'Expenses' : activeView}
+              {activeView === 'planner' ? 'Daily Planner' : activeView === 'calendar' ? 'Calendar' : activeView === 'projects' ? 'Projects' : activeView === 'expenses' ? 'Expenses' : activeView}
             </h2>
             <button onClick={() => setShowNotifSettings(true)} className="p-2 rounded-lg hover:bg-emerald-500 text-white/80">
               <Bell className="w-5 h-5" />
             </button>
+          </header>
+        )}
+        {activeView === 'diary' && (
+          <header className="h-12 flex items-center gap-2 px-4 shrink-0 sticky top-0 z-30 bg-emerald-600 lg:h-16 lg:px-10">
+            <button onClick={toggleSidebar} className="p-2 rounded-lg hover:bg-emerald-500 lg:hidden text-white/80">
+              <Menu className="w-5 h-5" />
+            </button>
+            <h2 className="text-lg font-bold text-white tracking-tight lg:text-2xl shrink-0">Diary</h2>
+            <div className="flex-1" />
+            <div className="flex items-center gap-1.5 bg-white/15 rounded-lg px-2.5 py-1.5 w-[180px]">
+              <Search className="w-3.5 h-3.5 text-white/50 shrink-0" />
+              <input
+                value={diarySearch}
+                onChange={e => setDiarySearch(e.target.value)}
+                placeholder="ค้นหา..."
+                className="flex-1 bg-transparent text-xs text-white outline-none placeholder:text-white/40"
+              />
+              {diarySearch && <button onClick={() => setDiarySearch('')}><X className="w-3 h-3 text-white/50" /></button>}
+            </div>
           </header>
         )}
 
@@ -1097,6 +1122,7 @@ const App: React.FC = () => {
                 const Icon = item.icon === 'Activity' ? Activity
                   : item.icon === 'CheckSquare' ? CheckSquare
                   : item.icon === 'BookOpen' ? BookOpen
+                  : item.icon === 'PenLine' ? PenLine
                   : BarChart3;
                 return (
                   <button

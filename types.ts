@@ -244,7 +244,33 @@ export interface TimeEntry {
   hours: number;
 }
 
-export type View = 'dashboard' | 'tasks' | 'focus' | 'analytics' | 'planner' | 'calendar' | 'projects' | 'expenses';
+export type View = 'dashboard' | 'tasks' | 'focus' | 'analytics' | 'planner' | 'calendar' | 'projects' | 'expenses' | 'diary';
+
+// ===== Diary =====
+
+export interface DiaryAttachment {
+  id: string;
+  type: 'photo' | 'video' | 'audio';
+  fileName: string;
+  downloadUrl: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+export interface DiaryEntry {
+  id: string;
+  title: string;
+  content: string;               // TipTap JSON string
+  contentPlainText: string;       // plain text for preview/search
+  hashtags: string[];             // ['work', 'idea'] without #
+  attachments: DiaryAttachment[];
+  mood?: string;
+  date: string;                   // YYYY-MM-DD
+  status: 'draft' | 'published';
+  pinned?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 // ===== Expense Tracker =====
 

@@ -1,10 +1,10 @@
 import {
   doc, setDoc, onSnapshot, collection, query, where, orderBy,
   getDocs, deleteDoc, getCountFromServer, Unsubscribe,
-  waitForPendingWrites,
+  waitForPendingWrites, limit as firestoreLimit, startAfter, DocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Task, TaskGroup, DailyRecord, Milestone, TimeSlot, ScheduleTemplates, Habit, FocusSession, Project, Expense, BalanceItem } from '../types';
+import { Task, TaskGroup, DailyRecord, Milestone, TimeSlot, ScheduleTemplates, Habit, FocusSession, Project, Expense, BalanceItem, DiaryEntry } from '../types';
 
 // ===== App Data (tasks, groups, milestones, schedule) =====
 
@@ -133,4 +133,49 @@ export async function getFocusSessionsInRange(
   );
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({ ...d.data(), id: d.id }) as FocusSession);
+}
+
+// ===== Diary Entries =====
+
+function diaryCollection(uid: string) {
+  return collection(db, 'users', uid, 'diaryEntries');
+}
+
+export async function saveDiaryEntry(uid: string, entry: DiaryEntry) {
+  const ref = doc(db, 'users', uid, 'diaryEntries', entry.id);
+  await setDoc(ref, stripUndefined(entry) as DiaryEntry, { merge: true });
+}
+
+export async function deleteDiaryEntry(uid: string, entryId: string) {
+  await deleteDoc(doc(db, 'users', uid, 'diaryEntries', entryId));
+}
+
+export function subscribeDiaryEntries(
+  uid: string,
+  callback: (entries: DiaryEntry[]) => void,
+  maxEntries = 50,
+): Unsubscribe {
+  const q = query(
+    diaryCollection(uid),
+    orderBy('createdAt', 'desc'),
+    firestoreLimit(maxEntries),
+  );
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map(d => ({ ...d.data(), id: d.id }) as DiaryEntry));
+  }, (err) => {
+    console.error('[Diary] Subscribe error:', err);
+    callback([]);
+  });
+}
+
+export async function getDiaryEntriesByHashtag(
+  uid: string, hashtag: string,
+): Promise<DiaryEntry[]> {
+  const q = query(
+    diaryCollection(uid),
+    where('hashtags', 'array-contains', hashtag),
+    orderBy('createdAt', 'desc'),
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ ...d.data(), id: d.id }) as DiaryEntry);
 }

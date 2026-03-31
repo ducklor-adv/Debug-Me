@@ -253,9 +253,9 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setFormOpen(true);
   };
 
-  // Auto-open add-task form when navigated from Dashboard
+  // Auto-select group tab when navigated from Dashboard (don't open form)
   useEffect(() => {
-    if (initialGroupKey) openNewForm();
+    if (initialGroupKey) setSelectedCat(initialGroupKey);
   }, [initialGroupKey]);
 
   const openEditForm = (task: Task) => {
