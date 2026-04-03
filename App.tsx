@@ -233,8 +233,8 @@ const NAV_ITEMS: { view: View; icon: string; label: string }[] = [
   { view: 'dashboard', icon: 'Activity', label: 'TODAY' },
   { view: 'planner', icon: 'BookOpen', label: 'Planner' },
   { view: 'tasks', icon: 'CheckSquare', label: 'Tasks' },
-  { view: 'diary', icon: 'PenLine', label: 'Diary' },
-  { view: 'analytics', icon: 'BarChart3', label: 'Analyst' },
+  { view: 'projects', icon: 'FolderKanban', label: 'Projects' },
+  { view: 'expenses', icon: 'Wallet', label: 'Expenses' },
 ];
 
 // Merge any missing default groups into loaded groups
@@ -1001,8 +1001,8 @@ const App: React.FC = () => {
           </div>
 
           <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto scrollbar-hide">
-            <NavItem icon={<FolderKanban />} label="Projects" active={activeView === 'projects'} onClick={() => handleNavItemClick('projects')} />
-            <NavItem icon={<Wallet />} label="Expenses" active={activeView === 'expenses'} onClick={() => handleNavItemClick('expenses')} />
+            <NavItem icon={<PenLine />} label="Diary" active={activeView === 'diary'} onClick={() => handleNavItemClick('diary')} />
+            <NavItem icon={<BarChart3 />} label="Analyst" active={activeView === 'analytics'} onClick={() => handleNavItemClick('analytics')} />
             <NavItem icon={<CalendarDays />} label="Calendar" active={activeView === 'calendar'} onClick={() => handleNavItemClick('calendar')} />
           </nav>
 
@@ -1122,8 +1122,8 @@ const App: React.FC = () => {
                 const Icon = item.icon === 'Activity' ? Activity
                   : item.icon === 'CheckSquare' ? CheckSquare
                   : item.icon === 'BookOpen' ? BookOpen
-                  : item.icon === 'PenLine' ? PenLine
-                  : BarChart3;
+                  : item.icon === 'Wallet' ? Wallet
+                  : FolderKanban;
                 return (
                   <button
                     key={item.view}

@@ -16,8 +16,8 @@ export default defineConfig(({ mode }) => {
         },
         watch: {
           usePolling: true,
-          interval: 1000,
-          ignored: ['**/.git.bak/**'],
+          interval: 500,
+          ignored: ['**/.git.bak/**', '**/Project/**', '**/node_modules/**', '**/*.xlsx', '**/*.exe', '**/dist/**', '**/*.json', '**/*.csv'],
         },
       },
       plugins: [tailwindcss(), react()],

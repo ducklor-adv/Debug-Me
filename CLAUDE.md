@@ -59,9 +59,16 @@ Debug-me is the **core platform** in an ecosystem of connected apps. Each app is
 10. **Variable ที่เก็บค่า Thai string** → ใช้ชื่อ English ที่สื่อความหมาย เช่น `groupKey = 'งานหลัก'` ไม่ใช่ `const งานหลัก = ...`
 11. **Comments** → English หรือ Thai ก็ได้ แต่ให้สั้นกระชับ
 
+### Code Style
+12. **Indentation** → 2 spaces (ไม่ใช่ tab)
+13. **Import order** → React/libs → firebase → types → lib/ → services/ → components (แยกกลุ่มด้วยบรรทัดว่าง)
+14. **TypeScript** → ไม่ได้เปิด strict mode แต่ควรใส่ type ให้ชัดเจน ห้ามใช้ `any` ยกเว้นจำเป็นจริงๆ
+15. **ห้าม `console.log` ใน production** — ใช้ได้ตอน debug แต่ต้องลบก่อน commit
+16. **ห้าม `// @ts-ignore`** — แก้ type ให้ถูกแทน
+
 ### Code Quality
-12. **Component ใหม่ต้องไม่เกิน 500 บรรทัด** — ถ้าเกิน ให้แตกเป็น sub-component
-13. **ทุก function ใหม่ใน lib/ และ services/** — ควรมี JSDoc comment อธิบายสั้นๆ ว่าทำอะไร
+17. **Component ใหม่ต้องไม่เกิน 500 บรรทัด** — ถ้าเกิน ให้แตกเป็น sub-component
+18. **ทุก function ใหม่ใน lib/ และ services/** — ควรมี JSDoc comment อธิบายสั้นๆ ว่าทำอะไร
 
 ---
 
@@ -75,6 +82,8 @@ Debug-me is the **core platform** in an ecosystem of connected apps. Each app is
 - **ห้ามลบ code ที่ทำงานอยู่** เพื่อ refactor โดยไม่ถามก่อน — ทำ additive change เสมอ
 - **ห้ามเพิ่ม props ใหม่ใน App.tsx** ถ้า data นั้นใช้แค่ใน component เดียว — จัดการ state ภายใน component แทน
 - **ห้ามแก้ไฟล์ใน Project/** เมื่อกำลังทำงาน Debug-me core — sub-projects แยก repo
+- **ห้าม commit ไฟล์ `.env`, API key, credentials** — ใช้ `.env` + `.gitignore` เท่านั้น
+- **ห้าม `console.log` ค้างใน code** — ลบให้หมดก่อน commit
 
 ---
 
@@ -213,10 +222,10 @@ public/
 ## Navigation Structure
 
 **Bottom Nav (mobile — 5 items):**
-TODAY | Planner | Tasks | Diary | Analyst
+TODAY | Planner | Tasks | Expenses | Projects
 
 **Sidebar (desktop):**
-Projects | Expenses | Calendar
+Diary | Analyst | Calendar
 
 ## Life Categories (หมวดหมู่ชีวิต)
 
@@ -228,6 +237,71 @@ Projects | Expenses | Calendar
 - ⏸️ break — คั่นเวลา
 - 🌙 sleep — นอน
 - Quick-access (no category): งานด่วน ⚡, นัดหมาย 📅
+
+## Environment Setup
+
+- **Node.js** → v24.x (ใช้ v24.14.0)
+- **npm** → v11.x
+- **`.env` ที่ต้องมี:**
+  - `GEMINI_API_KEY` — Google Gemini API key (สำหรับ AI features)
+- **Firebase config** → อยู่ใน `firebase.ts` (ใช้ env vars หรือ hardcode ตาม environment)
+- **ไม่มี linter/prettier** ตั้งค่าไว้ — ใช้ convention ใน CLAUDE.md แทน
+
+---
+
+## Testing
+
+- **ยังไม่มี test framework** — แผนจะใช้ Vitest
+- **เมื่อเพิ่ม feature ใหม่ใน `lib/` หรือ `services/`** ควรเขียน unit test ด้วย (เมื่อ Vitest พร้อม)
+- **ห้าม break existing behavior** — ถ้าแก้ logic ที่มีอยู่ ต้อง manual test ก่อน commit
+- **Manual test checklist ก่อน deploy:**
+  1. เปิด Dashboard — ดู current slot, countdown ถูกต้อง
+  2. เปิด Planner — สร้าง/แก้ slot ได้
+  3. เปิด Tasks — เพิ่ม/ลบ/เช็ค task ได้
+  4. เปิด Expenses — เพิ่มรายจ่ายได้
+  5. เปิด Diary — สร้าง/แก้ entry ได้
+
+---
+
+## Security & Safety
+
+- **API keys / secrets** → เก็บใน `.env` เท่านั้น ห้าม hardcode ใน source code
+- **`.env` อยู่ใน `.gitignore`** — ห้าม commit ขึ้น repo เด็ดขาด
+- **Firebase Security Rules** → ห้ามแก้โดยไม่บอก Joe (กระทบทุก user)
+- **Firestore access** → ทุก read/write ต้องผ่าน `firestoreDB.ts` เพื่อควบคุม access pattern
+- **User input** → sanitize ก่อนเขียนลง Firestore (โดยเฉพาะ rich text จาก TipTap)
+- **ห้ามเก็บ sensitive data ใน localStorage** — ใช้ Firebase Auth token เท่านั้น
+
+---
+
+## Workflow & Process
+
+### ก่อนเขียนโค้ด
+1. **อ่าน code ที่เกี่ยวข้องก่อน** — ห้ามแก้ไฟล์ที่ยังไม่ได้อ่าน
+2. **grep หา impact** — ถ้าแก้ types.ts หรือ firestoreDB.ts ต้องเช็คว่ากระทบไฟล์ไหนบ้าง
+3. **วางแผนก่อนทำ** — ถ้างานซับซ้อน ให้สรุปแผนให้ Joe ดูก่อน
+
+### ระหว่างเขียน
+- ทำ **additive change** เสมอ — อย่าลบ code ที่ทำงานอยู่
+- แก้ทีละจุด commit ทีละจุด — อย่ารวมหลาย feature ใน commit เดียว
+- ถ้า component เริ่มยาว → แยก sub-component ออกไปเลย
+
+### หลังเขียนเสร็จ
+1. ลบ `console.log` ทั้งหมด
+2. เช็คว่าไม่มี TypeScript error (`npm run build`)
+3. Manual test ตาม checklist
+4. Review diff ก่อน commit
+
+---
+
+## Error Handling
+
+- **Firestore operations** → ใช้ try-catch ครอบ แล้ว log error (ไม่ต้อง throw ถ้า UI handle ได้)
+- **User-facing errors** → แสดงเป็น Thai message สั้นๆ ใน toast/inline (ไม่ต้อง show stack trace)
+- **Network errors** → app รองรับ offline ผ่าน Firestore persistentLocalCache อยู่แล้ว ไม่ต้อง handle เพิ่ม
+- **AI (Gemini) errors** → catch แล้วแสดง fallback message ไม่ต้อง crash app
+
+---
 
 ## Dev Commands
 

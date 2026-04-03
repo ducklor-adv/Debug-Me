@@ -692,7 +692,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
             )}
           </div>
 
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-1.5 mb-3">
 
             {/* Weekly Bills Button — between label and urgent buttons */}
             {(() => {
@@ -729,18 +729,18 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
               return (
                 <button
                   onClick={() => setShowWeeklyBills(!showWeeklyBills)}
-                  className={`flex items-center gap-2 px-4 py-1.5 rounded-full transition-all active:scale-95 shadow-sm min-w-[210px] justify-center ${
+                  className={`flex items-center gap-1 px-2 py-1 rounded-full transition-all active:scale-95 shadow-sm min-w-0 justify-center ${
                     weeklyBills.length > 0
                       ? 'bg-orange-500 text-white hover:bg-orange-600'
                       : 'bg-white/20 text-white/70 hover:bg-white/30'
                   }`}
                 >
-                  <Wallet className="w-4 h-4" />
-                  <span className="text-xs font-bold">
+                  <Wallet className="w-3.5 h-3.5" />
+                  <span className="text-[10px] font-bold truncate">
                     {weeklyBills.length > 0 ? `รายจ่าย ฿${totalDue.toLocaleString()}` : 'ไม่มีรายจ่าย'}
                   </span>
-                  {weeklyBills.length > 0 && <span className="text-[10px] font-black bg-white/25 px-1.5 py-0.5 rounded-full">{weeklyBills.length}</span>}
-                  {showWeeklyBills ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  {weeklyBills.length > 0 && <span className="text-[9px] font-black bg-white/25 px-1 py-0.5 rounded-full">{weeklyBills.length}</span>}
+                  {showWeeklyBills ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                 </button>
               );
             })()}
@@ -752,7 +752,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
               return uncatGroups.map(g => {
                 const todayCount = tasks.filter(t => t.category === g.key && !t.completed && (!t.startDate || t.startDate === todayStr)).length;
                 return (
-                  <button key={g.key} onClick={() => setPopupGroup(popupGroup === g.key ? null : g.key)} className={`flex items-center gap-1 px-2 py-1 rounded-full transition-all active:scale-95 shadow-sm ${
+                  <button key={g.key} onClick={() => setPopupGroup(popupGroup === g.key ? null : g.key)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full transition-all active:scale-95 shadow-sm ${
                     todayCount > 0
                       ? 'bg-orange-500 text-white hover:bg-orange-600'
                       : 'bg-white/20 text-white/70 hover:bg-white/30'
