@@ -1074,6 +1074,37 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         )}
       </div>
 
+      {/* Wake/Sleep Time Editor */}
+      {isV2 && (
+        <div className="flex items-center justify-center gap-3 bg-indigo-50/60 border border-indigo-100 rounded-xl px-3 py-2">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px]">☀️</span>
+            <span className="text-[10px] font-bold text-indigo-400">ตื่น</span>
+            <TimePicker
+              value={currentWakeTime}
+              onChange={(val) => {
+                setScheduleTemplates(prev => ({ ...prev, wakeTime: val }));
+                setScheduleDirty(true);
+              }}
+              compact
+            />
+          </div>
+          <span className="text-slate-300">—</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px]">🌙</span>
+            <span className="text-[10px] font-bold text-indigo-400">นอน</span>
+            <TimePicker
+              value={currentSleepTime}
+              onChange={(val) => {
+                setScheduleTemplates(prev => ({ ...prev, sleepTime: val }));
+                setScheduleDirty(true);
+              }}
+              compact
+            />
+          </div>
+        </div>
+      )}
+
       {/* 4. Day Info Bar — template source + total time + กลับค่าเดิม */}
       {isDayTab && resolvedDay && (
         <div className="flex flex-col items-center gap-1">
