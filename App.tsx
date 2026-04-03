@@ -32,6 +32,7 @@ import { useLocationReminders } from './hooks/useLocationReminders';
 import { analyzeBehaviorPatterns, BehaviorPattern } from './services/behaviorAnalysis';
 import { getDailyRecordsInRange } from './lib/firestoreDB';
 import { useUndoStack } from './hooks/useUndoStack';
+import { migrateV1Slots, isV2Schedule } from './components/planner/slotUtils';
 
 // Lazy-load non-dashboard views for faster initial load
 const TaskManager = lazy(() => import('./components/TaskManager'));
@@ -666,7 +667,7 @@ const App: React.FC = () => {
 
         if (data.scheduleTemplates) {
           const tpl = data.scheduleTemplates;
-          const validSlots = (arr: any[]) => (arr || []).filter((s: any) => s.startTime && s.endTime && s.groupKey);
+          const validSlots = (arr: any[]) => (arr || []).filter((s: any) => s.groupKey && (s.duration !== undefined || (s.startTime && s.endTime)));
           const vWork = validSlots(tpl.workday);
           const vSat = validSlots(tpl.saturday);
           const vSun = validSlots(tpl.sunday);
@@ -691,11 +692,37 @@ const App: React.FC = () => {
               workday: vWork,
               saturday: vSat,
               sunday: vSun,
+              wakeTime: tpl.wakeTime || '05:00',
+              sleepTime: tpl.sleepTime || '22:00',
+              scheduleVersion: tpl.scheduleVersion,
               customTemplates: mergedCTs,
               dayPlans: tpl.dayPlans || undefined,
               dayOverrides: tpl.dayOverrides || undefined,
               dateOverrides: tpl.dateOverrides || undefined,
             };
+
+            // V2 migration: convert startTime/endTime slots to duration-based
+            if (!fixed.scheduleVersion || fixed.scheduleVersion < 2) {
+              const wake = fixed.wakeTime || '05:00';
+              const sleep = fixed.sleepTime || '22:00';
+              fixed.workday = migrateV1Slots(fixed.workday, wake, sleep);
+              fixed.saturday = migrateV1Slots(fixed.saturday, wake, sleep);
+              fixed.sunday = migrateV1Slots(fixed.sunday, wake, sleep);
+              if (fixed.customTemplates) {
+                fixed.customTemplates = fixed.customTemplates.map(ct => ({
+                  ...ct,
+                  slots: migrateV1Slots(ct.slots, ct.wakeTime || wake, ct.sleepTime || sleep),
+                }));
+              }
+              if (fixed.dayPlans) {
+                for (const key of Object.keys(fixed.dayPlans)) {
+                  fixed.dayPlans[key] = migrateV1Slots(fixed.dayPlans[key], wake, sleep);
+                }
+              }
+              fixed.scheduleVersion = 2;
+              saveBack.scheduleTemplates = fixed;
+            }
+
             setScheduleTemplates(fixed);
           }
         } else if (data.schedule && data.schedule.length > 0) {

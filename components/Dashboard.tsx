@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Task, SubTask, TaskAttachment, TaskGroup, GROUP_COLORS, getTasksForDate, ScheduleTemplates, TimeSlot, DailyRecord, DEFAULT_CATEGORIES, Category, isTaskRecurring, FocusSession, getScheduleForDay, Expense, EXPENSE_CATEGORIES } from '../types';
+import { Task, SubTask, TaskAttachment, TaskGroup, GROUP_COLORS, getTasksForDate, ScheduleTemplates, TimeSlot, DailyRecord, DEFAULT_CATEGORIES, Category, isTaskRecurring, FocusSession, getScheduleForDay, Expense, EXPENSE_CATEGORIES, resolveSlotTimes } from '../types';
 import { CheckCircle2, Circle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, Trash2, Square, Image, Coffee, Brain, Play, Pause, RotateCcw, Volume2, VolumeX, AlertTriangle, Plus, RefreshCw, ChevronDown, Wallet, ChevronUp } from 'lucide-react';
 
 interface DashboardProps {
@@ -258,7 +258,9 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
 
   // Get today's schedule slots (respects dayOverrides & dateOverrides)
   const todaySchedule = getScheduleForDay(scheduleTemplates, now.getDay(), todayStr);
-  const todaySlots = (todaySchedule.slots || []).slice().sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const rawSlots = (todaySchedule.slots || []).filter(s => s.type !== 'free');
+  const todaySlots = resolveSlotTimes(rawSlots, todaySchedule.wakeTime || '05:00', todaySchedule.sleepTime || '22:00')
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   // Find current slot (handles midnight-crossing slots like 22:00-05:00)
   const currentSlot = todaySlots.find(s => {

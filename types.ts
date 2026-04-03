@@ -72,9 +72,11 @@ export interface Milestone {
 
 export interface TimeSlot {
   id: string;
-  startTime: string;  // HH:MM
-  endTime: string;    // HH:MM
-  groupKey: string;   // references TaskGroup.key
+  startTime?: string;  // HH:MM — computed in v2 (duration-based)
+  endTime?: string;    // HH:MM — computed in v2 (duration-based)
+  duration?: number;   // minutes (v2)
+  type?: 'activity' | 'free';  // v2: free slots fill gaps
+  groupKey: string;   // references TaskGroup.key ('_free' for free slots)
   assignedTaskIds?: string[];  // task IDs explicitly assigned to this slot
   excludedTaskIds?: string[];  // task IDs excluded from auto-matching
 }
@@ -86,12 +88,17 @@ export interface CustomScheduleTemplate {
   name: string;
   emoji: string;
   slots: TimeSlot[];
+  wakeTime?: string;  // HH:MM
+  sleepTime?: string; // HH:MM
 }
 
 export interface ScheduleTemplates {
   workday: TimeSlot[];
   saturday: TimeSlot[];
   sunday: TimeSlot[];
+  wakeTime?: string;   // HH:MM, default '05:00'
+  sleepTime?: string;  // HH:MM, default '22:00'
+  scheduleVersion?: number;  // 2 = duration-based (v2)
   customTemplates?: CustomScheduleTemplate[];
   dayPlans?: { [dayOfWeek: string]: TimeSlot[] };  // "0"-"6" → per-day customized schedule
   dayOverrides?: { [dayOfWeek: string]: string };   // "0"-"6" → custom template overlay (removable)
@@ -106,33 +113,103 @@ export function getScheduleForDay(
   templates: ScheduleTemplates,
   dayOfWeek: number,
   dateStr?: string
-): { slots: TimeSlot[]; source: 'base' | 'custom' | 'cleared' | 'dayPlan'; templateId?: string; templateName?: string; templateEmoji?: string; overrideType?: 'date' | 'day' } {
+): { slots: TimeSlot[]; source: 'base' | 'custom' | 'cleared' | 'dayPlan'; templateId?: string; templateName?: string; templateEmoji?: string; overrideType?: 'date' | 'day'; wakeTime?: string; sleepTime?: string } {
+  const baseWake = templates.wakeTime || '05:00';
+  const baseSleep = templates.sleepTime || '22:00';
+
   // 1. Date-specific override (highest priority)
   if (dateStr && templates.dateOverrides?.[dateStr]) {
     if (templates.dateOverrides[dateStr] === CLEAR_OVERRIDE) {
-      return { slots: [], source: 'cleared', overrideType: 'date' };
+      return { slots: [], source: 'cleared', overrideType: 'date', wakeTime: baseWake, sleepTime: baseSleep };
     }
     const ct = (templates.customTemplates || []).find(t => t.id === templates.dateOverrides![dateStr]);
-    if (ct) return { slots: ct.slots, source: 'custom', templateId: ct.id, templateName: ct.name, templateEmoji: ct.emoji, overrideType: 'date' };
+    if (ct) return { slots: ct.slots, source: 'custom', templateId: ct.id, templateName: ct.name, templateEmoji: ct.emoji, overrideType: 'date', wakeTime: ct.wakeTime || baseWake, sleepTime: ct.sleepTime || baseSleep };
   }
   // 2. Day-of-week custom template overlay
   const overrideId = templates.dayOverrides?.[String(dayOfWeek)];
   if (overrideId) {
     if (overrideId === CLEAR_OVERRIDE) {
-      return { slots: [], source: 'cleared', overrideType: 'day' };
+      return { slots: [], source: 'cleared', overrideType: 'day', wakeTime: baseWake, sleepTime: baseSleep };
     }
     const ct = (templates.customTemplates || []).find(t => t.id === overrideId);
-    if (ct) return { slots: ct.slots, source: 'custom', templateId: ct.id, templateName: ct.name, templateEmoji: ct.emoji, overrideType: 'day' };
+    if (ct) return { slots: ct.slots, source: 'custom', templateId: ct.id, templateName: ct.name, templateEmoji: ct.emoji, overrideType: 'day', wakeTime: ct.wakeTime || baseWake, sleepTime: ct.sleepTime || baseSleep };
   }
   // 3. Per-day plan (user's edits for this specific day of week)
   const dayPlan = templates.dayPlans?.[String(dayOfWeek)];
   if (dayPlan !== undefined) {
-    return { slots: dayPlan, source: 'dayPlan' };
+    return { slots: dayPlan, source: 'dayPlan', wakeTime: baseWake, sleepTime: baseSleep };
   }
   // 4. Fallback to base template
-  if (dayOfWeek === 0) return { slots: templates.sunday, source: 'base' };
-  if (dayOfWeek === 6) return { slots: templates.saturday, source: 'base' };
-  return { slots: templates.workday, source: 'base' };
+  if (dayOfWeek === 0) return { slots: templates.sunday, source: 'base', wakeTime: baseWake, sleepTime: baseSleep };
+  if (dayOfWeek === 6) return { slots: templates.saturday, source: 'base', wakeTime: baseWake, sleepTime: baseSleep };
+  return { slots: templates.workday, source: 'base', wakeTime: baseWake, sleepTime: baseSleep };
+}
+
+/** Convert HH:MM string to total minutes */
+export function timeToMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+}
+
+/** Convert total minutes to HH:MM string */
+export function minutesToTime(mins: number): string {
+  const total = ((mins % 1440) + 1440) % 1440; // wrap within 24h
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** Compute startTime/endTime for each slot based on array position + wakeTime anchor */
+export function resolveSlotTimes(
+  slots: TimeSlot[],
+  wakeTime: string = '05:00',
+  _sleepTime: string = '22:00'
+): (TimeSlot & { startTime: string; endTime: string; duration: number })[] {
+  let cursor = timeToMinutes(wakeTime);
+  return slots.map(slot => {
+    const dur = slot.duration ?? getDurationFromTimes(slot.startTime!, slot.endTime!);
+    const start = minutesToTime(cursor);
+    cursor += dur;
+    const end = minutesToTime(cursor);
+    return { ...slot, startTime: start, endTime: end, duration: dur };
+  });
+}
+
+/** Calculate duration in minutes from start/end time strings */
+function getDurationFromTimes(start: string, end: string): number {
+  const s = timeToMinutes(start);
+  const e = timeToMinutes(end);
+  let diff = e - s;
+  if (diff <= 0) diff += 1440;
+  return diff;
+}
+
+/** Fill gaps between activity slots with free slots */
+export function insertFreeSlots(
+  slots: TimeSlot[],
+  wakeTime: string = '05:00',
+  sleepTime: string = '22:00'
+): TimeSlot[] {
+  const totalMinutes = ((timeToMinutes(sleepTime) - timeToMinutes(wakeTime)) + 1440) % 1440;
+  const result: TimeSlot[] = [];
+  let used = 0;
+
+  for (const slot of slots) {
+    const dur = slot.duration ?? getDurationFromTimes(slot.startTime!, slot.endTime!);
+    result.push({ ...slot, duration: dur, type: slot.type || 'activity' });
+    used += dur;
+  }
+
+  // Add trailing free slot if time remaining
+  const remaining = totalMinutes - used;
+  if (remaining > 0) {
+    result.push({
+      id: `free-${Date.now()}`,
+      duration: remaining,
+      type: 'free',
+      groupKey: '_free',
+    });
+  }
+
+  return result;
 }
 
 /** Determine the day type from a Date object */

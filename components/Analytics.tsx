@@ -263,8 +263,10 @@ const Analytics: React.FC<AnalyticsProps> = ({
     const plannedMap = new Map<string, number>();
     const addSlots = (slots: TimeSlot[], count: number) => {
       slots.forEach(s => {
-        if (s.startTime && s.endTime && s.groupKey) {
-          const mins = getDurationMins(s.startTime, s.endTime);
+        if (s.type === 'free') return;
+        if (!s.groupKey) return;
+        const mins = s.duration || (s.startTime && s.endTime ? getDurationMins(s.startTime, s.endTime) : 0);
+        if (mins > 0) {
           plannedMap.set(s.groupKey, (plannedMap.get(s.groupKey) || 0) + mins * count);
         }
       });
@@ -382,11 +384,11 @@ const Analytics: React.FC<AnalyticsProps> = ({
       const schedRows: unknown[][] = [];
       (['workday', 'saturday', 'sunday'] as const).forEach(day => {
         (scheduleTemplates[day] || []).forEach(s => {
-          schedRows.push([day, s.id, s.startTime, s.endTime, s.groupKey, (s.assignedTaskIds || []).join(';')]);
+          schedRows.push([day, s.id, s.startTime || '', s.endTime || '', s.groupKey, s.duration || '', s.type || 'activity', (s.assignedTaskIds || []).join(';')]);
         });
       });
       downloadCSV(`debugme-schedule-${todayS}.csv`,
-        ['dayType', 'id', 'startTime', 'endTime', 'groupKey', 'assignedTaskIds'],
+        ['dayType', 'id', 'startTime', 'endTime', 'groupKey', 'duration', 'type', 'assignedTaskIds'],
         schedRows,
       );
 
