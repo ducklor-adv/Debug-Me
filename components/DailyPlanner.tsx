@@ -525,16 +525,46 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const isV2 = isV2Schedule(mergedSchedule);
 
   // Sorted schedule: v2 uses array order (duration-based), v1 sorts by startTime
+  // Filter out free slots — they are not real schedule items
   const sortedSchedule = isV2
-    ? mergedSchedule.filter(s => s.groupKey)
+    ? mergedSchedule.filter(s => s.groupKey && s.groupKey !== '_free' && s.type !== 'free')
     : [...mergedSchedule]
-        .filter(s => s.startTime && s.endTime && s.groupKey)
+        .filter(s => s.startTime && s.endTime && s.groupKey && s.groupKey !== '_free' && s.type !== 'free')
         .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
 
   // Resolve times for v2 slots
   const resolvedSchedule = isV2
     ? resolveSlotTimes(sortedSchedule, currentWakeTime, currentSleepTime)
     : sortedSchedule.map(s => ({ ...s, startTime: s.startTime!, endTime: s.endTime!, duration: s.duration || getDurationMinutes(s.startTime!, s.endTime!) }));
+
+  // Hour grid from wakeTime to sleepTime
+  const wakeMinutes = parseInt(currentWakeTime.split(':')[0]) * 60 + parseInt(currentWakeTime.split(':')[1]);
+  const sleepMinutes = parseInt(currentSleepTime.split(':')[0]) * 60 + parseInt(currentSleepTime.split(':')[1]);
+  const totalDayMinutes = ((sleepMinutes - wakeMinutes) + 1440) % 1440;
+  const hourGrid: { startTime: string; endTime: string }[] = [];
+  for (let m = 0; m < totalDayMinutes; m += 60) {
+    const sMin = (wakeMinutes + m) % 1440;
+    const eMin = (wakeMinutes + m + 60) % 1440;
+    hourGrid.push({
+      startTime: `${String(Math.floor(sMin / 60)).padStart(2, '0')}:${String(sMin % 60).padStart(2, '0')}`,
+      endTime: `${String(Math.floor(eMin / 60)).padStart(2, '0')}:${String(eMin % 60).padStart(2, '0')}`,
+    });
+  }
+
+  // Map: which slots cover each hour
+  const slotsByHour = new Map<string, typeof resolvedSchedule>();
+  resolvedSchedule.forEach(slot => {
+    const sMin = parseInt(slot.startTime.split(':')[0]) * 60 + parseInt(slot.startTime.split(':')[1]);
+    const eMin = parseInt(slot.endTime.split(':')[0]) * 60 + parseInt(slot.endTime.split(':')[1]);
+    hourGrid.forEach(h => {
+      const hStart = parseInt(h.startTime.split(':')[0]) * 60 + parseInt(h.startTime.split(':')[1]);
+      if (sMin <= hStart && eMin > hStart) {
+        const arr = slotsByHour.get(h.startTime) || [];
+        if (!arr.find(s => s.id === slot.id)) arr.push(slot);
+        slotsByHour.set(h.startTime, arr);
+      }
+    });
+  });
 
   // All tasks for the day (for summary)
   const dayTasks = getTasksForDate(tasks, selectedDateStr);
@@ -1105,8 +1135,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         </div>
       )}
 
-      {/* 4. Day Info Bar — template source + total time + กลับค่าเดิม */}
-      {isDayTab && resolvedDay && (
+      {/* 4. Day Info Bar — hidden, wake/sleep picker replaces this */}
+      {false && isDayTab && resolvedDay && sortedSchedule.length > 0 && (
         <div className="flex flex-col items-center gap-1">
           <span className="text-xs font-bold text-slate-500">
             {resolvedDay.source === 'custom'
@@ -1196,64 +1226,100 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         </div>
       )}
 
+      {/* Hour Grid — Planner style */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        {(() => {
+          const renderedSlotIds = new Set<string>();
+          return hourGrid.map(hour => {
+            const hStart = parseInt(hour.startTime.split(':')[0]) * 60 + parseInt(hour.startTime.split(':')[1]);
+            const slotsInHour = slotsByHour.get(hour.startTime) || [];
+            // Find slot that starts at this hour
+            const startingSlot = slotsInHour.find(s => {
+              if (renderedSlotIds.has(s.id)) return false;
+              const sStart = parseInt(s.startTime.split(':')[0]) * 60 + parseInt(s.startTime.split(':')[1]);
+              return sStart === hStart;
+            });
+            // Skip hour if covered by previous slot
+            if (!startingSlot && slotsInHour.some(s => renderedSlotIds.has(s.id))) return null;
+
+            if (startingSlot) {
+              renderedSlotIds.add(startingSlot.id);
+              const info = resolveSlotInfo(startingSlot.groupKey);
+              const colors = GROUP_COLORS[info.color] || GROUP_COLORS.orange;
+              const dur = startingSlot.duration || getDurationMinutes(startingSlot.startTime, startingSlot.endTime);
+              const spanHours = Math.max(1, Math.ceil(dur / 60));
+              const slotTasks = getFullTasksForSlot(startingSlot);
+              const checkedCount = slotTasks.filter(t => checkedTasks.has(t.id)).length;
+              const isExpanded = expandedSlots.has(startingSlot.id);
+              const nowH = new Date().getHours() * 60 + new Date().getMinutes();
+              const sMin = parseInt(startingSlot.startTime.split(':')[0]) * 60 + parseInt(startingSlot.startTime.split(':')[1]);
+              const eMin = parseInt(startingSlot.endTime.split(':')[0]) * 60 + parseInt(startingSlot.endTime.split(':')[1]);
+              const isCurrent = isToday && nowH >= sMin && nowH < eMin;
+
+              return (
+                <div key={hour.startTime} className="flex items-stretch border-b border-slate-100 last:border-b-0" style={{ minHeight: spanHours * 44 }}>
+                  <div className="w-16 shrink-0 flex flex-col justify-center items-center border-r border-slate-100 bg-slate-50/50">
+                    <span className="text-[10px] font-mono font-bold text-slate-400">{startingSlot.startTime}</span>
+                    <span className="text-[9px] font-mono text-slate-300">{startingSlot.endTime}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div onClick={() => toggleSlot(startingSlot.id)} className={`flex items-center gap-1.5 px-2.5 py-2 cursor-pointer select-none ${colors.plannerBg} ${isCurrent ? 'ring-2 ring-emerald-400 ring-inset' : ''}`}>
+                      <span className="text-[10px] font-black text-slate-500">{startingSlot.startTime}–{startingSlot.endTime}</span>
+                      <div className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
+                      <span className={`text-xs font-black ${colors.plannerText}`}>{info.emoji} {info.label}</span>
+                      <span className="text-[10px] text-slate-400 font-bold">{formatDuration(dur)}</span>
+                      <div className="flex-1" />
+                      {slotTasks.length > 0 && <span className={`text-[10px] font-black ${colors.plannerText} opacity-60`}>{checkedCount}/{slotTasks.length}</span>}
+                      {isCurrent && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
+                      <button onClick={(e) => { e.stopPropagation(); openEditSlot(startingSlot); }} className="p-1 rounded hover:bg-white/60 text-slate-400 hover:text-slate-600"><Pencil className="w-3 h-3" /></button>
+                      <button onClick={(e) => { e.stopPropagation(); showDeleteSlotConfirm(startingSlot.id); }} className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500"><Trash2 className="w-3 h-3" /></button>
+                      <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                    </div>
+                    {isExpanded && (
+                      <div className="border-t border-slate-100 px-2 py-1.5 space-y-0.5">
+                        {slotTasks.map(task => {
+                          const checked = checkedTasks.has(task.id);
+                          return (
+                            <div key={task.id} className={`px-2 py-1.5 rounded-lg hover:bg-slate-50 ${checked ? 'opacity-40' : ''}`}>
+                              <div className="flex items-center gap-2">
+                                <div onClick={() => toggleCheck(task.id, startingSlot.startTime, startingSlot.endTime)} className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+                                  {checked ? <CheckCircle2 className={`w-4 h-4 ${colors.plannerText}`} /> : <Circle className={`w-4 h-4 ${colors.plannerText} opacity-30`} />}
+                                  <span className={`text-[13px] font-bold flex-1 truncate ${checked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{task.title}</span>
+                                </div>
+                                <button onClick={() => showDeleteTaskConfirm(task.id, startingSlot.id)} className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500"><Trash2 className="w-3 h-3" /></button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <button onClick={() => openTaskPicker(startingSlot)} className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed text-xs font-bold ${colors.plannerBorder} ${colors.plannerText}`}>
+                          <Plus className="w-3.5 h-3.5" /> เพิ่ม Task
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
+            // Empty hour
+            return (
+              <div key={hour.startTime} className="flex items-stretch border-b border-slate-100 last:border-b-0 min-h-[44px] cursor-pointer hover:bg-emerald-50/40 transition-colors"
+                onClick={() => { setSlotForm({ startTime: hour.startTime, endTime: hour.endTime, groupKey: '', duration: 60 }); setEditingSlot(null); setIsAddingSlot(true); }}>
+                <div className="w-16 shrink-0 flex items-center justify-center border-r border-slate-100 bg-slate-50/50">
+                  <span className="text-[10px] font-mono font-bold text-slate-400">{hour.startTime}</span>
+                </div>
+                <div className="flex-1 min-w-0 px-3 py-2 flex items-center">
+                  <span className="text-[10px] text-slate-300 select-none">+ เพิ่ม slot</span>
+                </div>
+              </div>
+            );
+          });
+        })()}
+      </div>
+
       <div className={`${isCustomTab ? 'rounded-xl border-2 border-blue-300 bg-blue-50/30 p-3 space-y-3' : ''}`}>
-      <div className="flex flex-col md:flex-row gap-4">
-        {/* Left: Slot Timeline */}
-        <div className="flex-[2] space-y-2">
-          <TimelineView
-            slots={sortedSchedule}
-            wakeTime={currentWakeTime}
-            sleepTime={currentSleepTime}
-            taskGroups={taskGroups}
-            tasks={tasks}
-            isToday={isToday}
-            nowMinutes={nowMinutes}
-            checkedTasks={checkedTasks}
-            expandedSlots={expandedSlots}
-            onToggleSlot={toggleSlot}
-            onToggleCheck={toggleCheck}
-            onEditSlot={openEditSlot}
-            onDeleteSlot={showDeleteSlotConfirm}
-            onAddTaskToSlot={openTaskPicker}
-            onEditTask={openEditTask}
-            onDeleteTask={(taskId, slotId) => showDeleteTaskConfirm(taskId, slotId)}
-            onReorder={(newSlots) => setScheduleForTab(() => newSlots)}
-            onAdjustDuration={(slotIndex, delta) => {
-              const result = adjustSlotDuration(sortedSchedule, slotIndex, delta);
-              if (result) setScheduleForTab(() => result);
-            }}
-            onConvertFreeSlot={(slot) => {
-              // Open slot editor with free slot's duration pre-filled
-              setSlotForm({
-                startTime: slot.startTime,
-                endTime: slot.endTime,
-                groupKey: '',
-                duration: slot.duration,
-              });
-              setEditingSlot(slot);
-              setIsAddingSlot(true);
-            }}
-            onTaskReorder={(slotId, newTaskIds) => {
-              setScheduleForTab(prev => prev.map(s =>
-                s.id === slotId ? { ...s, assignedTaskIds: newTaskIds } : s
-              ));
-            }}
-            getFullTasksForSlot={getFullTasksForSlot}
-          />
-
-          {/* Add Slot Button (only for v1 or when no free slots) */}
-          {!isV2 && (
-            <button
-              onClick={openAddSlot}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-emerald-300 hover:text-emerald-500 hover:bg-emerald-50/50 transition-all text-xs font-bold"
-            >
-              <Plus className="w-4 h-4" /> เพิ่ม Slot
-            </button>
-          )}
-        </div>
-
-        {/* Right: Summary */}
-        <div className="flex-1 space-y-3">
+        {/* Summary */}
+        <div className="space-y-3">
           {slotSummary.length > 0 ? (
             <div className="bg-white rounded-xl border border-slate-200 p-3">
               <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">สรุปเวลา</h4>
@@ -1481,7 +1547,6 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
           )}
         </div>
       )}
-      </div>
 
       {/* Slot Editor Modal */}
       {isAddingSlot && (
