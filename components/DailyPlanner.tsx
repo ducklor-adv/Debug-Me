@@ -180,7 +180,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     : (activeCustomTemplate?.slots || []);
 
   // Use schedule template slots directly (tasks are grouped by category)
-  const mergedSchedule = [...schedule].sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const mergedSchedule = [...schedule].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
 
   // Wrapper to update only the active tab's template (+ mark dirty)
   const setScheduleForTab = useCallback((updater: (prev: TimeSlot[]) => TimeSlot[]) => {
