@@ -558,7 +558,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     const eMin = parseInt(slot.endTime.split(':')[0]) * 60 + parseInt(slot.endTime.split(':')[1]);
     hourGrid.forEach(h => {
       const hStart = parseInt(h.startTime.split(':')[0]) * 60 + parseInt(h.startTime.split(':')[1]);
-      if (sMin <= hStart && eMin > hStart) {
+      const hEnd = hStart + 60;
+      if (sMin < hEnd && eMin > hStart) {
         const arr = slotsByHour.get(h.startTime) || [];
         if (!arr.find(s => s.id === slot.id)) arr.push(slot);
         slotsByHour.set(h.startTime, arr);
@@ -1233,11 +1234,11 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
           return hourGrid.map(hour => {
             const hStart = parseInt(hour.startTime.split(':')[0]) * 60 + parseInt(hour.startTime.split(':')[1]);
             const slotsInHour = slotsByHour.get(hour.startTime) || [];
-            // Find slot that starts at this hour
+            // Find slot that starts within this hour (not already rendered)
             const startingSlot = slotsInHour.find(s => {
               if (renderedSlotIds.has(s.id)) return false;
               const sStart = parseInt(s.startTime.split(':')[0]) * 60 + parseInt(s.startTime.split(':')[1]);
-              return sStart === hStart;
+              return sStart >= hStart && sStart < hStart + 60;
             });
             // Skip hour if covered by previous slot
             if (!startingSlot && slotsInHour.some(s => renderedSlotIds.has(s.id))) return null;
