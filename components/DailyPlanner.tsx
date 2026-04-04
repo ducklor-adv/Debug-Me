@@ -5,7 +5,8 @@ import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, 
 import TimePicker from './TimePicker';
 import TimelineView from './planner/TimelineView';
 import { getDurationMinutes as getDurationMinutesUtil, addMinutesToTime as addMinutesToTimeUtil, formatDuration as formatDurationUtil, adjustSlotDuration, isV2Schedule } from './planner/slotUtils';
-import { DndContext, closestCenter, rectIntersection, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent, useDroppable, CollisionDetection } from '@dnd-kit/core';
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+// pointerWithin removed — closestCenter works with SortableContext for all items
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -77,8 +78,8 @@ function getTasksForSlot(tasks: Task[], slot: TimeSlot): Task[] {
     .filter((t): t is Task => t !== undefined);
 }
 
-// Sortable wrapper for slot items
-const SortableSlotWrapper: React.FC<{ id: string; children: React.ReactNode }> = ({ id, children }) => {
+// Sortable wrapper for slot/hour items in hour grid
+const SortableGridItem: React.FC<{ id: string; showHandle?: boolean; children: React.ReactNode }> = ({ id, showHandle, children }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -88,20 +89,14 @@ const SortableSlotWrapper: React.FC<{ id: string; children: React.ReactNode }> =
   };
   return (
     <div ref={setNodeRef} style={style} {...attributes} className={`flex items-stretch transition-shadow ${isDragging ? 'shadow-lg rounded-xl ring-2 ring-emerald-300 bg-white' : ''}`}>
-      <div {...listeners} className="w-6 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-emerald-500 active:text-emerald-600 transition-colors touch-none">
-        <GripVertical className="w-4 h-4" />
-      </div>
+      {showHandle ? (
+        <div {...listeners} className="w-6 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-emerald-500 active:text-emerald-600 transition-colors touch-none">
+          <GripVertical className="w-4 h-4" />
+        </div>
+      ) : (
+        <div className="w-6 shrink-0" />
+      )}
       <div className="flex-1 min-w-0">{children}</div>
-    </div>
-  );
-};
-
-// Droppable wrapper for empty hour rows in the grid
-const DroppableHour: React.FC<{ id: string; children: React.ReactNode; onClick: () => void }> = ({ id, children, onClick }) => {
-  const { setNodeRef, isOver } = useDroppable({ id });
-  return (
-    <div ref={setNodeRef} onClick={onClick} className={`flex items-stretch border-b border-slate-100 last:border-b-0 min-h-[44px] cursor-pointer transition-colors ${isOver ? 'bg-emerald-100/60' : 'hover:bg-emerald-50/40'}`}>
-      {children}
     </div>
   );
 };
@@ -577,6 +572,26 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     });
   });
 
+  // Build unified sortable list: real slots + empty placeholders
+  const gridItems: { id: string; type: 'slot' | 'empty'; hour: string; slot?: typeof resolvedSchedule[0] }[] = [];
+  const renderedSlotIdsForGrid = new Set<string>();
+  hourGrid.forEach(h => {
+    const hStart = parseInt(h.startTime.split(':')[0]) * 60 + parseInt(h.startTime.split(':')[1]);
+    const slotsHere = slotsByHour.get(h.startTime) || [];
+    const startingSlot = slotsHere.find(s => {
+      if (renderedSlotIdsForGrid.has(s.id)) return false;
+      const sStart = parseInt(s.startTime.split(':')[0]) * 60 + parseInt(s.startTime.split(':')[1]);
+      return sStart >= hStart && sStart < hStart + 60;
+    });
+    if (startingSlot) {
+      renderedSlotIdsForGrid.add(startingSlot.id);
+      gridItems.push({ id: startingSlot.id, type: 'slot', hour: h.startTime, slot: startingSlot });
+    } else if (!slotsHere.some(s => renderedSlotIdsForGrid.has(s.id))) {
+      gridItems.push({ id: `empty-${h.startTime}`, type: 'empty', hour: h.startTime });
+    }
+    // hours covered by multi-hour slots are skipped (no item added)
+  });
+
   // All tasks for the day (for summary)
   const dayTasks = getTasksForDate(tasks, selectedDateStr);
 
@@ -913,8 +928,9 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     }
 
     // Dropping onto an empty hour — insert at that position
-    const targetHour = String(over.id);
-    if (targetHour.match(/^\d{2}:\d{2}$/)) {
+    const overId = String(over.id);
+    const targetHour = overId.replace('empty-', '');
+    if (overId.startsWith('empty-') && targetHour.match(/^\d{2}:\d{2}$/)) {
       const targetMin = parseInt(targetHour.split(':')[0]) * 60 + parseInt(targetHour.split(':')[1]);
       // Remove from current position
       const slot = sortedSchedule[activeIdx];
@@ -1267,25 +1283,12 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       )}
 
       {/* Hour Grid — Planner style */}
-      <DndContext sensors={sensors} collisionDetection={rectIntersection} onDragEnd={handleDragEnd}>
-      <SortableContext items={sortedSchedule.map(s => s.id)} strategy={verticalListSortingStrategy}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={gridItems.map(g => g.id)}>
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        {(() => {
-          const renderedSlotIds = new Set<string>();
-          return hourGrid.map(hour => {
-            const hStart = parseInt(hour.startTime.split(':')[0]) * 60 + parseInt(hour.startTime.split(':')[1]);
-            const slotsInHour = slotsByHour.get(hour.startTime) || [];
-            // Find slot that starts within this hour (not already rendered)
-            const startingSlot = slotsInHour.find(s => {
-              if (renderedSlotIds.has(s.id)) return false;
-              const sStart = parseInt(s.startTime.split(':')[0]) * 60 + parseInt(s.startTime.split(':')[1]);
-              return sStart >= hStart && sStart < hStart + 60;
-            });
-            // Skip hour if covered by previous slot
-            if (!startingSlot && slotsInHour.some(s => renderedSlotIds.has(s.id))) return null;
-
-            if (startingSlot) {
-              renderedSlotIds.add(startingSlot.id);
+        {gridItems.map(item => {
+            if (item.type === 'slot' && item.slot) {
+              const startingSlot = item.slot;
               const info = resolveSlotInfo(startingSlot.groupKey);
               const colors = GROUP_COLORS[info.color] || GROUP_COLORS.orange;
               const dur = startingSlot.duration || getDurationMinutes(startingSlot.startTime, startingSlot.endTime);
@@ -1299,7 +1302,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               const isCurrent = isToday && nowH >= sMin && nowH < eMin;
 
               return (
-                <SortableSlotWrapper key={hour.startTime} id={startingSlot.id}>
+                <SortableGridItem key={item.id} id={startingSlot.id} showHandle>
                 <div className="flex items-stretch border-b border-slate-100 last:border-b-0" style={{ minHeight: spanHours * 44 }}>
                   <div className="w-12 shrink-0 flex flex-col justify-center items-center border-r border-slate-100 bg-slate-50/50">
                     <span className="text-[9px] font-mono font-bold text-slate-400">{startingSlot.startTime}</span>
@@ -1341,24 +1344,25 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                     )}
                   </div>
                 </div>
-                </SortableSlotWrapper>
+                </SortableGridItem>
               );
             }
 
-            // Empty hour — droppable target
+            // Empty hour — sortable placeholder
             return (
-              <DroppableHour key={hour.startTime} id={hour.startTime} onClick={() => { setSlotForm({ startTime: hour.startTime, endTime: hour.endTime, groupKey: '', duration: 60 }); setEditingSlot(null); setIsAddingSlot(true); }}>
-                <div className="w-6 shrink-0" aria-hidden />
-                <div className="w-12 shrink-0 flex items-center justify-center border-r border-slate-100 bg-slate-50/50">
-                  <span className="text-[10px] font-mono font-bold text-slate-400">{hour.startTime}</span>
+              <SortableGridItem key={item.id} id={item.id}>
+                <div className="flex items-stretch border-b border-slate-100 last:border-b-0 min-h-[44px] cursor-pointer hover:bg-emerald-50/40 transition-colors"
+                  onClick={() => { setSlotForm({ startTime: item.hour, endTime: addMinutesToTime(item.hour, 60), groupKey: '', duration: 60 }); setEditingSlot(null); setIsAddingSlot(true); }}>
+                  <div className="w-12 shrink-0 flex items-center justify-center border-r border-slate-100 bg-slate-50/50">
+                    <span className="text-[10px] font-mono font-bold text-slate-400">{item.hour}</span>
+                  </div>
+                  <div className="flex-1 min-w-0 px-3 py-2 flex items-center">
+                    <span className="text-[10px] text-slate-300 select-none">+ เพิ่ม slot</span>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0 px-3 py-2 flex items-center">
-                  <span className="text-[10px] text-slate-300 select-none">+ เพิ่ม slot</span>
-                </div>
-              </DroppableHour>
+              </SortableGridItem>
             );
-          });
-        })()}
+        })}
       </div>
       </SortableContext>
       </DndContext>
