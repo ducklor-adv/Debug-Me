@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, 
 import TimePicker from './TimePicker';
 import TimelineView from './planner/TimelineView';
 import { getDurationMinutes as getDurationMinutesUtil, addMinutesToTime as addMinutesToTimeUtil, formatDuration as formatDurationUtil, adjustSlotDuration, isV2Schedule } from './planner/slotUtils';
-import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent, useDroppable } from '@dnd-kit/core';
+import { DndContext, closestCenter, rectIntersection, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent, useDroppable, CollisionDetection } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -88,8 +88,8 @@ const SortableSlotWrapper: React.FC<{ id: string; children: React.ReactNode }> =
   };
   return (
     <div ref={setNodeRef} style={style} {...attributes} className={`flex items-stretch transition-shadow ${isDragging ? 'shadow-lg rounded-xl ring-2 ring-emerald-300 bg-white' : ''}`}>
-      <div {...listeners} className="w-10 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-emerald-500 active:text-emerald-600 transition-colors touch-none">
-        <GripVertical className="w-5 h-5" />
+      <div {...listeners} className="w-6 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-emerald-500 active:text-emerald-600 transition-colors touch-none">
+        <GripVertical className="w-4 h-4" />
       </div>
       <div className="flex-1 min-w-0">{children}</div>
     </div>
@@ -1267,7 +1267,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       )}
 
       {/* Hour Grid — Planner style */}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={rectIntersection} onDragEnd={handleDragEnd}>
       <SortableContext items={sortedSchedule.map(s => s.id)} strategy={verticalListSortingStrategy}>
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         {(() => {
@@ -1301,9 +1301,9 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               return (
                 <SortableSlotWrapper key={hour.startTime} id={startingSlot.id}>
                 <div className="flex items-stretch border-b border-slate-100 last:border-b-0" style={{ minHeight: spanHours * 44 }}>
-                  <div className="w-16 shrink-0 flex flex-col justify-center items-center border-r border-slate-100 bg-slate-50/50">
-                    <span className="text-[10px] font-mono font-bold text-slate-400">{startingSlot.startTime}</span>
-                    <span className="text-[9px] font-mono text-slate-300">{startingSlot.endTime}</span>
+                  <div className="w-12 shrink-0 flex flex-col justify-center items-center border-r border-slate-100 bg-slate-50/50">
+                    <span className="text-[9px] font-mono font-bold text-slate-400">{startingSlot.startTime}</span>
+                    <span className="text-[8px] font-mono text-slate-300">{startingSlot.endTime}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div onClick={() => toggleSlot(startingSlot.id)} className={`flex items-center gap-1.5 px-2.5 py-2 cursor-pointer select-none ${colors.plannerBg} ${isCurrent ? 'ring-2 ring-emerald-400 ring-inset' : ''}`}>
@@ -1348,7 +1348,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
             // Empty hour — droppable target
             return (
               <DroppableHour key={hour.startTime} id={hour.startTime} onClick={() => { setSlotForm({ startTime: hour.startTime, endTime: hour.endTime, groupKey: '', duration: 60 }); setEditingSlot(null); setIsAddingSlot(true); }}>
-                <div className="w-16 shrink-0 flex items-center justify-center border-r border-slate-100 bg-slate-50/50">
+                <div className="w-6 shrink-0" aria-hidden />
+                <div className="w-12 shrink-0 flex items-center justify-center border-r border-slate-100 bg-slate-50/50">
                   <span className="text-[10px] font-mono font-bold text-slate-400">{hour.startTime}</span>
                 </div>
                 <div className="flex-1 min-w-0 px-3 py-2 flex items-center">
