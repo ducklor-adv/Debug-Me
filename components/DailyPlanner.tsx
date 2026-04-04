@@ -84,17 +84,15 @@ const SortableGridItem: React.FC<{ id: string; showHandle?: boolean; children: R
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.4 : 1,
     zIndex: isDragging ? 50 : undefined,
   };
   return (
-    <div ref={setNodeRef} style={style} {...attributes} className={`flex items-stretch transition-shadow ${isDragging ? 'shadow-lg rounded-xl ring-2 ring-emerald-300 bg-white' : ''}`}>
-      {showHandle ? (
-        <div {...listeners} className="w-6 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-emerald-500 active:text-emerald-600 transition-colors touch-none">
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`transition-shadow ${isDragging ? 'shadow-lg rounded-xl ring-2 ring-emerald-300 bg-white' : ''} ${showHandle ? 'flex items-stretch' : ''}`}>
+      {showHandle && (
+        <div className="w-6 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-emerald-500 transition-colors touch-none">
           <GripVertical className="w-4 h-4" />
         </div>
-      ) : (
-        <div className="w-6 shrink-0" />
       )}
       <div className="flex-1 min-w-0">{children}</div>
     </div>
@@ -185,7 +183,33 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     : (activeCustomTemplate?.slots || []);
 
   // Use schedule template slots directly (tasks are grouped by category)
-  const mergedSchedule = [...schedule].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+  const rawSchedule = [...schedule].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+
+  // Fill gaps with empty placeholder slots so DnD works everywhere
+  const fillEmptySlots = (slots: TimeSlot[], wake: string, sleep: string): TimeSlot[] => {
+    const wMin = parseInt(wake.split(':')[0]) * 60 + parseInt(wake.split(':')[1]);
+    const sMin = parseInt(sleep.split(':')[0]) * 60 + parseInt(sleep.split(':')[1]);
+    const covered = new Set<number>();
+    slots.forEach(s => {
+      if (!s.startTime || !s.endTime || s.groupKey === 'sleep') return;
+      const a = parseInt(s.startTime.split(':')[0]) * 60 + parseInt(s.startTime.split(':')[1]);
+      const b = parseInt(s.endTime.split(':')[0]) * 60 + parseInt(s.endTime.split(':')[1]);
+      for (let m = a; m < b; m++) covered.add(m);
+    });
+    const result = [...slots];
+    for (let h = wMin; h < sMin; h += 60) {
+      if (!covered.has(h)) {
+        const hh = `${String(Math.floor(h / 60)).padStart(2, '0')}:${String(h % 60).padStart(2, '0')}`;
+        const eh = `${String(Math.floor((h + 60) / 60) % 24).padStart(2, '0')}:${String((h + 60) % 60).padStart(2, '0')}`;
+        result.push({ id: `empty-${hh}`, startTime: hh, endTime: eh, groupKey: '_empty' });
+      }
+    }
+    return result.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+  };
+
+  const wakeStr = scheduleTemplates.wakeTime || '05:00';
+  const sleepStr = scheduleTemplates.sleepTime || '22:00';
+  const mergedSchedule = fillEmptySlots(rawSchedule, wakeStr, sleepStr);
 
   // Wrapper to update only the active tab's template (+ mark dirty)
   const setScheduleForTab = useCallback((updater: (prev: TimeSlot[]) => TimeSlot[]) => {
@@ -572,24 +596,33 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     });
   });
 
-  // Build unified sortable list: real slots + empty placeholders
-  const gridItems: { id: string; type: 'slot' | 'empty'; hour: string; slot?: typeof resolvedSchedule[0] }[] = [];
-  const renderedSlotIdsForGrid = new Set<string>();
+  // Build full schedule: real slots + empty 1hr slots filling gaps
+  const fullSchedule: TimeSlot[] = [];
+  const coveredMinutes = new Set<number>();
+  sortedSchedule.forEach(slot => {
+    const sMin = parseInt((slot.startTime || '0').split(':')[0]) * 60 + parseInt((slot.startTime || '0').split(':')[1]);
+    const eMin = parseInt((slot.endTime || '0').split(':')[0]) * 60 + parseInt((slot.endTime || '0').split(':')[1]);
+    for (let m = sMin; m < eMin; m++) coveredMinutes.add(m);
+  });
+  const usedSlotIds = new Set<string>();
   hourGrid.forEach(h => {
     const hStart = parseInt(h.startTime.split(':')[0]) * 60 + parseInt(h.startTime.split(':')[1]);
-    const slotsHere = slotsByHour.get(h.startTime) || [];
-    const startingSlot = slotsHere.find(s => {
-      if (renderedSlotIdsForGrid.has(s.id)) return false;
-      const sStart = parseInt(s.startTime.split(':')[0]) * 60 + parseInt(s.startTime.split(':')[1]);
+    const startingSlot = sortedSchedule.find(s => {
+      if (usedSlotIds.has(s.id)) return false;
+      const sStart = parseInt((s.startTime || '0').split(':')[0]) * 60 + parseInt((s.startTime || '0').split(':')[1]);
       return sStart >= hStart && sStart < hStart + 60;
     });
     if (startingSlot) {
-      renderedSlotIdsForGrid.add(startingSlot.id);
-      gridItems.push({ id: startingSlot.id, type: 'slot', hour: h.startTime, slot: startingSlot });
-    } else if (!slotsHere.some(s => renderedSlotIdsForGrid.has(s.id))) {
-      gridItems.push({ id: `empty-${h.startTime}`, type: 'empty', hour: h.startTime });
+      usedSlotIds.add(startingSlot.id);
+      fullSchedule.push(startingSlot);
+    } else if (!coveredMinutes.has(hStart)) {
+      fullSchedule.push({
+        id: `empty-${h.startTime}`,
+        startTime: h.startTime,
+        endTime: h.endTime,
+        groupKey: 'break',
+      });
     }
-    // hours covered by multi-hour slots are skipped (no item added)
   });
 
   // All tasks for the day (for summary)
@@ -874,7 +907,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const summaryMap = new Map<string, { totalMins: number; doneMins: number }>();
 
   resolvedSchedule.forEach(slot => {
-    if (slot.type === 'free') return;
+    if (slot.type === 'free' || (slot.id && slot.id.startsWith('empty-'))) return;
     const slotMins = slot.duration || 0;
     const prev = summaryMap.get(slot.groupKey) || { totalMins: 0, doneMins: 0 };
     const slotTasks = getFullTasksForSlot(slot);
@@ -917,33 +950,13 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     if (!over || active.id === over.id) return;
 
     const activeIdx = sortedSchedule.findIndex(s => s.id === active.id);
-    if (activeIdx === -1) return;
-
-    // Dropping onto another slot — reorder
     const overIdx = sortedSchedule.findIndex(s => s.id === over.id);
-    if (overIdx !== -1) {
-      const reordered = arrayMove([...sortedSchedule], activeIdx, overIdx);
-      setScheduleForTab(() => recalcSlotTimes(reordered));
-      return;
-    }
+    if (activeIdx === -1 || overIdx === -1) return;
 
-    // Dropping onto an empty hour — insert at that position
-    const overId = String(over.id);
-    const targetHour = overId.replace('empty-', '');
-    if (overId.startsWith('empty-') && targetHour.match(/^\d{2}:\d{2}$/)) {
-      const targetMin = parseInt(targetHour.split(':')[0]) * 60 + parseInt(targetHour.split(':')[1]);
-      // Remove from current position
-      const slot = sortedSchedule[activeIdx];
-      const remaining = sortedSchedule.filter((_, i) => i !== activeIdx);
-      // Find insert position based on target hour
-      let insertIdx = remaining.length;
-      for (let i = 0; i < remaining.length; i++) {
-        const sMin = parseInt((remaining[i].startTime || '00:00').split(':')[0]) * 60 + parseInt((remaining[i].startTime || '00:00').split(':')[1]);
-        if (targetMin <= sMin) { insertIdx = i; break; }
-      }
-      remaining.splice(insertIdx, 0, slot);
-      setScheduleForTab(() => recalcSlotTimes(remaining));
-    }
+    // Reorder, filter out empty placeholders, recalc times
+    const reordered = arrayMove([...sortedSchedule], activeIdx, overIdx);
+    const realSlots = reordered.filter(s => !s.id.startsWith('empty-'));
+    setScheduleForTab(() => recalcSlotTimes(realSlots));
   };
 
   // DnD: reorder tasks within a slot (updates slot's assignedTaskIds)
@@ -1284,42 +1297,40 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
       {/* Hour Grid — Planner style */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <SortableContext items={gridItems.map(g => g.id)}>
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        {gridItems.map(item => {
-            if (item.type === 'slot' && item.slot) {
-              const startingSlot = item.slot;
-              const info = resolveSlotInfo(startingSlot.groupKey);
-              const colors = GROUP_COLORS[info.color] || GROUP_COLORS.orange;
+      <SortableContext items={sortedSchedule.map(s => s.id)} strategy={verticalListSortingStrategy}>
+      <div className="space-y-1.5">
+        {sortedSchedule.map(item => {
+            {
+              const startingSlot = item;
+              const isEmpty = item.id.startsWith('empty-');
+              const info = isEmpty ? { label: 'ว่าง', emoji: '⬜', color: 'slate' } : resolveSlotInfo(startingSlot.groupKey);
+              const colors = isEmpty ? { plannerBg: 'bg-slate-50', plannerText: 'text-slate-400', plannerBorder: 'border-slate-200', dot: 'bg-slate-300', bg: 'bg-slate-100', border: 'border-slate-200', text: 'text-slate-400', iconBg: 'bg-slate-300', ring: 'ring-slate-300' } : (GROUP_COLORS[info.color] || GROUP_COLORS.orange);
               const dur = startingSlot.duration || getDurationMinutes(startingSlot.startTime, startingSlot.endTime);
               const spanHours = Math.max(1, Math.ceil(dur / 60));
-              const slotTasks = getFullTasksForSlot(startingSlot);
+              const slotTasks = isEmpty ? [] : getFullTasksForSlot(startingSlot);
               const checkedCount = slotTasks.filter(t => checkedTasks.has(t.id)).length;
-              const isExpanded = expandedSlots.has(startingSlot.id);
+              const isExpanded = isEmpty ? false : expandedSlots.has(startingSlot.id);
               const nowH = new Date().getHours() * 60 + new Date().getMinutes();
               const sMin = parseInt(startingSlot.startTime.split(':')[0]) * 60 + parseInt(startingSlot.startTime.split(':')[1]);
               const eMin = parseInt(startingSlot.endTime.split(':')[0]) * 60 + parseInt(startingSlot.endTime.split(':')[1]);
-              const isCurrent = isToday && nowH >= sMin && nowH < eMin;
+              const isCurrent = isToday && !isEmpty && nowH >= sMin && nowH < eMin;
 
               return (
                 <SortableGridItem key={item.id} id={startingSlot.id} showHandle>
-                <div className="flex items-stretch border-b border-slate-100 last:border-b-0" style={{ minHeight: spanHours * 44 }}>
-                  <div className="w-12 shrink-0 flex flex-col justify-center items-center border-r border-slate-100 bg-slate-50/50">
-                    <span className="text-[9px] font-mono font-bold text-slate-400">{startingSlot.startTime}</span>
-                    <span className="text-[8px] font-mono text-slate-300">{startingSlot.endTime}</span>
-                  </div>
+                <div className={`${isEmpty ? 'border border-dashed border-slate-200 rounded-xl' : 'border-b border-slate-100'}`} style={{ minHeight: isEmpty ? undefined : spanHours * 44 }}>
                   <div className="flex-1 min-w-0">
-                    <div onClick={() => toggleSlot(startingSlot.id)} className={`flex items-center gap-1.5 px-2.5 py-2 cursor-pointer select-none ${colors.plannerBg} ${isCurrent ? 'ring-2 ring-emerald-400 ring-inset' : ''}`}>
-                      <span className="text-[10px] font-black text-slate-500">{startingSlot.startTime}–{startingSlot.endTime}</span>
+                    <div onClick={() => isEmpty ? (() => { setSlotForm({ startTime: item.startTime!, endTime: item.endTime!, groupKey: '', duration: 60 }); setEditingSlot(null); setIsAddingSlot(true); })() : toggleSlot(startingSlot.id)} className={`flex items-center gap-1.5 px-2.5 py-2 cursor-pointer select-none ${colors.plannerBg} ${isCurrent ? 'ring-2 ring-emerald-400 ring-inset' : ''}`}>
+                      <span className="text-[10px] font-black text-slate-400">{startingSlot.startTime}–{startingSlot.endTime}</span>
                       <div className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
                       <span className={`text-xs font-black ${colors.plannerText}`}>{info.emoji} {info.label}</span>
-                      <span className="text-[10px] text-slate-400 font-bold">{formatDuration(dur)}</span>
+                      <span className="text-[10px] text-slate-300 font-bold">{formatDuration(dur)}</span>
                       <div className="flex-1" />
                       {slotTasks.length > 0 && <span className={`text-[10px] font-black ${colors.plannerText} opacity-60`}>{checkedCount}/{slotTasks.length}</span>}
                       {isCurrent && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
-                      <button onClick={(e) => { e.stopPropagation(); openEditSlot(startingSlot); }} className="p-1 rounded hover:bg-white/60 text-slate-400 hover:text-slate-600"><Pencil className="w-3 h-3" /></button>
-                      <button onClick={(e) => { e.stopPropagation(); showDeleteSlotConfirm(startingSlot.id); }} className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500"><Trash2 className="w-3 h-3" /></button>
-                      <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                      {!isEmpty && <button onClick={(e) => { e.stopPropagation(); openEditSlot(startingSlot); }} className="p-1 rounded hover:bg-white/60 text-slate-400 hover:text-slate-600"><Pencil className="w-3 h-3" /></button>}
+                      {!isEmpty && <button onClick={(e) => { e.stopPropagation(); showDeleteSlotConfirm(startingSlot.id); }} className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500"><Trash2 className="w-3 h-3" /></button>}
+                      {!isEmpty && <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />}
+                      {isEmpty && <Plus className="w-3.5 h-3.5 text-slate-300" />}
                     </div>
                     {isExpanded && (
                       <div className="border-t border-slate-100 px-2 py-1.5 space-y-0.5">
@@ -1348,20 +1359,6 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               );
             }
 
-            // Empty hour — sortable placeholder
-            return (
-              <SortableGridItem key={item.id} id={item.id}>
-                <div className="flex items-stretch border-b border-slate-100 last:border-b-0 min-h-[44px] cursor-pointer hover:bg-emerald-50/40 transition-colors"
-                  onClick={() => { setSlotForm({ startTime: item.hour, endTime: addMinutesToTime(item.hour, 60), groupKey: '', duration: 60 }); setEditingSlot(null); setIsAddingSlot(true); }}>
-                  <div className="w-12 shrink-0 flex items-center justify-center border-r border-slate-100 bg-slate-50/50">
-                    <span className="text-[10px] font-mono font-bold text-slate-400">{item.hour}</span>
-                  </div>
-                  <div className="flex-1 min-w-0 px-3 py-2 flex items-center">
-                    <span className="text-[10px] text-slate-300 select-none">+ เพิ่ม slot</span>
-                  </div>
-                </div>
-              </SortableGridItem>
-            );
         })}
       </div>
       </SortableContext>
