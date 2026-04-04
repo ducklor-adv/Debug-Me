@@ -620,7 +620,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         id: `empty-${h.startTime}`,
         startTime: h.startTime,
         endTime: h.endTime,
-        groupKey: 'break',
+        groupKey: 'ว่าง',
+        assignedTaskIds: ['d-empty'],
       });
     }
   });
@@ -1303,13 +1304,13 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
             {
               const startingSlot = item;
               const isEmpty = item.id.startsWith('empty-');
-              const info = isEmpty ? { label: 'ว่าง', emoji: '⬜', color: 'slate' } : resolveSlotInfo(startingSlot.groupKey);
-              const colors = isEmpty ? { plannerBg: 'bg-slate-50', plannerText: 'text-slate-400', plannerBorder: 'border-slate-200', dot: 'bg-slate-300', bg: 'bg-slate-100', border: 'border-slate-200', text: 'text-slate-400', iconBg: 'bg-slate-300', ring: 'ring-slate-300' } : (GROUP_COLORS[info.color] || GROUP_COLORS.orange);
+              const info = resolveSlotInfo(startingSlot.groupKey);
+              const colors = GROUP_COLORS[info.color] || GROUP_COLORS.orange;
               const dur = startingSlot.duration || getDurationMinutes(startingSlot.startTime, startingSlot.endTime);
               const spanHours = Math.max(1, Math.ceil(dur / 60));
-              const slotTasks = isEmpty ? [] : getFullTasksForSlot(startingSlot);
+              const slotTasks = getFullTasksForSlot(startingSlot);
               const checkedCount = slotTasks.filter(t => checkedTasks.has(t.id)).length;
-              const isExpanded = isEmpty ? false : expandedSlots.has(startingSlot.id);
+              const isExpanded = expandedSlots.has(startingSlot.id);
               const nowH = new Date().getHours() * 60 + new Date().getMinutes();
               const sMin = parseInt(startingSlot.startTime.split(':')[0]) * 60 + parseInt(startingSlot.startTime.split(':')[1]);
               const eMin = parseInt(startingSlot.endTime.split(':')[0]) * 60 + parseInt(startingSlot.endTime.split(':')[1]);

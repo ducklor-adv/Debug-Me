@@ -71,6 +71,8 @@ const DEFAULT_GROUPS: TaskGroup[] = [
   { key: 'สงบใจ', label: 'สงบใจ', emoji: '🧘', color: 'purple', icon: 'moon', size: 62, categoryKey: 'mind' },
   // ⏸️ คั่นเวลา
   { key: 'Breaking', label: 'Breaking', emoji: '⏸️', color: 'cyan', icon: 'coffee', size: 56, categoryKey: 'break' },
+  // ⬜ ว่าง (placeholder for empty time slots)
+  { key: 'ว่าง', label: 'ว่าง', emoji: '⬜', color: 'slate', icon: 'clock', size: 56, categoryKey: 'break' },
   // Quick-access groups (no category — shown on Dashboard)
   { key: 'งานด่วน', label: 'งานด่วน', emoji: '⚡', color: 'rose', icon: 'lightning', size: 82 },
   { key: 'นัดหมาย', label: 'นัดหมาย', emoji: '📅', color: 'indigo', icon: 'handshake', size: 66 },
@@ -460,6 +462,9 @@ const App: React.FC = () => {
     { id: 'd-55', title: 'นัดทำผม / สปา / ดูแลตัวเอง', description: 'ตัดผม ทำเล็บ นวดผ่อนคลาย ดูแลตัวเอง', priority: Priority.LOW, completed: false, category: 'นัดหมาย', estimatedDuration: 90 },
     { id: 'd-56', title: 'นัดรับ-ส่งของ / พัสดุ', description: 'รอรับพัสดุ นัดส่งของ หรือไปรับสินค้าที่สั่ง', priority: Priority.MEDIUM, completed: false, category: 'นัดหมาย', estimatedDuration: 30 },
     { id: 'd-57', title: 'นัดพบครู / อาจารย์ / ที่ปรึกษา', description: 'ประชุมผู้ปกครอง พบอาจารย์ที่ปรึกษา หรือ mentor', priority: Priority.MEDIUM, completed: false, category: 'นัดหมาย', estimatedDuration: 60 },
+
+    // ⬜ ว่าง — placeholder task for empty time slots
+    { id: 'd-empty', title: 'ว่าง', description: 'ช่วงเวลาว่าง ยังไม่ได้กำหนดกิจกรรม', priority: Priority.LOW, completed: false, category: 'ว่าง', estimatedDuration: 60 },
   ], [todayStr]);
 
   // ===== Data state (synced via Firestore) =====

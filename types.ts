@@ -517,6 +517,7 @@ export const GROUP_COLORS: Record<string, {
   teal: { bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-600', badge: 'bg-teal-100 text-teal-700', dot: 'bg-teal-400', ring: 'ring-teal-300', iconBg: 'bg-teal-400', plannerBg: 'bg-teal-100', plannerText: 'text-teal-700', plannerBorder: 'border-teal-300' },
   indigo: { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-600', badge: 'bg-indigo-100 text-indigo-700', dot: 'bg-indigo-400', ring: 'ring-indigo-300', iconBg: 'bg-indigo-400', plannerBg: 'bg-indigo-100', plannerText: 'text-indigo-700', plannerBorder: 'border-indigo-300' },
   purple: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600', badge: 'bg-purple-100 text-purple-700', dot: 'bg-purple-400', ring: 'ring-purple-300', iconBg: 'bg-purple-400', plannerBg: 'bg-purple-100', plannerText: 'text-purple-700', plannerBorder: 'border-purple-300' },
+  slate: { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-500', badge: 'bg-slate-100 text-slate-600', dot: 'bg-slate-300', ring: 'ring-slate-200', iconBg: 'bg-slate-300', plannerBg: 'bg-slate-50', plannerText: 'text-slate-400', plannerBorder: 'border-slate-200' },
 };
 
 // ===== Balance Sheet (งบดุล) =====
