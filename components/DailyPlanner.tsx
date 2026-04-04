@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, 
 import TimePicker from './TimePicker';
 import TimelineView from './planner/TimelineView';
 import { getDurationMinutes as getDurationMinutesUtil, addMinutesToTime as addMinutesToTimeUtil, formatDuration as formatDurationUtil, adjustSlotDuration, isV2Schedule } from './planner/slotUtils';
-import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent, useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -92,6 +92,16 @@ const SortableSlotWrapper: React.FC<{ id: string; children: React.ReactNode }> =
         <GripVertical className="w-5 h-5" />
       </div>
       <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  );
+};
+
+// Droppable wrapper for empty hour rows in the grid
+const DroppableHour: React.FC<{ id: string; children: React.ReactNode; onClick: () => void }> = ({ id, children, onClick }) => {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div ref={setNodeRef} onClick={onClick} className={`flex items-stretch border-b border-slate-100 last:border-b-0 min-h-[44px] cursor-pointer transition-colors ${isOver ? 'bg-emerald-100/60' : 'hover:bg-emerald-50/40'}`}>
+      {children}
     </div>
   );
 };
@@ -875,20 +885,49 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     useSensor(TouchSensor, { activationConstraint: { delay: 100, tolerance: 8 } }),
   );
 
+  // Recalculate all slot times sequentially from wakeTime, keeping each slot's duration
+  const recalcSlotTimes = (slots: TimeSlot[]): TimeSlot[] => {
+    let cursor = parseInt(currentWakeTime.split(':')[0]) * 60 + parseInt(currentWakeTime.split(':')[1]);
+    return slots.map(s => {
+      const dur = s.duration || getDurationMinutes(s.startTime || '00:00', s.endTime || '01:00');
+      const newStart = `${String(Math.floor(cursor / 60) % 24).padStart(2, '0')}:${String(cursor % 60).padStart(2, '0')}`;
+      cursor += dur;
+      const newEnd = `${String(Math.floor(cursor / 60) % 24).padStart(2, '0')}:${String(cursor % 60).padStart(2, '0')}`;
+      return { ...s, startTime: newStart, endTime: newEnd, duration: dur };
+    });
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const activeSlot = sortedSchedule.find(s => s.id === active.id);
-    const overSlot = sortedSchedule.find(s => s.id === over.id);
-    if (!activeSlot || !overSlot) return;
+    const activeIdx = sortedSchedule.findIndex(s => s.id === active.id);
+    if (activeIdx === -1) return;
 
-    // Swap groupKeys between the two slots (times stay in place)
-    setScheduleForTab(prev => prev.map(s => {
-      if (s.id === activeSlot.id) return { ...s, groupKey: overSlot.groupKey };
-      if (s.id === overSlot.id) return { ...s, groupKey: activeSlot.groupKey };
-      return s;
-    }));
+    // Dropping onto another slot — reorder
+    const overIdx = sortedSchedule.findIndex(s => s.id === over.id);
+    if (overIdx !== -1) {
+      const reordered = arrayMove([...sortedSchedule], activeIdx, overIdx);
+      setScheduleForTab(() => recalcSlotTimes(reordered));
+      return;
+    }
+
+    // Dropping onto an empty hour — insert at that position
+    const targetHour = String(over.id);
+    if (targetHour.match(/^\d{2}:\d{2}$/)) {
+      const targetMin = parseInt(targetHour.split(':')[0]) * 60 + parseInt(targetHour.split(':')[1]);
+      // Remove from current position
+      const slot = sortedSchedule[activeIdx];
+      const remaining = sortedSchedule.filter((_, i) => i !== activeIdx);
+      // Find insert position based on target hour
+      let insertIdx = remaining.length;
+      for (let i = 0; i < remaining.length; i++) {
+        const sMin = parseInt((remaining[i].startTime || '00:00').split(':')[0]) * 60 + parseInt((remaining[i].startTime || '00:00').split(':')[1]);
+        if (targetMin <= sMin) { insertIdx = i; break; }
+      }
+      remaining.splice(insertIdx, 0, slot);
+      setScheduleForTab(() => recalcSlotTimes(remaining));
+    }
   };
 
   // DnD: reorder tasks within a slot (updates slot's assignedTaskIds)
@@ -1228,6 +1267,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       )}
 
       {/* Hour Grid — Planner style */}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={sortedSchedule.map(s => s.id)} strategy={verticalListSortingStrategy}>
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         {(() => {
           const renderedSlotIds = new Set<string>();
@@ -1258,7 +1299,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               const isCurrent = isToday && nowH >= sMin && nowH < eMin;
 
               return (
-                <div key={hour.startTime} className="flex items-stretch border-b border-slate-100 last:border-b-0" style={{ minHeight: spanHours * 44 }}>
+                <SortableSlotWrapper key={hour.startTime} id={startingSlot.id}>
+                <div className="flex items-stretch border-b border-slate-100 last:border-b-0" style={{ minHeight: spanHours * 44 }}>
                   <div className="w-16 shrink-0 flex flex-col justify-center items-center border-r border-slate-100 bg-slate-50/50">
                     <span className="text-[10px] font-mono font-bold text-slate-400">{startingSlot.startTime}</span>
                     <span className="text-[9px] font-mono text-slate-300">{startingSlot.endTime}</span>
@@ -1299,24 +1341,26 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                     )}
                   </div>
                 </div>
+                </SortableSlotWrapper>
               );
             }
 
-            // Empty hour
+            // Empty hour — droppable target
             return (
-              <div key={hour.startTime} className="flex items-stretch border-b border-slate-100 last:border-b-0 min-h-[44px] cursor-pointer hover:bg-emerald-50/40 transition-colors"
-                onClick={() => { setSlotForm({ startTime: hour.startTime, endTime: hour.endTime, groupKey: '', duration: 60 }); setEditingSlot(null); setIsAddingSlot(true); }}>
+              <DroppableHour key={hour.startTime} id={hour.startTime} onClick={() => { setSlotForm({ startTime: hour.startTime, endTime: hour.endTime, groupKey: '', duration: 60 }); setEditingSlot(null); setIsAddingSlot(true); }}>
                 <div className="w-16 shrink-0 flex items-center justify-center border-r border-slate-100 bg-slate-50/50">
                   <span className="text-[10px] font-mono font-bold text-slate-400">{hour.startTime}</span>
                 </div>
                 <div className="flex-1 min-w-0 px-3 py-2 flex items-center">
                   <span className="text-[10px] text-slate-300 select-none">+ เพิ่ม slot</span>
                 </div>
-              </div>
+              </DroppableHour>
             );
           });
         })()}
       </div>
+      </SortableContext>
+      </DndContext>
 
       <div className={`${isCustomTab ? 'rounded-xl border-2 border-blue-300 bg-blue-50/30 p-3 space-y-3' : ''}`}>
         {/* Summary */}
