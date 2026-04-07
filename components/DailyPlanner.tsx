@@ -127,7 +127,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const todayStr = new Date().toISOString().split('T')[0];
   const isToday = selectedDateStr === todayStr;
 
-  const dateLabel = `${dayNames[selectedDate.getDay()]} ${selectedDate.getDate()} ${monthNames[selectedDate.getMonth()]} ${selectedDate.getFullYear() + 543}`;
+  const dateLabel = `${selectedDate.getDate()} ${monthNames[selectedDate.getMonth()]} ${selectedDate.getFullYear() + 543}`;
 
   const prevDay = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; });
   const nextDay = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; });
@@ -1064,45 +1064,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         </div>
       </div>
 
-      {/* 3. Custom Day card */}
-      <div className="bg-white rounded-xl border border-slate-200 p-2 space-y-1.5">
-        {/* Header row */}
-        <div className="flex items-center justify-between px-1">
-          <span className="text-[10px] font-black text-violet-500 uppercase tracking-widest">
-            Custom Days {customTemplates.length > 0 && <span className="text-violet-400">({customTemplates.length})</span>}
-          </span>
-          <button
-            onClick={openCustomForm}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-violet-500 hover:bg-violet-50 transition-all border border-violet-200"
-          >
-            <Plus className="w-3 h-3" /> เพิ่ม
-          </button>
-        </div>
-        {/* Scrollable template bar */}
-        {customTemplates.length > 0 ? (
-          <div className="flex gap-1.5 overflow-x-auto pb-1.5" style={{ scrollbarWidth: 'thin', scrollbarColor: '#c4b5fd transparent', WebkitOverflowScrolling: 'touch' }}>
-            {customTemplates.map(ct => {
-              const isActive = activeTab === ct.id;
-              return (
-                <button
-                  key={ct.id}
-                  onClick={() => handleTabSwitch(ct.id)}
-                  className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
-                    isActive
-                      ? 'bg-violet-500 text-white border-violet-500 shadow-sm'
-                      : 'bg-violet-50 text-violet-600 border-violet-200 hover:bg-violet-100'
-                  }`}
-                >
-                  <span>{ct.emoji}</span>
-                  <span className="max-w-[80px] truncate">{ct.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-[11px] text-slate-400 px-1">ยังไม่มี template</p>
-        )}
-      </div>
+      {/* Custom Day card — moved below slot grid */}
 
       {/* 2. Context Bar — shows current view + template type */}
       <div className={`rounded-xl border p-3 flex items-center justify-between transition-all ${
@@ -1112,29 +1074,29 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
             ? `${activeDayColor.bg} ${activeDayColor.border}`
             : 'bg-white border-slate-200'
       }`}>
-        <div className="flex items-center gap-1.5">
-          <button onClick={prevDay} className="p-1.5 rounded-lg hover:bg-white/60 text-slate-400 transition-colors">
+        <div className="flex items-center gap-1.5 w-40 justify-center">
+          <button onClick={prevDay} className="p-1.5 rounded-lg hover:bg-white/60 text-slate-400 transition-colors shrink-0">
             <ChevronLeft className="w-4 h-4" />
           </button>
           {isCustomTab && activeCustomTemplate ? (
-            <span className="text-xs font-bold px-3 py-1 rounded-full bg-violet-500 text-white shadow-sm">
+            <span className="text-xs font-bold px-3 py-1 rounded-full bg-violet-500 text-white shadow-sm text-center min-w-[70px]">
               {activeCustomTemplate.emoji} {activeCustomTemplate.name}
             </span>
           ) : isShowingToday ? (
-            <button onClick={goToday} className={`text-xs font-bold px-3 py-1 rounded-full transition-all ${activeDayColor ? `${activeDayColor.activeBg} text-white shadow-sm` : 'bg-emerald-500 text-white'}`}>
+            <button onClick={goToday} className={`text-xs font-bold px-3 py-1 rounded-full transition-all text-center min-w-[70px] ${activeDayColor ? `${activeDayColor.activeBg} text-white shadow-sm` : 'bg-emerald-500 text-white'}`}>
               วันนี้
             </button>
           ) : (
-            <span className={`text-xs font-bold px-3 py-1 rounded-full shadow-sm ${activeDayColor ? `${activeDayColor.activeBg} text-white` : 'bg-slate-500 text-white'}`}>
+            <span className={`text-xs font-bold px-3 py-1 rounded-full shadow-sm text-center min-w-[70px] ${activeDayColor ? `${activeDayColor.activeBg} text-white` : 'bg-slate-500 text-white'}`}>
               {dayNames[activeDayOfWeek]}
             </span>
           )}
-          <button onClick={nextDay} className="p-1.5 rounded-lg hover:bg-white/60 text-slate-400 transition-colors">
+          <button onClick={nextDay} className="p-1.5 rounded-lg hover:bg-white/60 text-slate-400 transition-colors shrink-0">
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
-        {isDayTab && isShowingToday && (
-          <div className="flex items-center gap-2">
+        {isDayTab && (
+          <div className="flex-1 flex items-center justify-center gap-2">
             <span className={`text-sm font-bold ${activeDayColor ? activeDayColor.activeText : 'text-slate-700'}`}>{dateLabel}</span>
             {resolvedDay?.source === 'custom' && (
               <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-pink-400 via-violet-400 to-blue-400 text-white text-[9px] font-bold shadow-sm">
@@ -1148,19 +1110,6 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-600 text-[9px] font-bold">แก้ไขแล้ว</span>
             )}
           </div>
-        )}
-        {isDayTab && !isShowingToday && (
-          resolvedDay?.source === 'custom' ? (
-            <span className="px-2.5 py-1 rounded-full bg-gradient-to-r from-pink-400 via-violet-400 to-blue-400 text-white text-[10px] font-bold shadow-sm">
-              Custom Template : {resolvedDay.templateEmoji} {resolvedDay.templateName}
-            </span>
-          ) : resolvedDay?.source === 'cleared' ? (
-            <span className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-600 text-[10px] font-bold">Cleared</span>
-          ) : resolvedDay?.source === 'dayPlan' ? (
-            <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-600 text-[10px] font-bold">แก้ไขแล้ว</span>
-          ) : (
-            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${activeDayColor ? `${activeDayColor.activeBg} text-white` : 'bg-blue-100 text-blue-600'}`}>Daily Template</span>
-          )
         )}
         {isCustomTab && (
           <span className="px-2.5 py-1 rounded-full bg-gradient-to-r from-pink-400 via-violet-400 to-blue-400 text-white text-[10px] font-bold shadow-sm">Custom Template</span>
@@ -1389,6 +1338,35 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               <p className="text-xs font-bold">ไม่มี Slot</p>
             </div>
           )}
+
+          {/* Custom Day card */}
+          <div className="bg-white rounded-xl border border-slate-200 p-2 space-y-1.5 mt-2">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[10px] font-black text-violet-500 uppercase tracking-widest">
+                Custom Days {customTemplates.length > 0 && <span className="text-violet-400">({customTemplates.length})</span>}
+              </span>
+              <button onClick={openCustomForm} className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-violet-500 hover:bg-violet-50 transition-all border border-violet-200">
+                <Plus className="w-3 h-3" /> เพิ่ม
+              </button>
+            </div>
+            {customTemplates.length > 0 ? (
+              <div className="flex gap-1.5 overflow-x-auto pb-1.5" style={{ scrollbarWidth: 'thin', scrollbarColor: '#c4b5fd transparent', WebkitOverflowScrolling: 'touch' }}>
+                {customTemplates.map(ct => {
+                  const isActive = activeTab === ct.id;
+                  return (
+                    <button key={ct.id} onClick={() => handleTabSwitch(ct.id)} className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                      isActive ? 'bg-violet-500 text-white border-violet-500 shadow-sm' : 'bg-violet-50 text-violet-600 border-violet-200 hover:bg-violet-100'
+                    }`}>
+                      <span>{ct.emoji}</span>
+                      <span className="max-w-[80px] truncate">{ct.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-400 px-1">ยังไม่มี template</p>
+            )}
+          </div>
 
           {/* Template management buttons */}
           <div className="flex flex-col gap-1.5 mt-2">
