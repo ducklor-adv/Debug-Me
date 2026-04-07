@@ -1,12 +1,9 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Task, SubTask, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, CustomScheduleTemplate, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType, getScheduleForDay, DEFAULT_CATEGORIES, Category, isTaskRecurring, CLEAR_OVERRIDE, resolveSlotTimes } from '../types';
+import { Task, SubTask, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, CustomScheduleTemplate, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType, getScheduleForDay, DEFAULT_CATEGORIES, Category, isTaskRecurring, CLEAR_OVERRIDE } from '../types';
 import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown, RefreshCw, GripVertical, Save, AlertTriangle, Loader2, Layers, RotateCcw } from 'lucide-react';
 import TimePicker from './TimePicker';
-import TimelineView from './planner/TimelineView';
-import { getDurationMinutes as getDurationMinutesUtil, addMinutesToTime as addMinutesToTimeUtil, formatDuration as formatDurationUtil, adjustSlotDuration, isV2Schedule } from './planner/slotUtils';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
-// pointerWithin removed — closestCenter works with SortableContext for all items
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -568,21 +565,12 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const currentWakeTime = scheduleTemplates.wakeTime || '05:00';
   const currentSleepTime = scheduleTemplates.sleepTime || '22:00';
 
-  // Check if schedule is v2 (duration-based) — disabled, use v1 path always
-  const isV2 = false;
+  // Sorted schedule — filter and sort by startTime
+  const sortedSchedule = [...mergedSchedule]
+    .filter(s => s.startTime && s.endTime && s.groupKey && s.groupKey !== '_free' && s.type !== 'free')
+    .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
 
-  // Sorted schedule: v2 uses array order (duration-based), v1 sorts by startTime
-  // Filter out free slots — they are not real schedule items
-  const sortedSchedule = isV2
-    ? mergedSchedule.filter(s => s.groupKey && s.groupKey !== '_free' && s.type !== 'free')
-    : [...mergedSchedule]
-        .filter(s => s.startTime && s.endTime && s.groupKey && s.groupKey !== '_free' && s.type !== 'free')
-        .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
-
-  // Resolve times for v2 slots
-  const resolvedSchedule = isV2
-    ? resolveSlotTimes(sortedSchedule, currentWakeTime, currentSleepTime)
-    : sortedSchedule.map(s => ({ ...s, startTime: s.startTime!, endTime: s.endTime!, duration: s.duration || getDurationMinutes(s.startTime!, s.endTime!) }));
+  const resolvedSchedule = sortedSchedule.map(s => ({ ...s, startTime: s.startTime!, endTime: s.endTime!, duration: s.duration || getDurationMinutes(s.startTime!, s.endTime!) }));
 
   // Hour grid from wakeTime to sleepTime
   const wakeMinutes = parseInt(currentWakeTime.split(':')[0]) * 60 + parseInt(currentWakeTime.split(':')[1]);
@@ -680,7 +668,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   // Auto-open slot form from Dashboard navigation
   useEffect(() => {
     if (pendingSlot) {
-      const dur = getDurationMinutesUtil(pendingSlot.startTime, pendingSlot.endTime);
+      const dur = getDurationMinutes(pendingSlot.startTime, pendingSlot.endTime);
       setSlotForm({ startTime: pendingSlot.startTime, endTime: pendingSlot.endTime, groupKey: '', duration: dur });
       setEditingSlot(null);
       setIsAddingSlot(true);
@@ -725,43 +713,18 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     const { groupKey, duration } = slotForm;
 
     if (editingSlot) {
-      if (isV2 && editingSlot.type === 'free') {
-        // Converting free slot to activity slot
-        setScheduleForTab(prev => prev.map(s =>
-          s.id === editingSlot.id
-            ? { ...s, groupKey, type: 'activity' as const, duration: s.duration }
-            : s
-        ));
-      } else if (isV2) {
-        // Editing existing v2 activity slot
-        setScheduleForTab(prev => prev.map(s =>
-          s.id === editingSlot.id ? { ...s, groupKey, duration } : s
-        ));
-      } else {
-        // v1: update startTime/endTime/groupKey
-        const { startTime, endTime } = slotForm;
-        setScheduleForTab(prev => prev.map(s =>
-          s.id === editingSlot.id ? { ...s, startTime, endTime, groupKey } : s
-        ));
-      }
+      const { startTime, endTime } = slotForm;
+      setScheduleForTab(prev => prev.map(s =>
+        s.id === editingSlot.id ? { ...s, startTime, endTime, groupKey } : s
+      ));
     } else {
-      if (isV2) {
-        const newSlot: TimeSlot = {
-          id: `${activeTab}-${Date.now()}`,
-          duration,
-          type: 'activity',
-          groupKey,
-        };
-        setScheduleForTab(prev => [...prev, newSlot]);
-      } else {
-        const newSlot: TimeSlot = {
-          id: `${activeTab}-${Date.now()}`,
-          startTime: slotForm.startTime,
-          endTime: slotForm.endTime,
-          groupKey,
-        };
-        setScheduleForTab(prev => [...prev, newSlot]);
-      }
+      const newSlot: TimeSlot = {
+        id: `${activeTab}-${Date.now()}`,
+        startTime: slotForm.startTime,
+        endTime: slotForm.endTime,
+        groupKey,
+      };
+      setScheduleForTab(prev => [...prev, newSlot]);
     }
     setIsAddingSlot(false);
     setEditingSlot(null);
@@ -1118,7 +1081,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       </div>
 
       {/* Wake/Sleep Time Editor */}
-      {isV2 && (
+      {isDayTab && (
         <div className="flex items-center justify-center gap-3 bg-indigo-50/60 border border-indigo-100 rounded-xl px-3 py-2">
           <div className="flex items-center gap-1.5">
             <span className="text-[10px]">☀️</span>
@@ -1145,58 +1108,6 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               compact
             />
           </div>
-        </div>
-      )}
-
-      {/* 4. Day Info Bar — hidden, wake/sleep picker replaces this */}
-      {false && isDayTab && resolvedDay && sortedSchedule.length > 0 && (
-        <div className="flex flex-col items-center gap-1">
-          <span className="text-xs font-bold text-slate-500">
-            {resolvedDay.source === 'custom'
-              ? <>{resolvedDay.templateEmoji} {resolvedDay.templateName} <span className="text-[9px] text-slate-400">({resolvedDay.overrideType === 'date' ? 'เฉพาะวันนี้' : 'ทุกสัปดาห์'})</span></>
-              : resolvedDay.source === 'cleared'
-              ? <span className="text-rose-500">🗑️ เคลียร์แล้ว</span>
-              : resolvedDay.source === 'dayPlan'
-              ? <>📝 ตารางวัน{dayNames[parseInt(activeTab)]} <span className="text-[9px] text-slate-400">(แก้ไขแล้ว)</span></>
-              : <>📋 {parseInt(activeTab) >= 1 && parseInt(activeTab) <= 5 ? 'ตารางวันทำงาน' : parseInt(activeTab) === 6 ? 'ตารางวันเสาร์' : 'ตารางวันอาทิตย์'}</>
-            }
-          </span>
-          <span className="text-[10px] font-bold text-slate-400">
-            กิจกรรมรวม {formatDuration(totalAllMins)} ทั้งวัน
-          </span>
-          {(resolvedDay.source === 'custom' || resolvedDay.source === 'cleared') && (
-            <button
-              onClick={() => {
-                if (resolvedDay.overrideType === 'date') {
-                  removeCustomFromDate(selectedDateStr);
-                } else {
-                  removeCustomFromDay(parseInt(activeTab));
-                }
-              }}
-              className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-400 hover:text-rose-500 hover:border-rose-200 transition-colors"
-            >
-              กลับค่าเดิม
-            </button>
-          )}
-          {resolvedDay.source === 'dayPlan' && (
-            <button
-              onClick={() => {
-                const dow = parseInt(activeTab);
-                setScheduleTemplates(prev => {
-                  const newDayPlans = { ...(prev.dayPlans || {}) };
-                  delete newDayPlans[String(dow)];
-                  return {
-                    ...prev,
-                    dayPlans: Object.keys(newDayPlans).length > 0 ? newDayPlans : undefined,
-                  };
-                });
-                setScheduleDirty(true);
-              }}
-              className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-bold text-slate-400 hover:text-amber-500 hover:border-amber-200 transition-colors"
-            >
-              กลับตาราง Default
-            </button>
-          )}
         </div>
       )}
 

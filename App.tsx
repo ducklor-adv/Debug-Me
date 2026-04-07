@@ -32,7 +32,7 @@ import { useLocationReminders } from './hooks/useLocationReminders';
 import { analyzeBehaviorPatterns, BehaviorPattern } from './services/behaviorAnalysis';
 import { getDailyRecordsInRange } from './lib/firestoreDB';
 import { useUndoStack } from './hooks/useUndoStack';
-import { migrateV1Slots, isV2Schedule } from './components/planner/slotUtils';
+import { migrateV1Slots } from './components/planner/slotUtils';
 
 // Lazy-load non-dashboard views for faster initial load
 const TaskManager = lazy(() => import('./components/TaskManager'));

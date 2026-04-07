@@ -24,73 +24,6 @@ export function formatDuration(mins: number): string {
 }
 
 /**
- * Adjust a slot's duration by deltaMins, consuming/creating adjacent free slots.
- * Returns new slots array, or null if adjustment is not possible.
- */
-export function adjustSlotDuration(
-  slots: TimeSlot[],
-  slotIndex: number,
-  deltaMins: number
-): TimeSlot[] | null {
-  const slot = slots[slotIndex];
-  if (!slot || slot.type === 'free') return null;
-
-  const currentDur = slot.duration || 0;
-  const newDur = currentDur + deltaMins;
-  if (newDur < 30) return null; // minimum 30 minutes
-
-  if (deltaMins > 0) {
-    // Growing: consume from adjacent free slot (prefer after, then before)
-    const afterIdx = slotIndex + 1;
-    const beforeIdx = slotIndex - 1;
-
-    if (afterIdx < slots.length && slots[afterIdx].type === 'free' && (slots[afterIdx].duration || 0) >= deltaMins) {
-      const result = [...slots];
-      result[slotIndex] = { ...slot, duration: newDur };
-      const freeDur = (slots[afterIdx].duration || 0) - deltaMins;
-      if (freeDur <= 0) {
-        result.splice(afterIdx, 1);
-      } else {
-        result[afterIdx] = { ...slots[afterIdx], duration: freeDur };
-      }
-      return result;
-    }
-    if (beforeIdx >= 0 && slots[beforeIdx].type === 'free' && (slots[beforeIdx].duration || 0) >= deltaMins) {
-      const result = [...slots];
-      result[slotIndex] = { ...slot, duration: newDur };
-      const freeDur = (slots[beforeIdx].duration || 0) - deltaMins;
-      if (freeDur <= 0) {
-        result.splice(beforeIdx, 1);
-      } else {
-        result[beforeIdx] = { ...slots[beforeIdx], duration: freeDur };
-      }
-      return result;
-    }
-    return null; // no adjacent free slot with enough time
-  }
-
-  if (deltaMins < 0) {
-    // Shrinking: create/extend adjacent free slot after
-    const result = [...slots];
-    result[slotIndex] = { ...slot, duration: newDur };
-    const afterIdx = slotIndex + 1;
-    if (afterIdx < result.length && result[afterIdx].type === 'free') {
-      result[afterIdx] = { ...result[afterIdx], duration: (result[afterIdx].duration || 0) + Math.abs(deltaMins) };
-    } else {
-      result.splice(afterIdx, 0, {
-        id: `free-${Date.now()}`,
-        duration: Math.abs(deltaMins),
-        type: 'free',
-        groupKey: '_free',
-      });
-    }
-    return result;
-  }
-
-  return slots;
-}
-
-/**
  * Migrate v1 slots (startTime/endTime based) to v2 (duration based).
  * Sorts by startTime, computes duration, fills gaps with free slots.
  */
@@ -119,10 +52,15 @@ export function migrateV1Slots(
     let dur = slotEnd - slotStart;
     if (dur <= 0) dur += 1440;
 
-    // Skip sleep slots that are outside wake-sleep range
-    if (slot.groupKey === 'sleep') continue;
+    // Skip sleep slots outside wake-sleep range
+    if (slot.groupKey === 'sleep') {
+      const isBeforeWake = slotEnd <= wakeMin || (slotStart < wakeMin);
+      const isAfterSleep = slotStart >= sleepMin;
+      if (isBeforeWake || isAfterSleep) continue;
+    }
 
-    // Insert free slot for gap before this slot
+    if (slotStart < wakeMin) continue;
+
     if (slotStart > cursor) {
       const gap = slotStart - cursor;
       if (gap > 0) {
@@ -136,15 +74,10 @@ export function migrateV1Slots(
       cursor = slotStart;
     }
 
-    result.push({
-      ...slot,
-      duration: dur,
-      type: 'activity',
-    });
+    result.push({ ...slot, duration: dur, type: 'activity' });
     cursor += dur;
   }
 
-  // Fill remaining time until sleepTime
   const totalAvail = ((sleepMin - wakeMin) + 1440) % 1440;
   const usedTime = result.reduce((sum, s) => sum + (s.duration || 0), 0);
   const remaining = totalAvail - usedTime;
@@ -158,9 +91,4 @@ export function migrateV1Slots(
   }
 
   return result;
-}
-
-/** Check if a slot array is v2 (duration-based) */
-export function isV2Schedule(slots: TimeSlot[]): boolean {
-  return slots.length > 0 && slots[0].duration !== undefined;
 }

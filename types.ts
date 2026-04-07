@@ -187,36 +187,6 @@ function getDurationFromTimes(start: string, end: string): number {
   return diff;
 }
 
-/** Fill gaps between activity slots with free slots */
-export function insertFreeSlots(
-  slots: TimeSlot[],
-  wakeTime: string = '05:00',
-  sleepTime: string = '22:00'
-): TimeSlot[] {
-  const totalMinutes = ((timeToMinutes(sleepTime) - timeToMinutes(wakeTime)) + 1440) % 1440;
-  const result: TimeSlot[] = [];
-  let used = 0;
-
-  for (const slot of slots) {
-    const dur = slot.duration ?? getDurationFromTimes(slot.startTime!, slot.endTime!);
-    result.push({ ...slot, duration: dur, type: slot.type || 'activity' });
-    used += dur;
-  }
-
-  // Add trailing free slot if time remaining
-  const remaining = totalMinutes - used;
-  if (remaining > 0) {
-    result.push({
-      id: `free-${Date.now()}`,
-      duration: remaining,
-      type: 'free',
-      groupKey: '_free',
-    });
-  }
-
-  return result;
-}
-
 /** Determine the day type from a Date object */
 export function getDayType(date: Date): DayType {
   const dow = date.getDay(); // 0=Sun, 6=Sat
