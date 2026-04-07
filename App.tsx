@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, deleteUser, User } from 'firebase/auth';
 import { auth } from './firebase';
 import {
   Activity,
@@ -940,6 +940,15 @@ const App: React.FC = () => {
   }, []);
 
   const handleSignOut = () => { signOut(auth); };
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    try {
+      await deleteUser(user);
+    } catch {
+      alert('ลบบัญชีไม่สำเร็จ กรุณาออกจากระบบแล้วเข้าสู่ระบบใหม่ แล้วลองอีกครั้ง');
+    }
+  };
 
   const handleNavItemClick = (view: View) => {
     setActiveView(view);
@@ -1088,7 +1097,10 @@ const App: React.FC = () => {
                 </div>
               </div>
               <button onClick={handleSignOut} className="w-full py-2.5 text-sm font-bold text-rose-500 hover:bg-rose-50 rounded-xl transition-colors shrink-0">
-                Sign Out
+                ออกจากระบบ
+              </button>
+              <button onClick={() => setShowDeleteAccount(true)} className="w-full py-2 text-[10px] font-bold text-slate-400 hover:text-rose-500 transition-colors shrink-0">
+                ลบบัญชี
               </button>
             </div>
           </div>
@@ -1171,6 +1183,20 @@ const App: React.FC = () => {
 
         {/* Undo Toast */}
         <UndoToast action={undoToast} onUndo={undo} onDismiss={dismissToast} />
+
+        {/* Delete Account Confirmation */}
+        {showDeleteAccount && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowDeleteAccount(false)}>
+            <div className="bg-white rounded-2xl shadow-xl w-[90vw] max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
+              <h3 className="text-lg font-black text-rose-600 text-center">ลบบัญชี</h3>
+              <p className="text-xs text-slate-500 text-center">เมื่อลบบัญชีแล้ว ข้อมูลทั้งหมดจะหายไปถาวร ไม่สามารถกู้คืนได้</p>
+              <div className="flex gap-2">
+                <button onClick={() => setShowDeleteAccount(false)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-500">ยกเลิก</button>
+                <button onClick={handleDeleteAccount} className="flex-1 py-2.5 rounded-xl bg-rose-500 text-white text-xs font-bold hover:bg-rose-600">ลบบัญชีถาวร</button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

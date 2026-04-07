@@ -4,6 +4,7 @@ import { auth } from '../firebase';
 import {
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
+    sendPasswordResetEmail,
     GoogleAuthProvider,
     signInWithPopup
 } from 'firebase/auth';
@@ -13,7 +14,26 @@ const Login: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState<string | null>(null);
+    const [success, setSuccess] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [showResetPassword, setShowResetPassword] = useState(false);
+    const [resetEmail, setResetEmail] = useState('');
+
+    const handleResetPassword = async () => {
+      if (!resetEmail) { setError('กรุณาใส่อีเมล'); return; }
+      setLoading(true);
+      setError(null);
+      try {
+        await sendPasswordResetEmail(auth, resetEmail);
+        setSuccess('ส่งลิงก์รีเซ็ตรหัสผ่านไปที่อีเมลแล้ว');
+        setShowResetPassword(false);
+        setResetEmail('');
+      } catch {
+        setError('ไม่สามารถส่งอีเมลได้ กรุณาตรวจสอบอีเมลอีกครั้ง');
+      } finally {
+        setLoading(false);
+      }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -71,6 +91,11 @@ const Login: React.FC = () => {
                         {error}
                     </div>
                 )}
+                {success && (
+                    <div className="bg-emerald-50 text-emerald-600 p-4 rounded-xl text-sm font-medium mb-6">
+                        {success}
+                    </div>
+                )}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
@@ -119,6 +144,39 @@ const Login: React.FC = () => {
                         )}
                     </button>
                 </form>
+
+                {!isRegistering && (
+                    <button
+                        onClick={() => { setShowResetPassword(true); setResetEmail(email); setError(null); setSuccess(null); }}
+                        className="w-full text-center mt-3 text-xs font-bold text-slate-400 hover:text-violet-500 transition-colors"
+                    >
+                        ลืมรหัสผ่าน?
+                    </button>
+                )}
+
+                {/* Reset Password Modal */}
+                {showResetPassword && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowResetPassword(false)}>
+                        <div className="bg-white rounded-2xl shadow-xl w-[90vw] max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
+                            <h3 className="text-sm font-black text-slate-800 text-center">รีเซ็ตรหัสผ่าน</h3>
+                            <p className="text-xs text-slate-500 text-center">ใส่อีเมลที่ลงทะเบียนไว้ เราจะส่งลิงก์รีเซ็ตรหัสผ่านให้</p>
+                            <div className="relative">
+                                <Mail className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                                <input
+                                    type="email"
+                                    value={resetEmail}
+                                    onChange={(e) => setResetEmail(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+                                    placeholder="you@example.com"
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={() => setShowResetPassword(false)} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-500">ยกเลิก</button>
+                                <button onClick={handleResetPassword} disabled={loading} className="flex-1 py-2.5 rounded-xl bg-violet-500 text-white text-xs font-bold hover:bg-violet-600 disabled:opacity-50">ส่งลิงก์รีเซ็ต</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <div className="mt-6">
                     <div className="relative">
