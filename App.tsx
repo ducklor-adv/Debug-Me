@@ -27,6 +27,7 @@ import { subscribeAppData, saveAppData, addDailyRecordFS, getDailyRecordsByDate,
 import Dashboard from './components/Dashboard';
 import UndoToast from './components/UndoToast';
 import Login from './components/Login';
+import OnboardingWizard from './components/OnboardingWizard';
 import { useNotificationScheduler } from './hooks/useNotificationScheduler';
 import { useLocationReminders } from './hooks/useLocationReminders';
 import { analyzeBehaviorPatterns, BehaviorPattern } from './services/behaviorAnalysis';
@@ -317,6 +318,8 @@ const App: React.FC = () => {
     return 'dashboard';
   });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(true); // assume true until data loads
+  const [enabledModules, setEnabledModules] = useState<string[]>(['planner', 'tasks', 'expenses', 'projects', 'diary']);
 
   // Daily records state
   const [todayRecords, setTodayRecords] = useState<DailyRecord[]>([]);
@@ -771,11 +774,16 @@ const App: React.FC = () => {
           saveBack.deletedDefaultTaskIds = deletedIds;
         }
 
+        // Load onboarding state
+        if (data.onboardingCompleted !== undefined) setOnboardingCompleted(data.onboardingCompleted);
+        if (data.enabledModules) setEnabledModules(data.enabledModules);
+
         if (Object.keys(saveBack).length > 0 && !wasOwnSave) {
           saveAppData(user.uid, saveBack);
         }
       } else {
-        // First time user — use defaults and save to Firestore
+        // First time user — show onboarding
+        setOnboardingCompleted(false);
         setTasks(defaultTasks);
         setTaskGroups(DEFAULT_GROUPS);
         setMilestones(DEFAULT_MILESTONES);
@@ -1008,6 +1016,26 @@ const App: React.FC = () => {
     );
   }
 
+  // Show onboarding wizard for new users
+  if (!onboardingCompleted) {
+    return (
+      <OnboardingWizard
+        onComplete={async (result) => {
+          setOnboardingCompleted(true);
+          setEnabledModules(result.enabledModules);
+          setScheduleTemplates(prev => ({ ...prev, wakeTime: result.wakeTime, sleepTime: result.sleepTime }));
+          if (user) {
+            await saveAppData(user.uid, {
+              onboardingCompleted: true,
+              enabledModules: result.enabledModules,
+              scheduleTemplates: { ...scheduleTemplates, wakeTime: result.wakeTime, sleepTime: result.sleepTime },
+            });
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-emerald-50 font-sans safe-top safe-left safe-right">
       {/* Mobile Overlay for sidebar */}
@@ -1038,7 +1066,7 @@ const App: React.FC = () => {
           </div>
 
           <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto scrollbar-hide">
-            <NavItem icon={<PenLine />} label="Diary" active={activeView === 'diary'} onClick={() => handleNavItemClick('diary')} />
+            {enabledModules.includes('diary') && <NavItem icon={<PenLine />} label="Diary" active={activeView === 'diary'} onClick={() => handleNavItemClick('diary')} />}
             <NavItem icon={<BarChart3 />} label="Analyst" active={activeView === 'analytics'} onClick={() => handleNavItemClick('analytics')} />
             <NavItem icon={<CalendarDays />} label="Calendar" active={activeView === 'calendar'} onClick={() => handleNavItemClick('calendar')} />
           </nav>
@@ -1157,7 +1185,7 @@ const App: React.FC = () => {
         <div className="fixed bottom-0 left-0 right-0 z-[60] lg:hidden">
           <div className="bg-white/90 backdrop-blur-md border-t border-slate-200 safe-bottom">
             <div className="flex items-center justify-around h-14">
-              {NAV_ITEMS.map(item => {
+              {NAV_ITEMS.filter(item => item.view === 'dashboard' || enabledModules.includes(item.view)).map(item => {
                 const isActive = activeView === item.view;
                 const Icon = item.icon === 'Activity' ? Activity
                   : item.icon === 'CheckSquare' ? CheckSquare
