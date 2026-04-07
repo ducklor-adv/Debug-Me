@@ -557,6 +557,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [confirmReload, setConfirmReload] = useState(false);
   const [showCustomPicker, setShowCustomPicker] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [saveAsCustomSlots, setSaveAsCustomSlots] = useState<TimeSlot[] | null>(null);
 
   // Task Picker for adding tasks to a slot
@@ -1200,12 +1201,12 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       )}
 
       {/* Save bar — shows when dirty */}
-      {scheduleDirty && (
+      {scheduleDirty && isDayTab && (
         <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 animate-fadeIn">
           <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
           <span className="text-xs font-bold text-amber-600 flex-1">มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก</span>
           <button
-            onClick={handleSaveSchedule}
+            onClick={() => setShowSaveDialog(true)}
             disabled={scheduleSaveStatus === 'saving'}
             className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors disabled:opacity-60 shadow-sm"
           >
@@ -1214,6 +1215,19 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
             ) : (
               <><Save className="w-3.5 h-3.5" /> บันทึก</>
             )}
+          </button>
+        </div>
+      )}
+      {scheduleDirty && isCustomTab && (
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 animate-fadeIn">
+          <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+          <span className="text-xs font-bold text-amber-600 flex-1">มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก</span>
+          <button
+            onClick={handleSaveSchedule}
+            disabled={scheduleSaveStatus === 'saving'}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 transition-colors disabled:opacity-60 shadow-sm"
+          >
+            <Save className="w-3.5 h-3.5" /> บันทึก
           </button>
         </div>
       )}
@@ -1562,6 +1576,59 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               <span className="text-xs font-bold text-emerald-600">บันทึกสำเร็จแล้ว!</span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Save Mode Dialog — ask: save for all same-day or specific date */}
+      {showSaveDialog && isDayTab && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowSaveDialog(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-[90vw] max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-black text-slate-800 text-center">บันทึกตารางนี้</h3>
+            <p className="text-xs text-slate-500 text-center">เลือกรูปแบบการบันทึก</p>
+
+            <button
+              onClick={() => {
+                // Save for all same day-of-week (dayPlans)
+                setShowSaveDialog(false);
+                handleSaveSchedule();
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors"
+            >
+              <span className="text-2xl">📋</span>
+              <div className="text-left flex-1">
+                <p className="text-xs font-black text-blue-700">ทุกวัน{dayNames[parseInt(activeTab)]}</p>
+                <p className="text-[10px] text-blue-500">ใช้ตารางนี้ทุกสัปดาห์</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => {
+                // Save for specific date only (datePlans)
+                setShowSaveDialog(false);
+                const currentSlots = sortedSchedule.filter(s => s.groupKey !== 'sleep');
+                setScheduleTemplates(prev => ({
+                  ...prev,
+                  datePlans: { ...(prev.datePlans || {}), [selectedDateStr]: currentSlots },
+                }));
+                setScheduleDirty(false);
+                handleSaveSchedule();
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 transition-colors"
+            >
+              <span className="text-2xl">📅</span>
+              <div className="text-left flex-1">
+                <p className="text-xs font-black text-amber-700">เฉพาะวันที่ {selectedDate.getDate()} {monthNames[selectedDate.getMonth()]} {selectedDate.getFullYear() + 543}</p>
+                <p className="text-[10px] text-amber-500">แก้เฉพาะวันนี้วันเดียว</p>
+              </div>
+            </button>
+
+            <button
+              onClick={() => setShowSaveDialog(false)}
+              className="w-full py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-400 hover:bg-slate-50 transition-colors"
+            >
+              ยกเลิก
+            </button>
+          </div>
         </div>
       )}
 

@@ -101,6 +101,7 @@ export interface ScheduleTemplates {
   scheduleVersion?: number;  // 2 = duration-based (v2)
   customTemplates?: CustomScheduleTemplate[];
   dayPlans?: { [dayOfWeek: string]: TimeSlot[] };  // "0"-"6" → per-day customized schedule
+  datePlans?: { [date: string]: TimeSlot[] };      // "YYYY-MM-DD" → date-specific schedule
   dayOverrides?: { [dayOfWeek: string]: string };   // "0"-"6" → custom template overlay (removable)
   dateOverrides?: { [date: string]: string };       // "YYYY-MM-DD" → custom template ID
 }
@@ -124,6 +125,10 @@ export function getScheduleForDay(
     }
     const ct = (templates.customTemplates || []).find(t => t.id === templates.dateOverrides![dateStr]);
     if (ct) return { slots: ct.slots, source: 'custom', templateId: ct.id, templateName: ct.name, templateEmoji: ct.emoji, overrideType: 'date', wakeTime: ct.wakeTime || baseWake, sleepTime: ct.sleepTime || baseSleep };
+  }
+  // 1.5. Date-specific plan (user's edits for this specific date)
+  if (dateStr && templates.datePlans?.[dateStr]) {
+    return { slots: templates.datePlans[dateStr], source: 'dayPlan', overrideType: 'date', wakeTime: baseWake, sleepTime: baseSleep };
   }
   // 2. Day-of-week custom template overlay
   const overrideId = templates.dayOverrides?.[String(dayOfWeek)];
