@@ -1,10 +1,22 @@
 
-import { httpsCallable } from "firebase/functions";
-import { getFunctions } from "firebase/functions";
 import { Task, DailyRecord, Habit, TaskGroup, TimeSlot } from "../types";
-import { app } from "../firebase";
 
-const functions = getFunctions(app);
+let _functions: any = null;
+const getFns = async () => {
+  if (_functions) return _functions;
+  const { getFunctions } = await import("firebase/functions");
+  const { app } = await import("../firebase");
+  _functions = getFunctions(app);
+  return _functions;
+};
+
+const callFn = async (name: string, data: object) => {
+  const { httpsCallable } = await import("firebase/functions");
+  const fns = await getFns();
+  const fn = httpsCallable(fns, name);
+  const result = await fn(data);
+  return result.data as { text?: string; schedule?: object[] };
+};
 
 export const getAIPrioritization = async (
   tasks: Task[],
@@ -15,9 +27,8 @@ export const getAIPrioritization = async (
     ? `\nเวลาปัจจุบัน: ${context.currentTime}, ทำเสร็จแล้ว ${context.completedCount}/${context.totalCount} tasks`
     : '';
 
-  const fn = httpsCallable(functions, 'aiPrioritize');
-  const result = await fn({ taskList, contextStr });
-  return (result.data as { text: string }).text;
+  const result = await callFn('aiPrioritize', { taskList, contextStr });
+  return result.text;
 };
 
 export const generateSmartSchedule = async (
@@ -29,10 +40,8 @@ export const generateSmartSchedule = async (
   const groupInfo = taskGroups ? '\n\nTask Groups:\n' + taskGroups.map(g => `${g.key}: ${g.label} (${g.emoji})`).join('\n') : '';
   const currentInfo = currentSchedule ? '\n\nตารางปัจจุบัน:\n' + currentSchedule.map(s => `${s.startTime}-${s.endTime}: ${s.groupKey}`).join('\n') : '';
 
-  const fn = httpsCallable(functions, 'aiSchedule');
-  const result = await fn({ taskList, groupInfo, currentInfo });
-  const data = result.data as { schedule?: object[]; text?: string };
-  return data.schedule || data.text;
+  const result = await callFn('aiSchedule', { taskList, groupInfo, currentInfo });
+  return result.schedule || result.text;
 };
 
 export const generateDailyDigest = async (
@@ -57,22 +66,19 @@ Tasks ทั้งหมดวันนี้: ${tasks.length}
 Habits: ${habitsDone}/${habitsTotal}
 `;
 
-  const fn = httpsCallable(functions, 'aiDigest');
-  const result = await fn({ summary });
-  return (result.data as { text: string }).text;
+  const result = await callFn('aiDigest', { summary });
+  return result.text;
 };
 
 export const chatWithCoach = async (history: { role: 'user' | 'model', message: string }[], userInput: string) => {
-  const fn = httpsCallable(functions, 'aiChat');
-  const result = await fn({ userInput });
-  return (result.data as { text: string }).text;
+  const result = await callFn('aiChat', { userInput });
+  return result.text;
 };
 
 export const analyzeProjectTasks = async (
   history: { role: 'user' | 'model', message: string }[],
   userInput: string
 ) => {
-  const fn = httpsCallable(functions, 'aiProject');
-  const result = await fn({ history, userInput });
-  return (result.data as { text: string }).text;
+  const result = await callFn('aiProject', { history, userInput });
+  return result.text;
 };
