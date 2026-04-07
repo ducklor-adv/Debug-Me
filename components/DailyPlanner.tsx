@@ -88,12 +88,10 @@ const SortableGridItem: React.FC<{ id: string; showHandle?: boolean; children: R
     zIndex: isDragging ? 50 : undefined,
   };
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className={`transition-shadow ${isDragging ? 'shadow-lg rounded-xl ring-2 ring-emerald-300 bg-white' : ''} ${showHandle ? 'flex items-stretch' : ''}`}>
-      {showHandle && (
-        <div className="w-6 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-emerald-500 transition-colors touch-none">
-          <GripVertical className="w-4 h-4" />
-        </div>
-      )}
+    <div ref={setNodeRef} style={style} {...attributes} className={`transition-shadow ${isDragging ? 'shadow-lg rounded-xl ring-2 ring-emerald-300 bg-white' : ''} flex items-stretch`}>
+      <div {...listeners} className="w-6 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-emerald-500 transition-colors touch-none">
+        {showHandle && <GripVertical className="w-4 h-4" />}
+      </div>
       <div className="flex-1 min-w-0">{children}</div>
     </div>
   );
@@ -201,7 +199,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       if (!covered.has(h)) {
         const hh = `${String(Math.floor(h / 60)).padStart(2, '0')}:${String(h % 60).padStart(2, '0')}`;
         const eh = `${String(Math.floor((h + 60) / 60) % 24).padStart(2, '0')}:${String((h + 60) % 60).padStart(2, '0')}`;
-        result.push({ id: `empty-${hh}`, startTime: hh, endTime: eh, groupKey: '_empty' });
+        result.push({ id: `empty-${hh}`, startTime: hh, endTime: eh, groupKey: 'ว่าง' });
       }
     }
     return result.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
@@ -596,36 +594,6 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     });
   });
 
-  // Build full schedule: real slots + empty 1hr slots filling gaps
-  const fullSchedule: TimeSlot[] = [];
-  const coveredMinutes = new Set<number>();
-  sortedSchedule.forEach(slot => {
-    const sMin = parseInt((slot.startTime || '0').split(':')[0]) * 60 + parseInt((slot.startTime || '0').split(':')[1]);
-    const eMin = parseInt((slot.endTime || '0').split(':')[0]) * 60 + parseInt((slot.endTime || '0').split(':')[1]);
-    for (let m = sMin; m < eMin; m++) coveredMinutes.add(m);
-  });
-  const usedSlotIds = new Set<string>();
-  hourGrid.forEach(h => {
-    const hStart = parseInt(h.startTime.split(':')[0]) * 60 + parseInt(h.startTime.split(':')[1]);
-    const startingSlot = sortedSchedule.find(s => {
-      if (usedSlotIds.has(s.id)) return false;
-      const sStart = parseInt((s.startTime || '0').split(':')[0]) * 60 + parseInt((s.startTime || '0').split(':')[1]);
-      return sStart >= hStart && sStart < hStart + 60;
-    });
-    if (startingSlot) {
-      usedSlotIds.add(startingSlot.id);
-      fullSchedule.push(startingSlot);
-    } else if (!coveredMinutes.has(hStart)) {
-      fullSchedule.push({
-        id: `empty-${h.startTime}`,
-        startTime: h.startTime,
-        endTime: h.endTime,
-        groupKey: 'ว่าง',
-        assignedTaskIds: ['d-empty'],
-      });
-    }
-  });
-
   // All tasks for the day (for summary)
   const dayTasks = getTasksForDate(tasks, selectedDateStr);
 
@@ -874,6 +842,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
   // Resolve a slot's groupKey to display info { label, emoji, color }
   const resolveSlotInfo = (key: string): { label: string; emoji: string; color: string } => {
+    if (key === 'ว่าง') return { label: 'ว่าง', emoji: '⬜', color: 'slate' };
     // Check category first
     const cat = categoryMap.get(key);
     if (cat) {
@@ -908,7 +877,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const summaryMap = new Map<string, { totalMins: number; doneMins: number }>();
 
   resolvedSchedule.forEach(slot => {
-    if (slot.type === 'free' || (slot.id && slot.id.startsWith('empty-'))) return;
+    if (slot.type === 'free') return;
     const slotMins = slot.duration || 0;
     const prev = summaryMap.get(slot.groupKey) || { totalMins: 0, doneMins: 0 };
     const slotTasks = getFullTasksForSlot(slot);
@@ -923,6 +892,12 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     const info = resolveSlotInfo(key);
     slotSummary.push({ key, ...info, ...val });
   });
+
+  // Add sleep to summary (sleepTime → wakeTime crossing midnight)
+  const sleepDurMins = ((wakeMinutes - sleepMinutes) + 1440) % 1440;
+  if (!summaryMap.has('sleep') && sleepDurMins > 0) {
+    slotSummary.push({ key: 'sleep', label: 'นอน', emoji: '🌙', color: 'indigo', totalMins: sleepDurMins, doneMins: 0 });
+  }
 
   const totalAllMins = slotSummary.reduce((s, c) => s + c.totalMins, 0);
   const doneAllMins = slotSummary.reduce((s, c) => s + c.doneMins, 0);
@@ -1303,7 +1278,6 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         {sortedSchedule.map(item => {
             {
               const startingSlot = item;
-              const isEmpty = item.id.startsWith('empty-');
               const info = resolveSlotInfo(startingSlot.groupKey);
               const colors = GROUP_COLORS[info.color] || GROUP_COLORS.orange;
               const dur = startingSlot.duration || getDurationMinutes(startingSlot.startTime, startingSlot.endTime);
@@ -1314,24 +1288,23 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               const nowH = new Date().getHours() * 60 + new Date().getMinutes();
               const sMin = parseInt(startingSlot.startTime.split(':')[0]) * 60 + parseInt(startingSlot.startTime.split(':')[1]);
               const eMin = parseInt(startingSlot.endTime.split(':')[0]) * 60 + parseInt(startingSlot.endTime.split(':')[1]);
-              const isCurrent = isToday && !isEmpty && nowH >= sMin && nowH < eMin;
+              const isCurrent = isToday && nowH >= sMin && nowH < eMin;
 
               return (
                 <SortableGridItem key={item.id} id={startingSlot.id} showHandle>
-                <div className={`${isEmpty ? 'border border-dashed border-slate-200 rounded-xl' : 'border-b border-slate-100'}`} style={{ minHeight: isEmpty ? undefined : spanHours * 44 }}>
+                <div className="bg-white rounded-xl border overflow-hidden" style={{ minHeight: spanHours * 44 }}>
                   <div className="flex-1 min-w-0">
-                    <div onClick={() => isEmpty ? (() => { setSlotForm({ startTime: item.startTime!, endTime: item.endTime!, groupKey: '', duration: 60 }); setEditingSlot(null); setIsAddingSlot(true); })() : toggleSlot(startingSlot.id)} className={`flex items-center gap-1.5 px-2.5 py-2 cursor-pointer select-none ${colors.plannerBg} ${isCurrent ? 'ring-2 ring-emerald-400 ring-inset' : ''}`}>
-                      <span className="text-[10px] font-black text-slate-400">{startingSlot.startTime}–{startingSlot.endTime}</span>
+                    <div onClick={() => toggleSlot(startingSlot.id)} className={`flex items-center gap-1.5 px-2.5 py-2 cursor-pointer select-none ${colors.plannerBg} ${isCurrent ? 'ring-2 ring-emerald-400 ring-inset' : ''}`}>
+                      <span className="text-[10px] font-black text-slate-500">{startingSlot.startTime}–{startingSlot.endTime}</span>
                       <div className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
                       <span className={`text-xs font-black ${colors.plannerText}`}>{info.emoji} {info.label}</span>
-                      <span className="text-[10px] text-slate-300 font-bold">{formatDuration(dur)}</span>
+                      <span className="text-[10px] text-slate-400 font-bold">{formatDuration(dur)}</span>
                       <div className="flex-1" />
                       {slotTasks.length > 0 && <span className={`text-[10px] font-black ${colors.plannerText} opacity-60`}>{checkedCount}/{slotTasks.length}</span>}
                       {isCurrent && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
-                      {!isEmpty && <button onClick={(e) => { e.stopPropagation(); openEditSlot(startingSlot); }} className="p-1 rounded hover:bg-white/60 text-slate-400 hover:text-slate-600"><Pencil className="w-3 h-3" /></button>}
-                      {!isEmpty && <button onClick={(e) => { e.stopPropagation(); showDeleteSlotConfirm(startingSlot.id); }} className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500"><Trash2 className="w-3 h-3" /></button>}
-                      {!isEmpty && <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />}
-                      {isEmpty && <Plus className="w-3.5 h-3.5 text-slate-300" />}
+                      <button onClick={(e) => { e.stopPropagation(); openEditSlot(startingSlot); }} className="p-1 rounded hover:bg-white/60 text-slate-400 hover:text-slate-600"><Pencil className="w-3 h-3" /></button>
+                      <button onClick={(e) => { e.stopPropagation(); showDeleteSlotConfirm(startingSlot.id); }} className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500"><Trash2 className="w-3 h-3" /></button>
+                      <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                     </div>
                     {isExpanded && (
                       <div className="border-t border-slate-100 px-2 py-1.5 space-y-0.5">
