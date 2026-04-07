@@ -29,6 +29,19 @@ dist-ssr
 
 # Analysis (local only)
 Debug-Me-App-analysis.html
+agent-family-board.html
+project-overview.html
+
+# Backup & data files
+debugme-*.json
+debugme-*.csv
+*.xlsx
+
+# Executables
+*.exe
+
+# Git backup
+.git.bak/
 
 # Sub-projects (each has its own git repo, push independently)
 Project/
