@@ -183,31 +183,50 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   // Use schedule template slots directly (tasks are grouped by category)
   const rawSchedule = [...schedule].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
 
-  // Fill gaps with empty placeholder slots so DnD works everywhere
-  const fillEmptySlots = (slots: TimeSlot[], wake: string, sleep: string): TimeSlot[] => {
+  const mergedSchedule = rawSchedule;
+
+  // Auto-fill gaps with real empty slots and save to schedule data
+  const autoFillRef = useRef(false);
+  useEffect(() => {
+    const wake = scheduleTemplates.wakeTime || '05:00';
+    const sleep = scheduleTemplates.sleepTime || '22:00';
     const wMin = parseInt(wake.split(':')[0]) * 60 + parseInt(wake.split(':')[1]);
     const sMin = parseInt(sleep.split(':')[0]) * 60 + parseInt(sleep.split(':')[1]);
+
+    // Check which hours are covered by existing non-sleep slots
     const covered = new Set<number>();
-    slots.forEach(s => {
+    schedule.forEach(s => {
       if (!s.startTime || !s.endTime || s.groupKey === 'sleep') return;
       const a = parseInt(s.startTime.split(':')[0]) * 60 + parseInt(s.startTime.split(':')[1]);
       const b = parseInt(s.endTime.split(':')[0]) * 60 + parseInt(s.endTime.split(':')[1]);
       for (let m = a; m < b; m++) covered.add(m);
     });
-    const result = [...slots];
+
+    // Find uncovered hours
+    const gaps: TimeSlot[] = [];
     for (let h = wMin; h < sMin; h += 60) {
       if (!covered.has(h)) {
         const hh = `${String(Math.floor(h / 60)).padStart(2, '0')}:${String(h % 60).padStart(2, '0')}`;
         const eh = `${String(Math.floor((h + 60) / 60) % 24).padStart(2, '0')}:${String((h + 60) % 60).padStart(2, '0')}`;
-        result.push({ id: `empty-${hh}`, startTime: hh, endTime: eh, groupKey: 'ว่าง' });
+        gaps.push({ id: `${activeTab}-empty-${hh}`, startTime: hh, endTime: eh, groupKey: 'ว่าง' });
       }
     }
-    return result.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
-  };
 
-  const wakeStr = scheduleTemplates.wakeTime || '05:00';
-  const sleepStr = scheduleTemplates.sleepTime || '22:00';
-  const mergedSchedule = fillEmptySlots(rawSchedule, wakeStr, sleepStr);
+    // If gaps found, add them to schedule data
+    if (gaps.length > 0 && !autoFillRef.current) {
+      autoFillRef.current = true;
+      setScheduleForTab(prev => {
+        // Don't add if already has these slots
+        const existingIds = new Set(prev.map(s => s.id));
+        const newGaps = gaps.filter(g => !existingIds.has(g.id));
+        if (newGaps.length === 0) return prev;
+        return [...prev, ...newGaps].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+      });
+    }
+  }, [schedule, activeTab]);
+
+  // Reset auto-fill flag when tab changes
+  useEffect(() => { autoFillRef.current = false; }, [activeTab]);
 
   // Wrapper to update only the active tab's template (+ mark dirty)
   const setScheduleForTab = useCallback((updater: (prev: TimeSlot[]) => TimeSlot[]) => {
@@ -548,8 +567,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const currentWakeTime = scheduleTemplates.wakeTime || '05:00';
   const currentSleepTime = scheduleTemplates.sleepTime || '22:00';
 
-  // Check if schedule is v2 (duration-based)
-  const isV2 = isV2Schedule(mergedSchedule);
+  // Check if schedule is v2 (duration-based) — disabled, use v1 path always
+  const isV2 = false;
 
   // Sorted schedule: v2 uses array order (duration-based), v1 sorts by startTime
   // Filter out free slots — they are not real schedule items
@@ -929,10 +948,9 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     const overIdx = sortedSchedule.findIndex(s => s.id === over.id);
     if (activeIdx === -1 || overIdx === -1) return;
 
-    // Reorder, filter out empty placeholders, recalc times
+    // Reorder and recalc times for ALL slots (including empty)
     const reordered = arrayMove([...sortedSchedule], activeIdx, overIdx);
-    const realSlots = reordered.filter(s => !s.id.startsWith('empty-'));
-    setScheduleForTab(() => recalcSlotTimes(realSlots));
+    setScheduleForTab(() => recalcSlotTimes(reordered));
   };
 
   // DnD: reorder tasks within a slot (updates slot's assignedTaskIds)
