@@ -1316,8 +1316,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                       <span className="text-[10px] font-black text-slate-500">{startingSlot.startTime}–{startingSlot.endTime}</span>
                       <div className={`w-1.5 h-1.5 rounded-full ${colors.dot}`} />
                       <span className={`text-xs font-black ${colors.plannerText}`}>{info.emoji} {info.label}</span>
-                      <span className="text-[10px] text-slate-400 font-bold">{formatDuration(dur)}</span>
                       <div className="flex-1" />
+                      <span className="text-[10px] text-slate-400 font-bold">{formatDuration(dur)}</span>
                       {slotTasks.length > 0 && <span className={`text-[10px] font-black ${colors.plannerText} opacity-60`}>{checkedCount}/{slotTasks.length}</span>}
                       {isCurrent && <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
                       <button onClick={(e) => { e.stopPropagation(); openEditSlot(startingSlot); }} className="p-1 rounded hover:bg-white/60 text-slate-400 hover:text-slate-600"><Pencil className="w-3 h-3" /></button>
