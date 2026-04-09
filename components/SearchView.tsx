@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Task, TaskGroup, Priority, GROUP_COLORS } from '../types';
+import type { Priority } from '../types';
+import { Task, TaskGroup, GROUP_COLORS, PRIORITY_LEVELS, getPriorityMeta } from '../types';
 import { Search, X, Filter, CheckCircle2, Circle, Clock, AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface SearchViewProps {
@@ -130,18 +131,16 @@ const SearchView: React.FC<SearchViewProps> = ({ tasks, taskGroups }) => {
           {/* Priority */}
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">ความสำคัญ</p>
-            <div className="flex gap-1.5">
-              {[Priority.HIGH, Priority.MEDIUM, Priority.LOW].map(p => (
+            <div className="flex gap-1">
+              {PRIORITY_LEVELS.map(p => (
                 <button
-                  key={p}
-                  onClick={() => setSelectedPriority(selectedPriority === p ? null : p)}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${selectedPriority === p
-                    ? p === Priority.HIGH ? 'bg-rose-100 text-rose-600 border border-rose-200'
-                    : p === Priority.MEDIUM ? 'bg-amber-100 text-amber-600 border border-amber-200'
-                    : 'bg-blue-100 text-blue-600 border border-blue-200'
-                    : 'bg-slate-50 text-slate-500 border border-slate-100'}`}
+                  key={p.level}
+                  onClick={() => setSelectedPriority(selectedPriority === p.level ? null : p.level)}
+                  className={`w-8 h-7 rounded-lg text-[11px] font-black transition-all ${selectedPriority === p.level
+                    ? `${p.color} ${p.textColor} ring-2 ring-offset-1 ring-slate-300`
+                    : 'bg-slate-50 text-slate-400 border border-slate-100'}`}
                 >
-                  {p === Priority.HIGH ? 'สูง' : p === Priority.MEDIUM ? 'กลาง' : 'ต่ำ'}
+                  {p.level}
                 </button>
               ))}
             </div>
@@ -198,13 +197,11 @@ const SearchView: React.FC<SearchViewProps> = ({ tasks, taskGroups }) => {
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${clr.badge}`}>
                         {group?.emoji} {group?.label || task.category}
                       </span>
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                        task.priority === Priority.HIGH ? 'bg-rose-100 text-rose-600'
-                        : task.priority === Priority.MEDIUM ? 'bg-amber-100 text-amber-600'
-                        : 'bg-blue-100 text-blue-600'
-                      }`}>
-                        {task.priority === Priority.HIGH ? 'สูง' : task.priority === Priority.MEDIUM ? 'กลาง' : 'ต่ำ'}
-                      </span>
+                      {(() => { const pm = getPriorityMeta(task.priority); return (
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${pm.color} ${pm.textColor}`}>
+                          {pm.label}
+                        </span>
+                      ); })()}
                       {task.estimatedDuration && (
                         <span className="text-[9px] font-mono text-slate-400 flex items-center gap-0.5">
                           <Clock className="w-2.5 h-2.5" /> {task.estimatedDuration}น.

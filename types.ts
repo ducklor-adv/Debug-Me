@@ -1,9 +1,37 @@
 
-export enum Priority {
-  LOW = 'Low',
-  MEDIUM = 'Medium',
-  HIGH = 'High'
+/** Priority level 1 (lowest) to 8 (highest) */
+export type Priority = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+
+export const PRIORITY_DEFAULT: Priority = 4;
+
+export interface PriorityMeta {
+  level: Priority;
+  label: string;
+  color: string;
+  textColor: string;
 }
+
+export const PRIORITY_LEVELS: PriorityMeta[] = [
+  { level: 1, label: 'ต่ำสุด',    color: 'bg-slate-100',   textColor: 'text-slate-400' },
+  { level: 2, label: 'ต่ำ',       color: 'bg-blue-100',    textColor: 'text-blue-500' },
+  { level: 3, label: 'ปกติ-',     color: 'bg-cyan-100',    textColor: 'text-cyan-600' },
+  { level: 4, label: 'ปกติ',      color: 'bg-emerald-100', textColor: 'text-emerald-600' },
+  { level: 5, label: 'ปานกลาง',  color: 'bg-yellow-100',  textColor: 'text-yellow-600' },
+  { level: 6, label: 'สูง',       color: 'bg-amber-100',   textColor: 'text-amber-600' },
+  { level: 7, label: 'สำคัญ',     color: 'bg-orange-100',  textColor: 'text-orange-600' },
+  { level: 8, label: 'เร่งด่วน',  color: 'bg-rose-100',    textColor: 'text-rose-600' },
+];
+
+export const getPriorityMeta = (level: Priority): PriorityMeta =>
+  PRIORITY_LEVELS[level - 1];
+
+export const migrateLegacyPriority = (val: unknown): Priority => {
+  if (typeof val === 'number' && val >= 1 && val <= 8) return val as Priority;
+  if (val === 'High') return 7;
+  if (val === 'Medium') return 4;
+  if (val === 'Low') return 2;
+  return PRIORITY_DEFAULT;
+};
 
 export interface TaskAttachment {
   type: 'photo' | 'video' | 'audio' | 'phone' | 'contact' | 'gps';
@@ -296,7 +324,7 @@ export interface TimeEntry {
   hours: number;
 }
 
-export type View = 'dashboard' | 'tasks' | 'focus' | 'analytics' | 'planner' | 'calendar' | 'projects' | 'expenses' | 'diary';
+export type View = 'dashboard' | 'tasks' | 'focus' | 'analytics' | 'planner' | 'calendar' | 'projects' | 'expenses' | 'diary' | 'templates';
 
 // ===== Diary =====
 

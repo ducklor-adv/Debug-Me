@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Task, SubTask, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, CustomScheduleTemplate, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType, getScheduleForDay, DEFAULT_CATEGORIES, Category, isTaskRecurring, CLEAR_OVERRIDE } from '../types';
-import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown, RefreshCw, GripVertical, Save, AlertTriangle, Loader2, Layers, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown, RefreshCw, GripVertical, Save, AlertTriangle, Loader2, Layers, RotateCcw, CalendarDays } from 'lucide-react';
 import TimePicker from './TimePicker';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
@@ -129,6 +129,19 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   const prevDay = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; });
   const nextDay = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; });
   const goToday = () => setSelectedDate(new Date());
+
+  // Move selectedDate to the correct day within the same week when switching day tabs
+  const syncDateToTab = (tab: string) => {
+    if (!/^[0-6]$/.test(tab)) return;
+    const targetDow = parseInt(tab);
+    setSelectedDate(prev => {
+      const diff = targetDow - prev.getDay();
+      if (diff === 0) return prev;
+      const next = new Date(prev);
+      next.setDate(prev.getDate() + diff);
+      return next;
+    });
+  };
 
   // Day detection & active tab ("0"-"6" for day tabs, custom template ID for custom tabs)
   const selectedDayOfWeek = selectedDate.getDay();
@@ -282,12 +295,14 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
   }, [onImmediateSave]);
 
   // Guard tab switch: if dirty, show warning instead of switching
+  // When switching to a day tab, also move selectedDate to the correct day in the same week
   const handleTabSwitch = useCallback((newTab: string) => {
     if (scheduleDirty && newTab !== activeTab) {
       pendingTabRef.current = newTab;
       setShowUnsavedWarning(true);
     } else {
       setActiveTab(newTab);
+      syncDateToTab(newTab);
     }
   }, [scheduleDirty, activeTab]);
 
@@ -298,6 +313,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     setShowUnsavedWarning(false);
     if (pendingTabRef.current !== null) {
       setActiveTab(pendingTabRef.current);
+      syncDateToTab(pendingTabRef.current);
       pendingTabRef.current = null;
     }
   }, []);
@@ -313,6 +329,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       setShowUnsavedWarning(false);
       if (pendingTabRef.current !== null) {
         setActiveTab(pendingTabRef.current);
+        syncDateToTab(pendingTabRef.current);
         pendingTabRef.current = null;
       }
     } catch (err) {
@@ -992,43 +1009,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
   return (
     <div className="space-y-3">
-      {/* 1. Schedule Template Tabs — 7 days */}
-      <div className="bg-white rounded-xl border border-slate-200 p-1">
-        <div className="flex gap-0.5 overflow-x-auto scrollbar-hide">
-          {DAY_TAB_CONFIG.map(tab => {
-            const isActive = activeTab === String(tab.dayOfWeek);
-            const isTodayDay = new Date().getDay() === tab.dayOfWeek;
-            const hasOverride = !!(scheduleTemplates.dayOverrides?.[String(tab.dayOfWeek)]);
-            const dc = DAY_COLORS[tab.dayOfWeek];
-            return (
-              <button
-                key={tab.dayOfWeek}
-                onClick={() => handleTabSwitch(String(tab.dayOfWeek))}
-                className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2 rounded-lg font-bold transition-all ${
-                  isTodayDay
-                    ? `${dc.activeBg} text-white text-sm shadow-sm`
-                    : isActive
-                      ? `ring-2 ring-blue-500 ${dc.text} text-xs`
-                      : `${dc.text} opacity-60 hover:opacity-100 hover:${dc.bg} text-xs`
-                }`}
-              >
-                <span>{tab.shortLabel}</span>
-                {hasOverride && (
-                  <span className={`text-[7px] font-black leading-none px-1.5 py-0.5 rounded-sm ${
-                    isTodayDay
-                      ? 'bg-white text-violet-600'
-                      : 'bg-violet-500 text-white'
-                  }`}>
-                    📌custom
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Custom Day card — moved below slot grid */}
+      {/* Day tabs + Custom days moved to TemplateSettings view */}
 
       {/* 2. Context Bar — shows current view + template type */}
       <div className={`rounded-xl border p-3 flex items-center justify-between transition-all ${
@@ -1078,38 +1059,70 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         {isCustomTab && (
           <span className="px-2.5 py-1 rounded-full bg-gradient-to-r from-pink-400 via-violet-400 to-blue-400 text-white text-[10px] font-bold shadow-sm">Custom Template</span>
         )}
+        {/* Calendar date picker — right side */}
+        <label className="p-1.5 rounded-lg hover:bg-white/60 text-slate-400 transition-colors shrink-0 cursor-pointer relative">
+          <CalendarDays className="w-4.5 h-4.5" />
+          <input
+            type="date"
+            value={selectedDateStr}
+            onChange={e => {
+              if (e.target.value) {
+                const d = new Date(e.target.value + 'T00:00:00');
+                setSelectedDate(d);
+                setActiveTab(String(d.getDay()));
+              }
+            }}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          />
+        </label>
       </div>
 
       {/* Wake/Sleep Time Editor */}
-      {isDayTab && (
-        <div className="flex items-center justify-center gap-3 bg-indigo-50/60 border border-indigo-100 rounded-xl px-3 py-2">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px]">☀️</span>
-            <span className="text-[10px] font-bold text-indigo-400">ตื่น</span>
-            <TimePicker
-              value={currentWakeTime}
-              onChange={(val) => {
-                setScheduleTemplates(prev => ({ ...prev, wakeTime: val }));
-                setScheduleDirty(true);
+      {isDayTab && (() => {
+        const wMins = parseInt(currentWakeTime.split(':')[0]) * 60 + parseInt(currentWakeTime.split(':')[1]);
+        const sMins = parseInt(currentSleepTime.split(':')[0]) * 60 + parseInt(currentSleepTime.split(':')[1]);
+        const sleepHours = ((wMins - sMins) + 1440) % 1440;
+        return (
+          <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl px-3 py-2 space-y-1.5">
+            <div className="flex items-center justify-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px]">☀️</span>
+                <span className="text-[10px] font-bold text-indigo-400">ตื่น</span>
+                <TimePicker
+                  value={currentWakeTime}
+                  onChange={(val) => {
+                    setScheduleTemplates(prev => ({ ...prev, wakeTime: val }));
+                    setScheduleDirty(true);
+                  }}
+                  compact
+                />
+              </div>
+              <span className="bg-indigo-100 border border-indigo-300 text-indigo-600 text-xs font-black px-2.5 py-1 rounded-full shadow-sm">😴 {formatDuration(sleepHours)}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px]">🌙</span>
+                <span className="text-[10px] font-bold text-indigo-400">นอน</span>
+                <TimePicker
+                  value={currentSleepTime}
+                  onChange={(val) => {
+                    setScheduleTemplates(prev => ({ ...prev, sleepTime: val }));
+                    setScheduleDirty(true);
+                  }}
+                  compact
+                />
+              </div>
+            </div>
+            <button
+              onClick={async () => {
+                setScheduleTemplates(prev => ({ ...prev, wakeTime: currentWakeTime, sleepTime: currentSleepTime }));
+                if (onImmediateSave) await onImmediateSave();
               }}
-              compact
-            />
+              className="w-full text-center text-[10px] font-bold text-indigo-400 hover:text-indigo-600 transition-colors py-0.5"
+            >
+              ✓ ตั้งเวลาตื่น-นอน เป็นค่ามาตรฐานทุกวัน
+            </button>
           </div>
-          <span className="text-slate-300">—</span>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px]">🌙</span>
-            <span className="text-[10px] font-bold text-indigo-400">นอน</span>
-            <TimePicker
-              value={currentSleepTime}
-              onChange={(val) => {
-                setScheduleTemplates(prev => ({ ...prev, sleepTime: val }));
-                setScheduleDirty(true);
-              }}
-              compact
-            />
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Save bar — shows when dirty */}
       {scheduleDirty && isDayTab && (
@@ -1264,34 +1277,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
             </div>
           )}
 
-          {/* Custom Day card */}
-          <div className="bg-white rounded-xl border border-slate-200 p-2 space-y-1.5 mt-2">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-[10px] font-black text-violet-500 uppercase tracking-widest">
-                Custom Days {customTemplates.length > 0 && <span className="text-violet-400">({customTemplates.length})</span>}
-              </span>
-              <button onClick={openCustomForm} className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-violet-500 hover:bg-violet-50 transition-all border border-violet-200">
-                <Plus className="w-3 h-3" /> เพิ่ม
-              </button>
-            </div>
-            {customTemplates.length > 0 ? (
-              <div className="flex gap-1.5 overflow-x-auto pb-1.5" style={{ scrollbarWidth: 'thin', scrollbarColor: '#c4b5fd transparent', WebkitOverflowScrolling: 'touch' }}>
-                {customTemplates.map(ct => {
-                  const isActive = activeTab === ct.id;
-                  return (
-                    <button key={ct.id} onClick={() => handleTabSwitch(ct.id)} className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
-                      isActive ? 'bg-violet-500 text-white border-violet-500 shadow-sm' : 'bg-violet-50 text-violet-600 border-violet-200 hover:bg-violet-100'
-                    }`}>
-                      <span>{ct.emoji}</span>
-                      <span className="max-w-[80px] truncate">{ct.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-[11px] text-slate-400 px-1">ยังไม่มี template</p>
-            )}
-          </div>
+          {/* Custom Day tabs moved to TemplateSettings view */}
 
           {/* Template management buttons */}
           <div className="flex flex-col gap-1.5 mt-2">
@@ -1331,22 +1317,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                 <RotateCcw className="w-3.5 h-3.5" /> Reload Default
               </button>
             )}
-            {isCustomTab && activeCustomTemplate && (
-              <div className="flex gap-1.5">
-                <button
-                  onClick={() => openEditCustom(activeCustomTemplate)}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-600 text-[11px] font-bold hover:bg-blue-100 transition-colors active:scale-95"
-                >
-                  <Pencil className="w-3.5 h-3.5" /> แก้ไข Template
-                </button>
-                <button
-                  onClick={() => setDeleteCustomConfirm(activeCustomTemplate.id)}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-600 text-[11px] font-bold hover:bg-rose-100 transition-colors active:scale-95"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> ลบ Template
-                </button>
-              </div>
-            )}
+            {/* Edit/Delete custom template moved to TemplateSettings */}
           </div>
         </div>
       </div>

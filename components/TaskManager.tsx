@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Task, TaskAttachment, SubTask, Recurrence, Priority, TaskGroup, GROUP_COLORS, LocationReminder, DEFAULT_CATEGORIES } from '../types';
+import { Task, TaskAttachment, SubTask, Recurrence, TaskGroup, GROUP_COLORS, LocationReminder, DEFAULT_CATEGORIES, PRIORITY_DEFAULT, getPriorityMeta } from '../types';
 import { Plus, Trash2, CheckCircle2, Circle, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning, Handshake, GripVertical, ListTodo, AlertTriangle, Loader2, ChevronDown } from 'lucide-react';
 import TaskEditModal from './TaskEditModal';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
@@ -154,7 +154,7 @@ const SortableTaskItem: React.FC<{ id: string; children: React.ReactNode }> = ({
 const emptyForm = (): Omit<Task, 'id'> => ({
   title: '',
   description: '',
-  priority: Priority.MEDIUM,
+  priority: PRIORITY_DEFAULT,
   completed: false,
   category: 'งานหลัก',
   notes: '',
@@ -741,7 +741,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
         const effectiveTab = activeQuickTab || uncatGroups[0]?.key || null;
         const activeGroup = effectiveTab ? uncatGroups.find(g => g.key === effectiveTab) : null;
         const activeColor = activeGroup ? (GROUP_COLORS[activeGroup.color] || GROUP_COLORS.rose) : null;
-        const activeGroupTasks = activeGroup ? tasks.filter(t => t.category === activeGroup.key) : [];
+        const activeGroupTasks = activeGroup ? tasks.filter(t => t.category === activeGroup.key).sort((a, b) => (b.priority as number) - (a.priority as number)) : [];
 
         // Thai date helpers
         const thaiDayNames = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
@@ -788,8 +788,8 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
             {t.startTime && (
               <span className="text-[10px] text-slate-400 shrink-0">{t.startTime}</span>
             )}
-            {t.priority === Priority.HIGH && (
-              <Zap className="w-3 h-3 text-amber-400 shrink-0" />
+            {(t.priority as number) >= 6 && (
+              <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${getPriorityMeta(t.priority).color} ${getPriorityMeta(t.priority).textColor}`}>{t.priority}</span>
             )}
             <button
               onClick={(e) => { e.stopPropagation(); deleteTask(t.id); }}
@@ -999,7 +999,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
       {/* ===== Selected Category Modal ===== */}
       {selectedCat && createPortal((() => {
         const style = getTypeStyle(selectedCat);
-        const group = tasks.filter(t => t.category === selectedCat);
+        const group = tasks.filter(t => t.category === selectedCat).sort((a, b) => (b.priority as number) - (a.priority as number));
 
         // Icon mapping for modal
         const IconComponent = style.icon === 'sun' ? Sun

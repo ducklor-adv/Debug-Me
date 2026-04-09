@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Task, TaskAttachment, SubTask, Recurrence, Priority, TaskGroup, GROUP_COLORS, DayType } from '../types';
+import { Task, TaskAttachment, SubTask, Recurrence, TaskGroup, GROUP_COLORS, DayType, PRIORITY_DEFAULT, PRIORITY_LEVELS, getPriorityMeta } from '../types';
 import {
   Plus, Trash2, CheckCircle2, Circle, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin,
   Square, Image, Paperclip, Save, FileText, ListTodo, Clock, ChevronDown,
@@ -66,7 +66,7 @@ const getGroupStyle = (g: TaskGroup) => {
 };
 
 const emptyForm = (): Omit<Task, 'id'> => ({
-  title: '', description: '', priority: Priority.MEDIUM, completed: false,
+  title: '', description: '', priority: PRIORITY_DEFAULT, completed: false,
   category: 'งานหลัก', notes: '', attachments: [], dayTypes: ['workday', 'saturday', 'sunday'],
 });
 
@@ -256,6 +256,34 @@ const TaskEditModal: React.FC<TaskEditModalProps> = ({
                 </div>
               </>
             )}
+          </div>
+
+          {/* ═══════ Priority Picker ═══════ */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold uppercase tracking-widest text-blue-500">Priority</label>
+              <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${getPriorityMeta(form.priority).color} ${getPriorityMeta(form.priority).textColor}`}>
+                {form.priority} — {getPriorityMeta(form.priority).label}
+              </span>
+            </div>
+            <div className="grid grid-cols-8 gap-1.5">
+              {PRIORITY_LEVELS.map(p => {
+                const isSelected = form.priority === p.level;
+                return (
+                  <button
+                    key={p.level}
+                    onClick={() => setForm({ ...form, priority: p.level })}
+                    className={`h-9 rounded-xl text-xs font-black transition-all ${
+                      isSelected
+                        ? `${p.color} ${p.textColor} ring-2 ring-offset-1 ${p.level >= 7 ? 'ring-orange-300' : p.level >= 5 ? 'ring-yellow-300' : 'ring-emerald-300'} scale-105`
+                        : 'bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600'
+                    }`}
+                  >
+                    {p.level}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* ═══════ Folder Tabs ═══════ */}

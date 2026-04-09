@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Project, Task, TaskGroup, GROUP_COLORS, Priority, ProjectProcess, SubTask, TaskAttachment, Recurrence } from '../types';
+import { Project, Task, TaskGroup, GROUP_COLORS, ProjectProcess, SubTask, TaskAttachment, Recurrence, migrateLegacyPriority } from '../types';
 import {
   ArrowLeft, ArrowRight,
   CheckCircle2, Circle, Clock, FolderKanban, Briefcase, Coffee,
@@ -474,7 +474,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({ projects, setProjects, 
       const procTaskIds: string[] = [];
       proc.tasks.forEach((t, j) => {
         const taskId = `ai-${Date.now()}-${i}-${j}`;
-        const task: Task = { id: taskId, title: t.title, description: t.description || '', priority: t.priority === 'High' ? Priority.HIGH : t.priority === 'Low' ? Priority.LOW : Priority.MEDIUM, completed: false, category: groupKey, estimatedDuration: t.duration || undefined };
+        const task: Task = { id: taskId, title: t.title, description: t.description || '', priority: migrateLegacyPriority(t.priority), completed: false, category: groupKey, estimatedDuration: t.duration || undefined };
         newTasks.push(task); procTaskIds.push(taskId);
       });
       newProcesses.push({ id: `proc-${Date.now()}-${i}`, title: proc.title, order: proc.order || i + 1, emoji: proc.emoji || '📋', color: PROCESS_COLORS[i % PROCESS_COLORS.length], taskIds: procTaskIds });

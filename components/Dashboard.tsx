@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Task, SubTask, TaskAttachment, TaskGroup, GROUP_COLORS, getTasksForDate, ScheduleTemplates, TimeSlot, DailyRecord, DEFAULT_CATEGORIES, Category, isTaskRecurring, FocusSession, getScheduleForDay, Expense, EXPENSE_CATEGORIES, resolveSlotTimes } from '../types';
+import { Task, SubTask, TaskAttachment, TaskGroup, GROUP_COLORS, getTasksForDate, ScheduleTemplates, TimeSlot, DailyRecord, DEFAULT_CATEGORIES, Category, isTaskRecurring, FocusSession, getScheduleForDay, Expense, EXPENSE_CATEGORIES, resolveSlotTimes, getPriorityMeta } from '../types';
 import { CheckCircle2, Circle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, Trash2, Square, Image, Coffee, Brain, Play, Pause, RotateCcw, Volume2, VolumeX, AlertTriangle, Plus, RefreshCw, ChevronDown, Wallet, ChevronUp } from 'lucide-react';
 
 interface DashboardProps {
@@ -306,7 +306,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
       return tMin >= slotStart || tMin < slotEnd; // midnight crossing
     });
 
-    return [...manualTasks, ...autoTasks];
+    return [...manualTasks, ...autoTasks].sort((a, b) => (b.priority as number) - (a.priority as number));
   };
 
   // Tasks in current slot (assigned + auto-matched from task groups)
@@ -843,7 +843,24 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
                         {groupTasks.map(task => (
                           <div key={task.id} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50">
                             <button
-                              onClick={() => onTaskComplete?.(task.id, true)}
+                              onClick={() => {
+                                // B1: Save DailyRecord so Analytics counts this completion
+                                if (onSaveDailyRecord) {
+                                  onSaveDailyRecord({
+                                    id: `${todayStr}-${task.id}`,
+                                    date: todayStr,
+                                    taskId: task.id,
+                                    taskTitle: task.title,
+                                    category: task.category,
+                                    completed: true,
+                                    completedAt: new Date().toISOString(),
+                                  });
+                                }
+                                // B2: Only mark non-recurring tasks as permanently completed
+                                if (onTaskComplete && !isTaskRecurring(task)) {
+                                  onTaskComplete(task.id, true);
+                                }
+                              }}
                               className="shrink-0"
                             >
                               <Circle className="w-5 h-5 text-slate-300 hover:text-emerald-500" />
@@ -856,7 +873,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
                                 {task.estimatedDuration && <span className="text-[10px] text-slate-300">{task.estimatedDuration} นาที</span>}
                               </div>
                             </div>
-                            {task.priority === 'High' && <span className="text-[9px] font-bold bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded-full">สำคัญ</span>}
+                            {(task.priority as number) >= 6 && (() => { const pm = getPriorityMeta(task.priority); return <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${pm.color} ${pm.textColor}`}>{pm.label}</span>; })()}
                           </div>
                         ))}
                       </div>
