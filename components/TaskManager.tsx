@@ -206,7 +206,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   const [initialSubtasks, setInitialSubtasks] = useState<SubTask[]>([]);
   const [initialAttachments, setInitialAttachments] = useState<TaskAttachment[]>([]);
   const [initialRecurrence, setInitialRecurrence] = useState<Recurrence | undefined>(undefined);
-  const [activeQuickTab, setActiveQuickTab] = useState<string | null>(null);
+  const [activeQuickTab, setActiveQuickTab] = useState<string>('_categories');
 
   // Save status tracking
   const [taskSaveStatus, setTaskSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -733,13 +733,11 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
 
 
 
-      {/* ===== งานด่วน & นัดหมาย — File Folder Tabs ===== */}
+      {/* ===== หมวดกิจกรรม + งานด่วน + นัดหมาย — File Folder Tabs ===== */}
       {(() => {
         const uncatGroups = taskGroups.filter(g => !g.categoryKey);
-        if (uncatGroups.length === 0) return null;
 
-        // Default to first tab if nothing selected yet
-        const effectiveTab = activeQuickTab || uncatGroups[0]?.key || null;
+        const effectiveTab = activeQuickTab;
         const activeGroup = effectiveTab ? uncatGroups.find(g => g.key === effectiveTab) : null;
         const activeColor = activeGroup ? (GROUP_COLORS[activeGroup.color] || GROUP_COLORS.rose) : null;
         const activeGroupTasks = activeGroup ? tasks.filter(t => t.category === activeGroup.key).sort((a, b) => (b.priority as number) - (a.priority as number)) : [];
@@ -806,6 +804,19 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
           <div className="mb-3 animate-fadeIn">
             {/* Tabs */}
             <div className="flex items-end gap-0.5 px-1">
+              {/* หมวดกิจกรรม tab (first) */}
+              <button
+                onClick={() => setActiveQuickTab('_categories')}
+                className={`flex items-center gap-1.5 px-3 pt-2 pb-2 rounded-t-xl border border-b-0 text-xs font-black transition-all ${
+                  effectiveTab === '_categories'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-600 relative z-10 -mb-px pb-2.5'
+                    : 'bg-slate-100/60 border-slate-200/60 text-slate-400 hover:text-slate-500 scale-[0.97] origin-bottom'
+                }`}
+              >
+                <span className="text-sm">📂</span>
+                หมวดกิจกรรม
+              </button>
+              {/* งานด่วน / นัดหมาย tabs */}
               {uncatGroups.map(g => {
                 const c = GROUP_COLORS[g.color] || GROUP_COLORS.rose;
                 const isActive = effectiveTab === g.key;
@@ -834,10 +845,45 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
             </div>
 
             {/* Content */}
-            {activeGroup && activeColor && (
-              <div className={`rounded-b-xl border p-3 ${activeColor.bg} ${activeColor.border} ${
-                effectiveTab === uncatGroups[0]?.key ? 'rounded-tr-xl' : 'rounded-t-xl'
-              }`}>
+            {effectiveTab === '_categories' ? (
+              <div className="rounded-b-xl rounded-tr-xl border p-3 bg-emerald-50 border-emerald-200">
+                <div className="grid grid-cols-2 gap-2.5">
+                  {DEFAULT_CATEGORIES.map(cat => {
+                    const catGroups = groupStyles.filter(g => {
+                      const tg = taskGroups.find(t => t.key === g.key);
+                      return tg?.categoryKey === cat.key;
+                    });
+                    if (catGroups.length === 0) return null;
+                    return (
+                      <div key={cat.key} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="px-3 py-2 bg-slate-50 border-b border-slate-100">
+                          <span className="text-sm font-black text-slate-600">{cat.emoji} {cat.label}</span>
+                        </div>
+                        <div className="p-2 flex flex-wrap gap-1.5">
+                          {catGroups.map((type) => {
+                            const groupData = taskGroups.find(g => g.key === type.key);
+                            const taskCount = tasks.filter(t => t.category === type.key).length;
+                            const IconComponent = type.icon === 'sun' ? Sun : type.icon === 'moon' ? Moon : type.icon === 'code' ? Code : type.icon === 'home' ? Home : type.icon === 'brain' ? Brain : type.icon === 'heart' ? Heart : type.icon === 'heartpulse' ? HeartPulse : type.icon === 'dumbbell' ? Dumbbell : type.icon === 'users' ? Users : type.icon === 'user' ? UserIcon : type.icon === 'file' ? FileText : type.icon === 'coffee' ? Coffee : type.icon === 'wrench' ? Wrench : type.icon === 'zap' ? Zap : type.icon === 'lightning' ? CloudLightning : type.icon === 'briefcase' ? Briefcase : type.icon === 'cart' ? ShoppingCart : type.icon === 'star' ? Star : type.icon === 'calendar' ? Calendar : type.icon === 'clock' ? Clock : type.icon === 'target' ? Target : type.icon === 'pencil' ? Pencil : type.icon === 'trending' ? TrendingUp : type.icon === 'lightbulb' ? Lightbulb : type.icon === 'music' ? Music : type.icon === 'game' ? Gamepad2 : type.icon === 'book' ? Book : type.icon === 'utensils' ? Utensils : type.icon === 'bike' ? Bike : type.icon === 'palette' ? Palette : type.icon === 'rocket' ? Rocket : null;
+                            return (
+                              <div key={type.key} onClick={() => setSelectedCat(type.key)} className={`group/card flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all hover:shadow-md active:scale-95 ${type.bg} ${type.border} border`}>
+                                <div className={`w-6 h-6 rounded-md ${type.iconBg} flex items-center justify-center`}>
+                                  {type.icon === 'broom' ? <BroomIcon className="w-3.5 h-3.5 text-white" /> : type.icon === 'family' ? <FamilyIcon className="w-3.5 h-3.5 text-white" /> : type.icon === 'flex' ? <FlexIcon className="w-3.5 h-3.5 text-white" /> : type.icon === 'brain2' ? <BrainIcon className="w-3.5 h-3.5 text-white" /> : IconComponent ? <IconComponent className="w-3.5 h-3.5 text-white" /> : <Briefcase className="w-3.5 h-3.5 text-white" />}
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-bold text-slate-600 leading-tight">{type.label}</span>
+                                  {taskCount > 0 && <span className="text-[10px] text-slate-400 leading-tight">{taskCount} งาน</span>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : activeGroup && activeColor ? (
+              <div className={`rounded-b-xl border p-3 ${activeColor.bg} ${activeColor.border} rounded-t-xl`}>
                 {activeGroupTasks.length > 0 ? (
                   <div className="space-y-2">
                     {dateGroups.map(([dateKey, dateTasks]) => (
@@ -888,13 +934,13 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                   <Plus className="w-3.5 h-3.5" /> เพิ่มรายการ
                 </button>
               </div>
-            )}
+            ) : null}
           </div>
         );
       })()}
 
-      {/* ===== Category Cards with Group Icons ===== */}
-      <div className="grid grid-cols-2 gap-2.5 animate-fadeIn">
+      {/* ===== Category Cards (old standalone section removed — now inside หมวดกิจกรรม tab) ===== */}
+      {false && <div className="grid grid-cols-2 gap-2.5 animate-fadeIn">
         {DEFAULT_CATEGORIES.map(cat => {
           const catGroups = groupStyles.filter(g => {
             const tg = taskGroups.find(t => t.key === g.key);
@@ -994,7 +1040,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
             </div>
           );
         })}
-      </div>
+      </div>}
 
 
       {/* ===== Selected Category Modal ===== */}
