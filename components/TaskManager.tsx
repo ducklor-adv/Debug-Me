@@ -265,6 +265,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
     setInitialTask({
       title: task.title, description: task.description, priority: task.priority,
       completed: task.completed, startDate: task.startDate, endDate: task.endDate,
+      startTime: task.startTime, endTime: task.endTime,
       category: task.category, notes: task.notes || '', attachments: task.attachments || [],
       dayTypes: task.dayTypes, estimatedDuration: task.estimatedDuration,
     });

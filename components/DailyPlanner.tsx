@@ -732,7 +732,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     if (editingSlot) {
       const { startTime, endTime } = slotForm;
       setScheduleForTab(prev => prev.map(s =>
-        s.id === editingSlot.id ? { ...s, startTime, endTime, groupKey } : s
+        s.id === editingSlot.id ? { ...s, startTime, endTime, groupKey, duration } : s
       ));
     } else {
       const newSlot: TimeSlot = {
@@ -740,6 +740,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
         startTime: slotForm.startTime,
         endTime: slotForm.endTime,
         groupKey,
+        duration,
       };
       setScheduleForTab(prev => [...prev, newSlot]);
     }
@@ -1175,6 +1176,17 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
           </button>
         </div>
       )}
+
+      {/* Slot header + Add button */}
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-xs font-bold text-slate-500">📋 Slots ({sortedSchedule.length})</span>
+        <button
+          onClick={openAddSlot}
+          className="flex items-center gap-1 px-2.5 py-1 bg-emerald-500 text-white rounded-lg text-[10px] font-bold hover:bg-emerald-600 transition-colors"
+        >
+          <Plus className="w-3 h-3" /> เพิ่ม Slot
+        </button>
+      </div>
 
       {/* Hour Grid — Planner style */}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

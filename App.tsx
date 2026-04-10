@@ -274,8 +274,8 @@ const mergeDefaultTasks = (loaded: Task[], defaults: Task[], deletedIds: string[
   const deletedSet = new Set(deletedIds);
   // Collect default IDs for งานด่วน/นัดหมาย — these start empty, user adds manually
   const uncatDefaultIds = new Set(defaults.filter(t => t.category === 'งานด่วน' || t.category === 'นัดหมาย').map(t => t.id));
-  // Filter out deleted + old default งานด่วน/นัดหมาย tasks
-  const filtered = loaded.filter(t => !deletedSet.has(t.id) && !uncatDefaultIds.has(t.id));
+  // Keep all loaded tasks (except deleted ones) — don't strip user-added งานด่วน/นัดหมาย
+  const filtered = loaded.filter(t => !deletedSet.has(t.id));
 
   const existingIds = new Set(filtered.map(t => t.id));
   const missing = defaults.filter(t => !existingIds.has(t.id) && !deletedSet.has(t.id) && !uncatDefaultIds.has(t.id));
@@ -302,9 +302,7 @@ function migrateTask(t: any): Task {
     delete migrated.startDate;
     delete migrated.endDate;
   }
-  // Remove deprecated fields
-  delete migrated.startTime;
-  delete migrated.endTime;
+  // Remove deprecated fields (keep startTime/endTime — used by TaskEditModal)
   delete migrated.dueDate;
   delete migrated.recurring;
   // Migrate legacy string priority to numeric

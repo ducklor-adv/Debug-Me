@@ -723,14 +723,6 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({
         >
           <Trash2 className="w-3.5 h-3.5" /> เคลียร์ Slot ทั้งหมด
         </button>
-        {isDayTab && customTemplates.length > 0 && (
-          <button
-            onClick={() => setShowCustomPicker(true)}
-            className="w-full flex items-center justify-center gap-2 py-2.5 bg-violet-50 text-violet-600 border border-violet-200 rounded-xl text-xs font-bold hover:bg-violet-100 transition-colors"
-          >
-            <Layers className="w-3.5 h-3.5" /> ใช้ Custom Template
-          </button>
-        )}
         <button
           onClick={() => { setSaveAsCustomSlots(schedule); openCustomForm(); }}
           className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors"
