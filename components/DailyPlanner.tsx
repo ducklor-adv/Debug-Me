@@ -1098,7 +1098,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                   compact
                 />
               </div>
-              <span className="bg-indigo-100 border border-indigo-300 text-indigo-600 text-xs font-black px-2.5 py-1 rounded-full shadow-sm">😴 {formatDuration(sleepHours)}</span>
+              <span className="bg-indigo-100 border border-indigo-300 text-indigo-600 text-xs font-black px-2.5 py-1 rounded-full shadow-sm flex items-center gap-1"><span className="text-sm leading-none">😴</span> {formatDuration(sleepHours)}</span>
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px]">🌙</span>
                 <span className="text-[10px] font-bold text-indigo-400">นอน</span>
