@@ -160,6 +160,7 @@ interface TaskManagerProps {
   initialGroupKey?: string | null;
   defaultTasks?: Task[];
   expenses?: Expense[];
+  setExpenses?: React.Dispatch<React.SetStateAction<Expense[]>>;
 }
 
 // Derive style from a TaskGroup using GROUP_COLORS
@@ -240,7 +241,7 @@ const emptyForm = (): Omit<Task, 'id'> => ({
   dayTypes: ['workday', 'saturday', 'sunday'],
 });
 
-const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups, deletedDefaultTaskIds, setDeletedDefaultTaskIds, onImmediateSave, initialGroupKey, defaultTasks = [], expenses = [] }) => {
+const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups, deletedDefaultTaskIds, setDeletedDefaultTaskIds, onImmediateSave, initialGroupKey, defaultTasks = [], expenses = [], setExpenses }) => {
   // DnD sensors for task reordering
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -478,17 +479,6 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   return (
     <div className="space-y-6 pb-10">
 
-      {/* Header - Add Group + Clear Default Buttons */}
-      <div className="flex justify-end gap-2">
-        {tasks.some(t => t.id.startsWith('d-')) && (
-          <button onClick={() => setShowClearDefaultConfirm(true)} className="flex items-center gap-1.5 px-3 py-2.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl font-bold text-sm hover:bg-rose-100 transition-colors">
-            <Trash2 className="w-3.5 h-3.5" /> ล้าง Default ({tasks.filter(t => t.id.startsWith('d-')).length})
-          </button>
-        )}
-        <button onClick={openGroupForm} className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-200">
-          <Plus className="w-4 h-4" /> เพิ่มกลุ่ม
-        </button>
-      </div>
 
       {/* ===== Clear Default Confirm Modal ===== */}
       {showClearDefaultConfirm && createPortal(
@@ -911,6 +901,17 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
             {/* Content */}
             {effectiveTab === '_categories' ? (
               <div className="rounded-b-xl rounded-tr-xl border p-3 bg-emerald-50 border-emerald-200">
+                {/* Controls */}
+                <div className="flex justify-end gap-1.5 mb-2">
+                  {tasks.some(t => t.id.startsWith('d-')) && (
+                    <button onClick={() => setShowClearDefaultConfirm(true)} className="px-1.5 py-1 bg-white border border-rose-200 text-rose-500 rounded text-[9px] font-bold active:scale-95">
+                      <Trash2 className="w-2.5 h-2.5 inline mr-0.5" />ล้าง Default ({tasks.filter(t => t.id.startsWith('d-')).length})
+                    </button>
+                  )}
+                  <button onClick={openGroupForm} className="px-1.5 py-1 bg-emerald-500 text-white rounded text-[9px] font-bold active:scale-95">
+                    <Plus className="w-2.5 h-2.5 inline mr-0.5" />เพิ่มกลุ่ม
+                  </button>
+                </div>
                 <div className="grid grid-cols-2 gap-2.5">
                   {DEFAULT_CATEGORIES.map(cat => {
                     const catGroups = groupStyles.filter(g => {
@@ -985,53 +986,83 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                   const periodLabel = activeBillsTab === 'daily' ? 'วัน' : activeBillsTab === 'monthly' ? 'เดือน' : activeBillsTab === 'quarterly' ? 'ไตรมาส' : 'ปี';
                   const groupEmojiMap: Record<string, string> = { 'จำเป็น': '📌', 'อื่นๆ': '📋', 'ชำระหนี้': '🏦', 'ลงทุน': '📊' };
 
-                  if (filtered.length === 0 && defaults.length > 0) {
-                    // Group defaults by financial group
-                    const defaultGrouped: Record<string, typeof defaults> = {};
-                    defaults.forEach(d => {
-                      if (!defaultGrouped[d.group]) defaultGrouped[d.group] = [];
-                      defaultGrouped[d.group].push(d);
-                    });
+                  // Helper: record payment for an expense
+                  const handlePayNow = (exp: Expense) => {
+                    if (!setExpenses) return;
+                    const todayISO = now.toISOString();
+                    setExpenses(prev => prev.map(e => e.id === exp.id ? {
+                      ...e,
+                      paidHistory: { ...(e.paidHistory || {}), [currentMonth]: { amount: e.amount, paidAt: todayISO } },
+                      paid: true,
+                      paidAt: todayISO,
+                    } : e));
+                  };
+
+                  // Render expense rows (shared between defaults and real)
+                  const renderExpenseRow = (exp: Expense) => {
+                    const cat = catMap.get(exp.category);
+                    const isPaid = !!(exp.paidHistory?.[currentMonth]);
+                    const lastEntry = exp.paidHistory ? Object.entries(exp.paidHistory).sort(([a], [b]) => b.localeCompare(a))[0] : null;
+                    const monthTotal = exp.paidHistory ? Object.entries(exp.paidHistory).filter(([k]) => k === currentMonth).reduce((s, [, v]) => s + v.amount, 0) : 0;
                     return (
-                      <div className="space-y-2.5">
-                        <p className="text-[10px] font-bold text-amber-600 mb-1">💡 รายการแนะนำ — กดเพิ่มได้ที่หน้า Expenses</p>
-                        <div className="grid grid-cols-[2rem_1fr_auto_auto] items-center gap-x-2 px-1 pb-1 border-b border-amber-200 mb-1">
-                          <span className="text-[8px] font-bold text-amber-400 text-center">ครบ</span>
-                          <span className="text-[8px] font-bold text-amber-400">รายการ</span>
-                          <span className="text-[8px] font-bold text-amber-400 text-right w-16">จำนวน</span>
-                          <span className="text-[8px] font-bold text-amber-400 text-right w-20">จ่ายล่าสุด</span>
+                      <div key={exp.id} className={`flex items-center gap-1.5 px-1 py-1 ${isPaid ? 'opacity-50' : ''}`}>
+                        <span className="text-[9px] text-slate-400 w-5 text-center shrink-0">{exp.dueDay || '-'}</span>
+                        <span className="text-sm shrink-0">{cat?.emoji || '📦'}</span>
+                        <span className={`text-xs flex-1 truncate ${isPaid ? 'line-through text-slate-400' : 'text-slate-700'}`}>{exp.title}</span>
+                        {isPaid ? (
+                          <span className="text-[9px] text-emerald-500 shrink-0 w-6 text-center">✓</span>
+                        ) : (
+                          <button onClick={() => handlePayNow(exp)} className="text-[9px] font-bold text-amber-500 hover:text-amber-700 shrink-0 w-6 text-center">+</button>
+                        )}
+                        <span className="text-[9px] text-slate-600 shrink-0 w-16 text-right">{lastEntry ? `${lastEntry[0].slice(5)} ${lastEntry[1].amount.toLocaleString()}` : '-'}</span>
+                        <span className="text-[9px] text-slate-700 shrink-0 w-12 text-right">{monthTotal > 0 ? monthTotal.toLocaleString() : '-'}</span>
+                        <span className="text-[10px] text-slate-600 shrink-0 w-12 text-right">{exp.amount.toLocaleString()}</span>
+                      </div>
+                    );
+                  };
+
+                  if (filtered.length === 0 && defaults.length > 0) {
+                    return (
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-bold text-amber-600">💡 รายการแนะนำ — เพิ่มได้ที่หน้า Expenses</p>
+                        {/* Column headers */}
+                        <div className="flex items-center gap-1.5 px-1 pb-1 border-b border-amber-200">
+                          <span className="text-[7px] font-bold text-slate-500 w-5 text-center shrink-0">ครบ</span>
+                          <span className="text-[7px] font-bold text-slate-500 shrink-0 w-5" />
+                          <span className="text-[7px] font-bold text-slate-500 flex-1">รายการ</span>
+                          <span className="text-[7px] font-bold text-slate-500 w-6 text-center shrink-0">จ่าย</span>
+                          <span className="text-[7px] font-bold text-slate-500 w-16 text-right shrink-0">ล่าสุด</span>
+                          <span className="text-[7px] font-bold text-slate-500 w-12 text-right shrink-0">เดือนนี้</span>
+                          <span className="text-[7px] font-bold text-slate-500 w-12 text-right shrink-0">งบ</span>
                         </div>
-                        {EXPENSE_GROUPS.filter(g => defaultGrouped[g.key]?.length).map(group => (
-                          <div key={group.key}>
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <span className="text-[10px]">{group.emoji}</span>
-                              <span className="text-[10px] font-bold text-amber-700">{group.label}</span>
-                              <div className="flex-1 h-px bg-amber-200" />
-                              <span className="text-[9px] font-bold text-amber-400">{defaultGrouped[group.key].reduce((s, e) => s + e.amount, 0).toLocaleString()}฿</span>
-                            </div>
-                            <div className="space-y-1">
+                        {(() => {
+                          const defaultGrouped: Record<string, typeof defaults> = {};
+                          defaults.forEach(d => { if (!defaultGrouped[d.group]) defaultGrouped[d.group] = []; defaultGrouped[d.group].push(d); });
+                          return EXPENSE_GROUPS.filter(g => defaultGrouped[g.key]?.length).map(group => (
+                            <div key={group.key}>
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <span className="text-[9px]">{group.emoji}</span>
+                                <span className="text-[9px] font-bold text-amber-700">{group.label}</span>
+                                <div className="flex-1 h-px bg-amber-200" />
+                                <span className="text-[9px] text-amber-400">{defaultGrouped[group.key].reduce((s, e) => s + e.amount, 0).toLocaleString()}</span>
+                              </div>
                               {defaultGrouped[group.key].map((d, i) => {
                                 const cat = catMap.get(d.category);
                                 return (
-                                  <div key={i} className="grid grid-cols-[2rem_1fr_auto_auto] items-center gap-x-2 px-1 py-1">
-                                    <span className="text-[9px] text-slate-400 text-center">{d.dueDay ? `${d.dueDay}` : '-'}</span>
-                                    <div className="flex items-center gap-1.5 min-w-0">
-                                      <span className="text-sm shrink-0">{cat?.emoji || '📦'}</span>
-                                      <span className="text-xs text-slate-600 truncate">{d.title}</span>
-                                      <span className="text-[10px] text-slate-300 shrink-0">({cat?.label})</span>
-                                    </div>
-                                    <span className="text-xs font-black text-amber-500 text-right w-16">{d.amount.toLocaleString()}฿</span>
-                                    <span className="text-[9px] text-slate-300 text-right w-20">-</span>
+                                  <div key={i} className="flex items-center gap-1.5 px-1 py-1">
+                                    <span className="text-[9px] text-slate-400 w-5 text-center shrink-0">{d.dueDay || '-'}</span>
+                                    <span className="text-sm shrink-0">{cat?.emoji || '📦'}</span>
+                                    <span className="text-xs text-slate-500 flex-1 truncate">{d.title}</span>
+                                    <span className="text-[9px] text-slate-300 shrink-0 w-6 text-center">-</span>
+                                    <span className="text-[9px] text-slate-300 shrink-0 w-16 text-right">-</span>
+                                    <span className="text-[9px] text-slate-300 shrink-0 w-12 text-right">-</span>
+                                    <span className="text-[10px] text-slate-600 shrink-0 w-12 text-right">{d.amount.toLocaleString()}</span>
                                   </div>
                                 );
                               })}
                             </div>
-                          </div>
-                        ))}
-                        <div className="pt-1 border-t border-amber-200 flex justify-between items-center">
-                          <span className="text-[10px] text-amber-500">ประมาณ {defaults.length} รายการ</span>
-                          <span className="text-xs font-black text-amber-400">{defaults.reduce((s, e) => s + e.amount, 0).toLocaleString()}฿/{periodLabel}</span>
-                        </div>
+                          ));
+                        })()}
                       </div>
                     );
                   }
@@ -1039,7 +1070,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                     return (
                       <div className="text-center py-6">
                         <span className="text-3xl block mb-2">💸</span>
-                        <p className="text-xs text-slate-400">ไม่มีรายจ่ายประจำ{activeBillsTab === 'daily' ? 'วัน' : activeBillsTab === 'monthly' ? 'เดือน' : activeBillsTab === 'quarterly' ? 'ไตรมาส' : 'ปี'}</p>
+                        <p className="text-xs text-slate-400">ไม่มีรายจ่ายประจำ{periodLabel}</p>
                       </div>
                     );
                   }
@@ -1055,50 +1086,29 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
 
                   return (
                     <div className="space-y-2">
+                      {/* Column headers */}
+                      <div className="flex items-center gap-1.5 px-1 pb-1 border-b border-amber-200">
+                        <span className="text-[7px] font-bold text-amber-400 w-5 text-center shrink-0">ครบ</span>
+                        <span className="text-[7px] font-bold text-amber-400 shrink-0 w-5" />
+                        <span className="text-[7px] font-bold text-amber-400 flex-1">รายการ</span>
+                        <span className="text-[7px] font-bold text-amber-400 w-12 text-right shrink-0">งบ</span>
+                        <span className="text-[7px] font-bold text-amber-400 w-6 text-center shrink-0">จ่าย</span>
+                        <span className="text-[7px] font-bold text-amber-400 w-16 text-right shrink-0">ล่าสุด</span>
+                        <span className="text-[7px] font-bold text-amber-400 w-12 text-right shrink-0">เดือนนี้</span>
+                      </div>
                       {EXPENSE_GROUPS.filter(g => grouped[g.key]?.length).map(group => (
                         <div key={group.key}>
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <span className="text-[10px]">{group.emoji}</span>
-                            <span className="text-[10px] font-bold text-amber-700">{group.label}</span>
+                          <div className="flex items-center gap-1 mb-0.5">
+                            <span className="text-[9px]">{group.emoji}</span>
+                            <span className="text-[9px] font-bold text-amber-700">{group.label}</span>
                             <div className="flex-1 h-px bg-amber-200" />
                           </div>
-                          <div className="space-y-1">
-                            {grouped[group.key].map(exp => {
-                              const cat = catMap.get(exp.category);
-                              const isPaidThisMonth = !!(exp.paidHistory?.[currentMonth]);
-                              return (
-                                <div key={exp.id} className={`grid grid-cols-[2rem_1fr_auto_auto] items-center gap-x-2 px-1 py-1 ${isPaidThisMonth ? 'opacity-50' : ''}`}>
-                                  <span className="text-[9px] text-slate-400 text-center">{exp.dueDay ? `${exp.dueDay}` : '-'}</span>
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <span className="text-sm shrink-0">{cat?.emoji || '📦'}</span>
-                                    <span className={`text-xs truncate ${isPaidThisMonth ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{exp.title}</span>
-                                    <span className="text-[10px] text-slate-300 shrink-0">({cat?.label})</span>
-                                  </div>
-                                  <span className={`text-xs font-black text-right w-16 ${isPaidThisMonth ? 'text-emerald-500' : 'text-amber-600'}`}>
-                                    {exp.amount.toLocaleString()}฿
-                                  </span>
-                                  <span className="text-[9px] text-right w-20">
-                                    {(() => {
-                                      const history = exp.paidHistory ? Object.entries(exp.paidHistory).sort(([a], [b]) => b.localeCompare(a))[0] : null;
-                                      if (!history) return <span className="text-slate-300">-</span>;
-                                      const [month, detail] = history;
-                                      return <span className="text-emerald-500">{month} {detail.amount.toLocaleString()}฿</span>;
-                                    })()}
-                                  </span>
-                                  {isPaidThisMonth ? (
-                                    <span className="text-[9px] font-bold bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full">จ่ายแล้ว</span>
-                                  ) : (
-                                    <span className="text-[9px] font-bold bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full">รอจ่าย</span>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
+                          {grouped[group.key].map(exp => renderExpenseRow(exp))}
                         </div>
                       ))}
                       <div className="pt-1 border-t border-amber-200 flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-amber-700">รวม {filtered.length} รายการ</span>
-                        <span className="text-xs font-black text-amber-600">{filtered.reduce((s, e) => s + e.amount, 0).toLocaleString()}฿</span>
+                        <span className="text-[10px] text-amber-700">{filtered.length} รายการ</span>
+                        <span className="text-[10px] text-amber-600">รวม {filtered.reduce((s, e) => s + e.amount, 0).toLocaleString()}/{periodLabel}</span>
                       </div>
                     </div>
                   );

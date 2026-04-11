@@ -90,7 +90,6 @@ const DEFAULT_MILESTONES: Milestone[] = [
 
 export const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
   workday: [
-    { id: 'wd-0',  startTime: '00:00', endTime: '05:00', groupKey: 'sleep' },
     { id: 'wd-1',  startTime: '05:00', endTime: '07:00', groupKey: 'home' },
     { id: 'wd-2',  startTime: '07:00', endTime: '08:00', groupKey: 'health' },
     { id: 'wd-3',  startTime: '08:00', endTime: '12:00', groupKey: 'career' },
@@ -100,10 +99,8 @@ export const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
     { id: 'wd-7',  startTime: '19:00', endTime: '20:00', groupKey: 'relationship' },
     { id: 'wd-8',  startTime: '20:00', endTime: '21:00', groupKey: 'mind' },
     { id: 'wd-9',  startTime: '21:00', endTime: '22:00', groupKey: 'break' },
-    { id: 'wd-10', startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
   ],
   saturday: [
-    { id: 'sat-0',  startTime: '00:00', endTime: '05:00', groupKey: 'sleep' },
     { id: 'sat-1',  startTime: '05:00', endTime: '07:00', groupKey: 'home' },
     { id: 'sat-2',  startTime: '07:00', endTime: '08:00', groupKey: 'health' },
     { id: 'sat-3',  startTime: '08:00', endTime: '10:00', groupKey: 'home' },
@@ -114,10 +111,8 @@ export const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
     { id: 'sat-8',  startTime: '17:00', endTime: '18:00', groupKey: 'health' },
     { id: 'sat-9',  startTime: '18:00', endTime: '20:00', groupKey: 'relationship' },
     { id: 'sat-10', startTime: '20:00', endTime: '22:00', groupKey: 'break' },
-    { id: 'sat-11', startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
   ],
   sunday: [
-    { id: 'sun-0',  startTime: '00:00', endTime: '06:00', groupKey: 'sleep' },
     { id: 'sun-1',  startTime: '06:00', endTime: '08:00', groupKey: 'home' },
     { id: 'sun-2',  startTime: '08:00', endTime: '09:00', groupKey: 'health' },
     { id: 'sun-3',  startTime: '09:00', endTime: '12:00', groupKey: 'relationship' },
@@ -127,13 +122,11 @@ export const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
     { id: 'sun-7',  startTime: '17:00', endTime: '19:00', groupKey: 'home' },
     { id: 'sun-8',  startTime: '19:00', endTime: '21:00', groupKey: 'break' },
     { id: 'sun-9',  startTime: '21:00', endTime: '22:00', groupKey: 'mind' },
-    { id: 'sun-10', startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
   ],
   customTemplates: [
     {
       id: 'ct-lazy', name: 'วันขี้เกียจ', emoji: '😴',
       slots: [
-        { id: 'lazy-0',  startTime: '00:00', endTime: '09:00', groupKey: 'sleep' },
         { id: 'lazy-1',  startTime: '09:00', endTime: '10:00', groupKey: 'home' },
         { id: 'lazy-2',  startTime: '10:00', endTime: '12:00', groupKey: 'break' },
         { id: 'lazy-3',  startTime: '12:00', endTime: '13:00', groupKey: 'break' },
@@ -142,29 +135,25 @@ export const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
         { id: 'lazy-6',  startTime: '16:00', endTime: '18:00', groupKey: 'break' },
         { id: 'lazy-7',  startTime: '18:00', endTime: '19:00', groupKey: 'break' },
         { id: 'lazy-8',  startTime: '19:00', endTime: '22:00', groupKey: 'break' },
-        { id: 'lazy-9',  startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
       ],
     },
     {
       id: 'ct-sick', name: 'วันป่วย', emoji: '🤒',
       slots: [
-        { id: 'sick-0',  startTime: '00:00', endTime: '08:00', groupKey: 'sleep' },
         { id: 'sick-1',  startTime: '08:00', endTime: '09:00', groupKey: 'health' },
         { id: 'sick-2',  startTime: '09:00', endTime: '10:00', groupKey: 'home' },
-        { id: 'sick-3',  startTime: '10:00', endTime: '12:00', groupKey: 'sleep' },
+        { id: 'sick-3',  startTime: '10:00', endTime: '12:00', groupKey: 'break' },
         { id: 'sick-4',  startTime: '12:00', endTime: '13:00', groupKey: 'home' },
-        { id: 'sick-5',  startTime: '13:00', endTime: '15:00', groupKey: 'sleep' },
+        { id: 'sick-5',  startTime: '13:00', endTime: '15:00', groupKey: 'break' },
         { id: 'sick-6',  startTime: '15:00', endTime: '16:00', groupKey: 'health' },
         { id: 'sick-7',  startTime: '16:00', endTime: '18:00', groupKey: 'break' },
         { id: 'sick-8',  startTime: '18:00', endTime: '19:00', groupKey: 'home' },
         { id: 'sick-9',  startTime: '19:00', endTime: '21:00', groupKey: 'break' },
-        { id: 'sick-10', startTime: '21:00', endTime: '00:00', groupKey: 'sleep' },
       ],
     },
     {
       id: 'ct-trip', name: 'เที่ยวต่างจังหวัด', emoji: '🏕️',
       slots: [
-        { id: 'trip-0',  startTime: '00:00', endTime: '06:00', groupKey: 'sleep' },
         { id: 'trip-1',  startTime: '06:00', endTime: '07:00', groupKey: 'home' },
         { id: 'trip-2',  startTime: '07:00', endTime: '08:00', groupKey: 'health' },
         { id: 'trip-3',  startTime: '08:00', endTime: '09:00', groupKey: 'break' },
@@ -174,13 +163,11 @@ export const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
         { id: 'trip-7',  startTime: '17:00', endTime: '18:00', groupKey: 'break' },
         { id: 'trip-8',  startTime: '18:00', endTime: '20:00', groupKey: 'relationship' },
         { id: 'trip-9',  startTime: '20:00', endTime: '22:00', groupKey: 'mind' },
-        { id: 'trip-10', startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
       ],
     },
     {
       id: 'ct-hustle', name: 'วันทำงานหนัก', emoji: '💪',
       slots: [
-        { id: 'hst-0',  startTime: '00:00', endTime: '05:00', groupKey: 'sleep' },
         { id: 'hst-1',  startTime: '05:00', endTime: '06:00', groupKey: 'health' },
         { id: 'hst-2',  startTime: '06:00', endTime: '07:00', groupKey: 'home' },
         { id: 'hst-3',  startTime: '07:00', endTime: '12:00', groupKey: 'career' },
@@ -188,13 +175,11 @@ export const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
         { id: 'hst-5',  startTime: '13:00', endTime: '18:00', groupKey: 'career' },
         { id: 'hst-6',  startTime: '18:00', endTime: '19:00', groupKey: 'home' },
         { id: 'hst-7',  startTime: '19:00', endTime: '22:00', groupKey: 'career' },
-        { id: 'hst-8',  startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
       ],
     },
     {
       id: 'ct-family', name: 'วันครอบครัว', emoji: '👨‍👩‍👧‍👦',
       slots: [
-        { id: 'fam-0',  startTime: '00:00', endTime: '07:00', groupKey: 'sleep' },
         { id: 'fam-1',  startTime: '07:00', endTime: '09:00', groupKey: 'home' },
         { id: 'fam-2',  startTime: '09:00', endTime: '12:00', groupKey: 'relationship' },
         { id: 'fam-3',  startTime: '12:00', endTime: '13:00', groupKey: 'break' },
@@ -202,13 +187,11 @@ export const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
         { id: 'fam-5',  startTime: '17:00', endTime: '18:00', groupKey: 'break' },
         { id: 'fam-6',  startTime: '18:00', endTime: '20:00', groupKey: 'relationship' },
         { id: 'fam-7',  startTime: '20:00', endTime: '22:00', groupKey: 'break' },
-        { id: 'fam-8',  startTime: '22:00', endTime: '00:00', groupKey: 'sleep' },
       ],
     },
     {
       id: 'ct-grow', name: 'วันพัฒนาตัวเอง', emoji: '📚',
       slots: [
-        { id: 'grw-0',  startTime: '00:00', endTime: '06:00', groupKey: 'sleep' },
         { id: 'grw-1',  startTime: '06:00', endTime: '07:00', groupKey: 'health' },
         { id: 'grw-2',  startTime: '07:00', endTime: '08:00', groupKey: 'home' },
         { id: 'grw-3',  startTime: '08:00', endTime: '12:00', groupKey: 'mind' },
@@ -217,7 +200,6 @@ export const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
         { id: 'grw-6',  startTime: '17:00', endTime: '18:00', groupKey: 'health' },
         { id: 'grw-7',  startTime: '18:00', endTime: '19:00', groupKey: 'relationship' },
         { id: 'grw-8',  startTime: '19:00', endTime: '21:00', groupKey: 'mind' },
-        { id: 'grw-9',  startTime: '21:00', endTime: '00:00', groupKey: 'sleep' },
       ],
     },
   ],
@@ -760,6 +742,28 @@ const App: React.FC = () => {
               saveBack.scheduleTemplates = fixed;
             }
 
+            // Strip sleep slots at start/end of day (wake/sleep time handles this now)
+            const stripSleepEdges = (slots: TimeSlot[]): TimeSlot[] => {
+              if (!slots || slots.length === 0) return slots;
+              let result = [...slots];
+              if (result[0]?.groupKey === 'sleep') result = result.slice(1);
+              if (result.length > 0 && result[result.length - 1]?.groupKey === 'sleep') result = result.slice(0, -1);
+              return result;
+            };
+            fixed.workday = stripSleepEdges(fixed.workday);
+            fixed.saturday = stripSleepEdges(fixed.saturday);
+            fixed.sunday = stripSleepEdges(fixed.sunday);
+            if (fixed.customTemplates) {
+              fixed.customTemplates = fixed.customTemplates.map(ct => ({
+                ...ct, slots: stripSleepEdges(ct.slots),
+              }));
+            }
+            if (fixed.dayPlans) {
+              for (const key of Object.keys(fixed.dayPlans)) {
+                fixed.dayPlans[key] = stripSleepEdges(fixed.dayPlans[key]);
+              }
+            }
+
             setScheduleTemplates(fixed);
           }
         } else if (data.schedule && data.schedule.length > 0) {
@@ -1025,7 +1029,7 @@ const App: React.FC = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} expenses={expenses} />;
       case 'planner': return <Suspense fallback={<LazyFallback />}><DailyPlanner tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} pendingSlot={pendingSlot} onPendingSlotHandled={() => setPendingSlot(null)} defaultScheduleTemplates={DEFAULT_SCHEDULE_TEMPLATES} /></Suspense>;
-      case 'tasks': return <Suspense fallback={<LazyFallback />}><TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} initialGroupKey={pendingGroupKey} defaultTasks={defaultTasks} expenses={expenses} /></Suspense>;
+      case 'tasks': return <Suspense fallback={<LazyFallback />}><TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} initialGroupKey={pendingGroupKey} defaultTasks={defaultTasks} expenses={expenses} setExpenses={setExpenses} /></Suspense>;
       case 'focus': return <Suspense fallback={<LazyFallback />}><FocusTimer onSaveFocusSession={handleSaveFocusSession} todayFocusSessions={todayFocusSessions} /></Suspense>;
       case 'analytics': return <Suspense fallback={<LazyFallback />}><Analytics tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} totalRecordCount={totalRecordCount} userId={user!.uid} /></Suspense>;
       case 'calendar': return <Suspense fallback={<LazyFallback />}><CalendarView tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} userId={user!.uid} /></Suspense>;
