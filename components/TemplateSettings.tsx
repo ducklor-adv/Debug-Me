@@ -881,22 +881,52 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({
                 <span className="text-[11px] font-bold text-slate-500 w-16">สิ้นสุด</span>
                 <span className="text-sm font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg">{slotForm.endTime}</span>
               </div>
-              {/* Group task selector */}
+              {/* Group task selector — จัดตาม Category */}
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-slate-500">กลุ่มงาน</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {taskGroups.map(g => {
-                    const isSelected = slotForm.groupKey === g.key;
-                    const gc = GROUP_COLORS[g.color] || GROUP_COLORS.orange;
+                <div className="space-y-2">
+                  {DEFAULT_CATEGORIES.map(cat => {
+                    const catGroups = taskGroups.filter(g => g.categoryKey === cat.key);
+                    if (catGroups.length === 0) return null;
                     return (
-                      <button key={g.key} onClick={() => setSlotForm(f => ({ ...f, groupKey: g.key }))}
-                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-                          isSelected ? 'bg-emerald-500 text-white ring-2 ring-emerald-300 ring-offset-1' : `${gc.bg} ${gc.text} border ${gc.border}`
-                        }`}>
-                        <span>{g.emoji}</span> {g.label}
-                      </button>
+                      <div key={cat.key}>
+                        <p className="text-[9px] font-bold text-slate-400 mb-1">{cat.emoji} {cat.label}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {catGroups.map(g => {
+                            const isSelected = slotForm.groupKey === g.key;
+                            const gc = GROUP_COLORS[g.color] || GROUP_COLORS.orange;
+                            return (
+                              <button key={g.key} onClick={() => setSlotForm(f => ({ ...f, groupKey: g.key }))}
+                                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                                  isSelected ? 'bg-emerald-500 text-white ring-2 ring-emerald-300 ring-offset-1' : `${gc.bg} ${gc.text} border ${gc.border}`
+                                }`}>
+                                <span>{g.emoji}</span> {g.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     );
                   })}
+                  {taskGroups.filter(g => !g.categoryKey).length > 0 && (
+                    <div>
+                      <p className="text-[9px] font-bold text-slate-400 mb-1">⚡ อื่นๆ</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {taskGroups.filter(g => !g.categoryKey).map(g => {
+                          const isSelected = slotForm.groupKey === g.key;
+                          const gc = GROUP_COLORS[g.color] || GROUP_COLORS.orange;
+                          return (
+                            <button key={g.key} onClick={() => setSlotForm(f => ({ ...f, groupKey: g.key }))}
+                              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                                isSelected ? 'bg-emerald-500 text-white ring-2 ring-emerald-300 ring-offset-1' : `${gc.bg} ${gc.text} border ${gc.border}`
+                              }`}>
+                              <span>{g.emoji}</span> {g.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

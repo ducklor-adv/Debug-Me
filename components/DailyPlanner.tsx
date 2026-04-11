@@ -1597,27 +1597,53 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               <span className="text-[10px] text-slate-400">(คำนวณอัตโนมัติ)</span>
             </div>
 
-            {/* 4. Group task selector — กลุ่มงาน */}
+            {/* 4. Group task selector — จัดตาม Category */}
             <div>
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">กลุ่มงาน</label>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {taskGroups.map(g => {
-                  const clr = GROUP_COLORS[g.color] || GROUP_COLORS.orange;
-                  const isActive = slotForm.groupKey === g.key;
+              <div className="mt-1.5 space-y-2">
+                {DEFAULT_CATEGORIES.map(cat => {
+                  const catGroups = taskGroups.filter(g => g.categoryKey === cat.key);
+                  if (catGroups.length === 0) return null;
                   return (
-                    <button
-                      key={g.key}
-                      onClick={() => setSlotForm(f => ({ ...f, groupKey: g.key }))}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                        isActive
-                          ? `${clr.bg} ${clr.border} ${clr.text} ring-2 ${clr.ring}`
-                          : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      {g.emoji} {g.label}
-                    </button>
+                    <div key={cat.key}>
+                      <p className="text-[9px] font-bold text-slate-400 mb-1">{cat.emoji} {cat.label}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {catGroups.map(g => {
+                          const clr = GROUP_COLORS[g.color] || GROUP_COLORS.orange;
+                          const isActive = slotForm.groupKey === g.key;
+                          return (
+                            <button key={g.key} onClick={() => setSlotForm(f => ({ ...f, groupKey: g.key }))}
+                              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                                isActive ? `${clr.bg} ${clr.border} ${clr.text} ring-2 ${clr.ring}` : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                              }`}>
+                              {g.emoji} {g.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   );
                 })}
+                {/* Uncategorized groups (งานด่วน, นัดหมาย) */}
+                {taskGroups.filter(g => !g.categoryKey).length > 0 && (
+                  <div>
+                    <p className="text-[9px] font-bold text-slate-400 mb-1">⚡ อื่นๆ</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {taskGroups.filter(g => !g.categoryKey).map(g => {
+                        const clr = GROUP_COLORS[g.color] || GROUP_COLORS.orange;
+                        const isActive = slotForm.groupKey === g.key;
+                        return (
+                          <button key={g.key} onClick={() => setSlotForm(f => ({ ...f, groupKey: g.key }))}
+                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${
+                              isActive ? `${clr.bg} ${clr.border} ${clr.text} ring-2 ${clr.ring}` : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                            }`}>
+                            {g.emoji} {g.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
