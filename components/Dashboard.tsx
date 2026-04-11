@@ -610,7 +610,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
                 >
                   <Play className="w-4 h-4 text-indigo-500 shrink-0" />
                   <span className="text-sm font-bold text-slate-700 truncate flex-1 text-left">{task.title}</span>
-                  {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration}น.</span>}
+                  {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration} น.</span>}
                 </button>
               ))}
             </div>
@@ -954,7 +954,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
                                    task.recurrence.pattern === 'monthly' ? 'เดือน' : 'ปี'}
                                 </span>
                               )}
-                              {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400">{task.estimatedDuration}น.</span>}
+                              {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400">{task.estimatedDuration} น.</span>}
                               {focusRunning && focusTaskId === task.id && (
                                 <span className="text-[9px] font-black bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full animate-pulse flex items-center gap-1">
                                   <Brain className="w-2.5 h-2.5" /> Focusing {focusMM}:{focusSS}
@@ -1067,7 +1067,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
                 </div>
                 <span className="text-sm font-bold text-slate-800">{nextInfo.label}</span>
                 <span className="text-[11px] font-mono font-bold text-slate-500 shrink-0">{next.startTime}–{next.endTime}</span>
-                <span className="text-[11px] font-bold text-blue-400 shrink-0">{getSlotDur(next)}น.</span>
+                <span className="text-[11px] font-bold text-blue-400 shrink-0">{getSlotDur(next)} น.</span>
               </div>
               <div className="p-4">
                 {nextTasks.length > 0 ? (
@@ -1088,7 +1088,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
                                 <RefreshCw className="w-2.5 h-2.5 inline" />
                               </span>
                             )}
-                            {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration}น.</span>}
+                            {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration} น.</span>}
                           </div>
                           {task.subtasks && task.subtasks.length > 0 && (
                             <div className="flex items-center gap-2 mt-1 ml-6">
@@ -1132,7 +1132,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
                         <span className="text-[9px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full shrink-0">{sTaskList.length}</span>
                       )}
                       <span className="text-[11px] font-mono text-blue-400 shrink-0">{slot.startTime}–{slot.endTime}</span>
-                      <span className="text-[11px] font-bold text-blue-400 shrink-0 w-10 text-right">{getSlotDur(slot)}น.</span>
+                      <span className="text-[11px] font-bold text-blue-400 shrink-0 w-10 text-right">{getSlotDur(slot)} น.</span>
                       <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
                     </button>
                     {isExpanded && (
@@ -1155,7 +1155,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
                                         <RefreshCw className="w-2.5 h-2.5 inline" />
                                       </span>
                                     )}
-                                    {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration}น.</span>}
+                                    {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration} น.</span>}
                                   </div>
                                   {task.subtasks && task.subtasks.length > 0 && (
                                     <div className="flex items-center gap-2 mt-1 ml-6">

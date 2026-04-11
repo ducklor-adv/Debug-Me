@@ -605,7 +605,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                           <span className={`text-xs ${alreadyAdded ? 'text-slate-400 line-through' : isSelected ? 'text-emerald-700' : 'text-slate-700'}`}>{task.title}</span>
                           {task.description && <span className="text-[10px] text-slate-300 truncate flex-1">— {task.description}</span>}
                           <span className="text-[9px] text-slate-300 shrink-0">{dayTypeLabel(task.dayTypes)}</span>
-                          {task.estimatedDuration && <span className="text-[9px] text-blue-400 shrink-0">{task.estimatedDuration}น.</span>}
+                          {task.estimatedDuration && <span className="text-[9px] text-blue-400 shrink-0">{task.estimatedDuration} น.</span>}
                           {alreadyAdded && <span className="text-[9px] text-slate-400 shrink-0">เพิ่มแล้ว</span>}
                         </div>
                       );
@@ -1028,7 +1028,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                           const d = new Date(thisMonth.paidAt);
                           return `${d.getDate()}/${d.getMonth() + 1}`;
                         })()}</span>
-                        <span className="text-[9px] text-slate-700 shrink-0 w-14 text-right">{lastEntry ? `${lastEntry[0].slice(5)} ${lastEntry[1].amount.toLocaleString()}` : '-'}</span>
+                        <span className="text-[9px] text-slate-700 shrink-0 w-14 text-right">{lastEntry ? lastEntry[1].amount.toLocaleString() : '-'}</span>
                         <span className="text-[9px] text-slate-700 shrink-0 w-12 text-right">{monthTotal > 0 ? monthTotal.toLocaleString() : '-'}</span>
                         <span className="text-[10px] text-slate-700 shrink-0 w-12 text-right">{exp.amount.toLocaleString()}</span>
                       </div>
@@ -1549,7 +1549,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                             : null}
                           {/* เวลา */}
                           {task.estimatedDuration
-                            ? <span onClick={(e) => { e.stopPropagation(); setDurationEditTaskId(task.id); setDurationValue(task.estimatedDuration || 30); }} className="text-[9px] text-blue-400 shrink-0 cursor-pointer hover:text-blue-600">{task.estimatedDuration}น.</span>
+                            ? <span onClick={(e) => { e.stopPropagation(); setDurationEditTaskId(task.id); setDurationValue(task.estimatedDuration || 30); }} className="text-[9px] text-blue-400 shrink-0 cursor-pointer hover:text-blue-600">{task.estimatedDuration} น.</span>
                             : null}
                           {/* กำหนดวัน — ซ่อนบนมือถือ */}
                           {task.startDate

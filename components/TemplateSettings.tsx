@@ -40,9 +40,9 @@ function getDurationMinutes(start: string, end: string): number {
 function formatDuration(mins: number): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
-  if (h > 0 && m > 0) return `${h}ชม. ${m}น.`;
-  if (h > 0) return `${h}ชม.`;
-  return `${m}น.`;
+  if (h > 0 && m > 0) return `${h} ชม. ${m} น.`;
+  if (h > 0) return `${h} ชม.`;
+  return `${m} น.`;
 }
 
 const EMOJI_OPTIONS = ['📋', '😴', '🤒', '🏕️', '💪', '👨‍👩‍👧‍👦', '📚', '🎉', '🧘', '☕', '🏠', '🔥', '⚡', '🌟', '🎯', '🧠'];
