@@ -1223,27 +1223,24 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                       <button onClick={(e) => { e.stopPropagation(); showDeleteSlotConfirm(startingSlot.id); }} className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500"><Trash2 className="w-3 h-3" /></button>
                       <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                     </div>
-                    {isExpanded && (
-                      <div className="border-t border-slate-100 px-2 py-1.5 space-y-0.5">
-                        {slotTasks.map(task => {
-                          const checked = checkedTasks.has(task.id);
-                          return (
-                            <div key={task.id} className={`px-2 py-1.5 rounded-lg hover:bg-slate-50 ${checked ? 'opacity-40' : ''}`}>
-                              <div className="flex items-center gap-2">
-                                <div onClick={() => toggleCheck(task.id, startingSlot.startTime, startingSlot.endTime)} className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
-                                  {checked ? <CheckCircle2 className={`w-4 h-4 ${colors.plannerText}`} /> : <Circle className={`w-4 h-4 ${colors.plannerText} opacity-30`} />}
-                                  <span className={`text-[13px] font-bold flex-1 truncate ${checked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{task.title}</span>
-                                </div>
-                                <button onClick={() => showDeleteTaskConfirm(task.id, startingSlot.id)} className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500"><Trash2 className="w-3 h-3" /></button>
-                              </div>
+                    {/* Always show tasks (no expand needed) */}
+                    <div className="border-t border-slate-100 px-2 py-1 space-y-0.5">
+                      {slotTasks.length > 0 ? slotTasks.map(task => {
+                        const checked = checkedTasks.has(task.id);
+                        return (
+                          <div key={task.id} className={`flex items-center gap-1.5 px-1 py-1 rounded hover:bg-slate-50 ${checked ? 'opacity-40' : ''}`}>
+                            <div onClick={() => toggleCheck(task.id, startingSlot.startTime, startingSlot.endTime)} className="flex items-center gap-1.5 flex-1 min-w-0 cursor-pointer">
+                              {checked ? <CheckCircle2 className={`w-3.5 h-3.5 ${colors.plannerText}`} /> : <Circle className={`w-3.5 h-3.5 ${colors.plannerText} opacity-30`} />}
+                              <span className={`text-xs flex-1 truncate ${checked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{task.title}</span>
                             </div>
-                          );
-                        })}
-                        <button onClick={() => openTaskPicker(startingSlot)} className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed text-xs font-bold ${colors.plannerBorder} ${colors.plannerText}`}>
-                          <Plus className="w-3.5 h-3.5" /> เพิ่ม Task
-                        </button>
-                      </div>
-                    )}
+                            <button onClick={() => showDeleteTaskConfirm(task.id, startingSlot.id)} className="p-0.5 rounded hover:bg-rose-50 text-slate-300 hover:text-rose-500"><Trash2 className="w-2.5 h-2.5" /></button>
+                          </div>
+                        );
+                      }) : null}
+                      <button onClick={() => openTaskPicker(startingSlot)} className={`w-full flex items-center justify-center gap-1 py-1 rounded border border-dashed text-[10px] font-bold ${colors.plannerBorder} ${colors.plannerText}`}>
+                        <Plus className="w-3 h-3" /> + task
+                      </button>
+                    </div>
                   </div>
                 </div>
                 </SortableGridItem>

@@ -60,7 +60,8 @@ const DEFAULT_GROUPS: TaskGroup[] = [
   { key: 'งานหลัก', label: 'งานหลัก', emoji: '💼', color: 'orange', icon: 'briefcase', size: 92, categoryKey: 'career' },
   { key: 'งานรอง', label: 'งานรอง', emoji: '📝', color: 'yellow', icon: 'pencil', size: 66, categoryKey: 'career' },
   // 💪 สุขภาพ
-  { key: 'สุขภาพ', label: 'สุขภาพ', emoji: '💪', color: 'green', icon: 'heartpulse', size: 62, categoryKey: 'health' },
+  { key: 'ออกกำลังกาย', label: 'ออกกำลังกาย', emoji: '🏋️', color: 'green', icon: 'dumbbell', size: 62, categoryKey: 'health' },
+  { key: 'สุขภาพ', label: 'สุขภาพ', emoji: '💪', color: 'teal', icon: 'heartpulse', size: 58, categoryKey: 'health' },
   { key: 'พักผ่อน', label: 'พักผ่อน', emoji: '☕', color: 'cyan', icon: 'coffee', size: 56, categoryKey: 'health' },
   // 🏠 กิจวัตรประจำวัน
   { key: 'กิจวัตร', label: 'กิจวัตรทั่วไป', emoji: '🌅', color: 'teal', icon: 'sun', size: 68, categoryKey: 'home' },
@@ -364,14 +365,44 @@ const App: React.FC = () => {
     // 🌅 กิจวัตรทั่วไป — เย็น
     { id: 'd-3', title: 'เย็น : อาบน้ำ', description: 'อาบน้ำหลังเลิกงาน ผ่อนคลายร่างกาย', priority: 2, completed: false, category: 'กิจวัตร', estimatedDuration: 20 },
     { id: 'd-24', title: 'เย็น : เตรียมตัวนอน', description: 'แปรงฟัน เปลี่ยนชุด ปิดหน้าจอ เตรียมพร้อมเข้านอน', priority: 2, completed: false, category: 'กิจวัตร', estimatedDuration: 15 },
+    // 🏋️ ออกกำลังกาย — ทุกวัน
+    { id: 'd-14', title: 'วิ่ง / เดินเร็ว / คาร์ดิโอ', description: 'วิ่งจ็อกกิ้ง เดินเร็ว หรือปั่นจักรยาน 30-45 นาที', priority: 7, completed: false, category: 'ออกกำลังกาย', estimatedDuration: 40 },
+    { id: 'd-60', title: 'เวทเทรนนิ่ง / ยกน้ำหนัก', description: 'ฝึกกล้ามเนื้อ ดัมเบล บาร์เบล หรือ bodyweight', priority: 4, completed: false, category: 'ออกกำลังกาย', dayTypes: ['workday'], estimatedDuration: 45 },
+    { id: 'd-61', title: 'ว่ายน้ำ', description: 'ว่ายน้ำ 30-45 นาที ดีต่อข้อต่อ หัวใจ และปอด', priority: 4, completed: false, category: 'ออกกำลังกาย', dayTypes: ['saturday', 'sunday'], estimatedDuration: 45 },
+    { id: 'd-62', title: 'เต้นแอโรบิก / ซุมบ้า', description: 'ออกกำลังกายแบบสนุก เผาผลาญแคลอรี่', priority: 2, completed: false, category: 'ออกกำลังกาย', estimatedDuration: 30 },
+    { id: 'd-63', title: 'ปั่นจักรยาน', description: 'ปั่นจักรยานออกกำลังกาย ในร่มหรือกลางแจ้ง', priority: 2, completed: false, category: 'ออกกำลังกาย', dayTypes: ['saturday', 'sunday'], estimatedDuration: 60 },
+    { id: 'd-64', title: 'เล่นกีฬา (แบด/ฟุตบอล/บาส)', description: 'เล่นกีฬาเป็นกลุ่ม สนุกและได้สังคม', priority: 4, completed: false, category: 'ออกกำลังกาย', dayTypes: ['saturday'], estimatedDuration: 90 },
     // 💪 สุขภาพ — ทุกวัน
-    { id: 'd-14', title: 'ออกกำลังกาย / วิ่ง / เดินเร็ว', description: 'คาร์ดิโอ 30-45 นาที หรือเดินรอบหมู่บ้าน', priority: 7, completed: false, category: 'สุขภาพ', estimatedDuration: 40 },
-    { id: 'd-15', title: 'ยืดเหยียด / โยคะ', description: 'ยืดกล้ามเนื้อ ผ่อนคลายร่างกาย', priority: 2, completed: false, category: 'สุขภาพ', estimatedDuration: 20 },
     { id: 'd-16', title: 'นั่งสมาธิ / หายใจลึก', description: 'นั่งสมาธิ 10-15 นาที ฝึกจิตให้สงบ', priority: 4, completed: false, category: 'สุขภาพ', estimatedDuration: 15 },
+    { id: 'd-15', title: 'ยืดเหยียด / โยคะ', description: 'ยืดกล้ามเนื้อ โยคะเบาๆ ป้องกันการบาดเจ็บ', priority: 2, completed: false, category: 'สุขภาพ', estimatedDuration: 20 },
     // 🌅 กิจวัตรทั่วไป — กลางวัน
     { id: 'd-21', title: 'เที่ยง : พักเที่ยง / กินข้าวกลางวัน', description: 'กินข้าว พักสมอง เดินเล่นสั้นๆ', priority: 4, completed: false, category: 'กิจวัตร', estimatedDuration: 60 },
     // ☕ พักผ่อน — ทุกวัน
-    { id: 'd-22', title: 'พักผ่อน / งานอดิเรก', description: 'ดูซีรีส์ เล่นเกม ฟังเพลง หรือพักสายตา', priority: 2, completed: false, category: 'พักผ่อน', estimatedDuration: 30 },
+    // ☕ พักผ่อน — เรียงจากทำบ่อยสุด → น้อย (ค่าเฉลี่ยคนทั่วไป)
+    // ทุกวัน / เกือบทุกวัน
+    { id: 'd-75', title: 'ดูคลิป / เลื่อนฟีด / TikTok', description: 'ดูคลิปสั้น เลื่อนฟีดผ่อนคลาย', priority: 2, completed: false, category: 'พักผ่อน', estimatedDuration: 30 },
+    { id: 'd-69', title: 'ฟังเพลง / Podcast', description: 'ฟังเพลงผ่อนคลาย หรือ podcast ที่สนใจ', priority: 2, completed: false, category: 'พักผ่อน', estimatedDuration: 30 },
+    { id: 'd-22', title: 'ดูซีรีส์ / ดูหนัง', description: 'ดูซีรีส์หรือหนังที่ชอบ ปล่อยสมองให้ว่าง', priority: 2, completed: false, category: 'พักผ่อน', estimatedDuration: 60 },
+    { id: 'd-74', title: 'นั่งเล่น / จิบกาแฟ / ชิลล์', description: 'นั่งเล่นเฉยๆ จิบกาแฟ ชิลล์ไม่ทำอะไร', priority: 2, completed: false, category: 'พักผ่อน', estimatedDuration: 30 },
+    { id: 'd-73', title: 'นอนพักสายตา / พักกลางวัน', description: 'พักสายตา 15-20 นาที หลับตาพัก รีเซ็ตพลังงาน', priority: 2, completed: false, category: 'พักผ่อน', estimatedDuration: 20 },
+    { id: 'd-70', title: 'เล่นเกม', description: 'เล่นเกมมือถือ คอนโซล หรือบอร์ดเกม', priority: 2, completed: false, category: 'พักผ่อน', estimatedDuration: 60 },
+    { id: 'd-71', title: 'อ่านนิยาย / มังงะ / การ์ตูน', description: 'อ่านเพื่อผ่อนคลาย ไม่ใช่เพื่อเรียนรู้', priority: 2, completed: false, category: 'พักผ่อน', estimatedDuration: 30 },
+    // สัปดาห์ละ 1-3 ครั้ง
+    { id: 'd-81', title: 'เดินเล่นสวนสาธารณะ / สวนสุขภาพ', description: 'เดินเล่นชิลล์ สูดอากาศ ผ่อนคลายในสวน', priority: 2, completed: false, category: 'พักผ่อน', estimatedDuration: 60 },
+    { id: 'd-83', title: 'ไปคาเฟ่ / ร้านกาแฟ', description: 'นั่งทำงานในคาเฟ่ หรือแค่ไปนั่งชิลล์', priority: 2, completed: false, category: 'พักผ่อน', estimatedDuration: 90 },
+    { id: 'd-77', title: 'ทำอาหาร / ทำขนม', description: 'ทำอาหารที่ชอบ ลองเมนูใหม่ ทำขนมเค้ก', priority: 2, completed: false, category: 'พักผ่อน', dayTypes: ['saturday', 'sunday'], estimatedDuration: 60 },
+    { id: 'd-82', title: 'เดินตลาด / ตลาดนัด / ช้อปปิ้ง', description: 'เดินตลาด ดูของ กินขนม เปลี่ยนบรรยากาศ', priority: 2, completed: false, category: 'พักผ่อน', dayTypes: ['saturday', 'sunday'], estimatedDuration: 120 },
+    { id: 'd-72', title: 'ทำสวน / ดูแลต้นไม้', description: 'รดน้ำต้นไม้ ปลูกผัก ดูแลสวน ผ่อนคลายจิตใจ', priority: 2, completed: false, category: 'พักผ่อน', dayTypes: ['saturday', 'sunday'], estimatedDuration: 30 },
+    { id: 'd-33', title: 'งานอดิเรก / DIY / งานฝีมือ', description: 'ประดิษฐ์ เย็บปักถักร้อย ต่อโมเดล งานครีเอทีฟ', priority: 2, completed: false, category: 'พักผ่อน', dayTypes: ['saturday', 'sunday'], estimatedDuration: 90 },
+    // เดือนละ 1-2 ครั้ง
+    { id: 'd-84', title: 'ไปดูหนังโรง', description: 'ดูหนังใหม่ในโรงหนัง ป๊อปคอร์น', priority: 2, completed: false, category: 'พักผ่อน', dayTypes: ['saturday', 'sunday'], estimatedDuration: 180 },
+    { id: 'd-86', title: 'ไปสปา / นวดผ่อนคลาย', description: 'นวดตัว นวดเท้า ผ่อนคลายกล้ามเนื้อ', priority: 2, completed: false, category: 'พักผ่อน', dayTypes: ['saturday', 'sunday'], estimatedDuration: 120 },
+    { id: 'd-78', title: 'วาดรูป / ระบายสี / ถ่ายรูป', description: 'วาดรูป สเก็ตช์ ถ่ายรูปสวยๆ งานศิลปะ', priority: 2, completed: false, category: 'พักผ่อน', dayTypes: ['saturday', 'sunday'], estimatedDuration: 60 },
+    // นานๆ ครั้ง (ไตรมาส/ปี)
+    { id: 'd-79', title: 'เที่ยวทะเล', description: 'ไปทะเล เล่นน้ำ นั่งชิลล์ริมหาด', priority: 2, completed: false, category: 'พักผ่อน', dayTypes: ['saturday', 'sunday'], estimatedDuration: 480 },
+    { id: 'd-80', title: 'เที่ยวภูเขา / น้ำตก', description: 'เดินป่า ชมธรรมชาติ หนีความวุ่นวาย', priority: 2, completed: false, category: 'พักผ่อน', dayTypes: ['saturday', 'sunday'], estimatedDuration: 480 },
+    { id: 'd-85', title: 'ขับรถเที่ยว / Road Trip', description: 'ขับรถเที่ยวชมวิว แวะจุดน่าสนใจ', priority: 2, completed: false, category: 'พักผ่อน', dayTypes: ['saturday', 'sunday'], estimatedDuration: 480 },
+    { id: 'd-87', title: 'ตั้งแคมป์ / ปิคนิค', description: 'ตั้งแคมป์ ปิคนิคในสวน ใกล้ชิดธรรมชาติ', priority: 2, completed: false, category: 'พักผ่อน', dayTypes: ['saturday', 'sunday'], estimatedDuration: 480 },
     // 🌅 กิจวัตรทั่วไป — มื้อเย็น
     { id: 'd-17', title: 'เย็น : กินข้าวเย็น', description: 'กินข้าวเย็น อาจกินกับครอบครัว', priority: 7, completed: false, category: 'กิจวัตร', estimatedDuration: 30 },
     // 👨‍👩‍👧 ครอบครัว — ทุกวัน (เย็น)
@@ -405,10 +436,9 @@ const App: React.FC = () => {
     { id: 'd-32', title: 'กินข้าวเย็นครอบครัว / พูดคุยสัปดาห์หน้า', description: 'กินข้าวด้วยกัน คุยเรื่องสัปดาห์หน้า', priority: 7, completed: false, category: 'ครอบครัว', dayTypes: ['sunday'], estimatedDuration: 60 },
 
     // ===== เสาร์+อาทิตย์ (weekend) =====
-    { id: 'd-33', title: 'พักผ่อนเต็มที่ / งานอดิเรก', description: 'ดูหนัง เล่นเกม ทำสวน หรืออะไรก็ได้ที่ชอบ', priority: 2, completed: false, category: 'พักผ่อน', dayTypes: ['saturday', 'sunday'], estimatedDuration: 90 },
 
     // ===== ⚡ งานด่วน — เรื่องเร่งด่วนหลากหลายด้าน =====
-    { id: 'd-19', title: 'จ่ายบิล / ค่าน้ำค่าไฟ', description: 'ตรวจสอบและชำระค่าใช้จ่ายรายเดือน', priority: 7, completed: false, category: 'งานด่วน', dayTypes: ['workday'], estimatedDuration: 30 },
+
     { id: 'd-45', title: 'แก้ปัญหาเร่งด่วนที่ทำงาน', description: 'งาน bug / ลูกค้าร้องเรียน / ระบบล่ม ต้องจัดการทันที', priority: 7, completed: false, category: 'งานด่วน', dayTypes: ['workday'], estimatedDuration: 60 },
     { id: 'd-46', title: 'ติดต่อเรื่องด่วน (โทร/ส่งข้อความ)', description: 'โทรหาคนที่ต้องติดต่อด่วน ตอบข้อความสำคัญ', priority: 7, completed: false, category: 'งานด่วน', estimatedDuration: 15 },
     { id: 'd-47', title: 'ส่งเอกสาร / งานก่อน Deadline', description: 'เอกสารสำคัญที่ต้องส่งภายในวันนี้ หรือใกล้ deadline', priority: 7, completed: false, category: 'งานด่วน', dayTypes: ['workday'], estimatedDuration: 45 },
@@ -1002,7 +1032,7 @@ const App: React.FC = () => {
       case 'projects': return <Suspense fallback={<LazyFallback />}><ProjectManager projects={projects} setProjects={setProjects} tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} onImmediateSave={handleImmediateSave} /></Suspense>;
       case 'expenses': return <Suspense fallback={<LazyFallback />}><ExpenseTracker expenses={expenses} setExpenses={setExpenses} balanceItems={balanceItems} setBalanceItems={setBalanceItems} /></Suspense>;
       case 'diary': return <Suspense fallback={<LazyFallback />}><DiaryView userId={user!.uid} searchQuery={diarySearch} /></Suspense>;
-      case 'templates': return <Suspense fallback={<LazyFallback />}><TemplateSettings taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} onImmediateSave={handleImmediateSave} /></Suspense>;
+      case 'templates': return <Suspense fallback={<LazyFallback />}><TemplateSettings taskGroups={taskGroups} tasks={tasks} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} onImmediateSave={handleImmediateSave} /></Suspense>;
       default: return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} />;
     }
   };

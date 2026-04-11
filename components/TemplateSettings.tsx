@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { TaskGroup, TimeSlot, ScheduleTemplates, CustomScheduleTemplate, GROUP_COLORS, getScheduleForDay, DEFAULT_CATEGORIES, Category, CLEAR_OVERRIDE } from '../types';
+import { TaskGroup, Task, TimeSlot, ScheduleTemplates, CustomScheduleTemplate, GROUP_COLORS, getScheduleForDay, DEFAULT_CATEGORIES, Category, CLEAR_OVERRIDE } from '../types';
 import { ChevronDown, Plus, Pencil, Trash2, X, GripVertical, Save, AlertTriangle, Loader2, Layers, RotateCcw } from 'lucide-react';
 import TimePicker from './TimePicker';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
@@ -68,13 +68,14 @@ const SortableSlotItem: React.FC<{ id: string; children: React.ReactNode }> = ({
 
 interface TemplateSettingsProps {
   taskGroups: TaskGroup[];
+  tasks?: Task[];
   scheduleTemplates: ScheduleTemplates;
   setScheduleTemplates: React.Dispatch<React.SetStateAction<ScheduleTemplates>>;
   onImmediateSave?: () => Promise<void>;
 }
 
 const TemplateSettings: React.FC<TemplateSettingsProps> = ({
-  taskGroups, scheduleTemplates, setScheduleTemplates, onImmediateSave,
+  taskGroups, tasks = [], scheduleTemplates, setScheduleTemplates, onImmediateSave,
 }) => {
   // Active tab: "0"-"6" for day, custom template ID for custom
   const todayDow = new Date().getDay();
@@ -643,6 +644,11 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({
                         </button>
                         <button onClick={() => setConfirmDeleteSlotId(slot.id)} className="p-1 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-500">
                           <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <div className="border-t border-slate-100 px-2 py-1">
+                        <button className={`w-full flex items-center justify-center gap-1 py-1 rounded border border-dashed text-[10px] font-bold ${colors.plannerBorder} ${colors.plannerText}`}>
+                          <Plus className="w-3 h-3" /> + task
                         </button>
                       </div>
                     </div>
