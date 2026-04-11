@@ -844,17 +844,16 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
         return (
           <div className="mb-3 animate-fadeIn">
             {/* Tabs */}
-            <div className="flex items-end gap-0.5 px-1">
+            <div className="flex items-end gap-0.5">
               {/* หมวดกิจกรรม tab (first) */}
               <button
                 onClick={() => setActiveQuickTab('_categories')}
-                className={`flex items-center gap-1.5 px-3 pt-2 pb-2 rounded-t-xl border border-b-0 text-xs font-black transition-all ${
+                className={`flex-1 whitespace-nowrap text-center px-1 pt-2 pb-2 rounded-t-xl border border-b-0 text-xs font-black transition-all ${
                   effectiveTab === '_categories'
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-600 relative z-10 -mb-px pb-2.5'
-                    : 'bg-slate-100/60 border-slate-200/60 text-slate-400 hover:text-slate-500 scale-[0.97] origin-bottom'
+                    ? 'bg-blue-50 border-blue-200 text-blue-600 relative z-10 -mb-px pb-2.5'
+                    : 'bg-slate-100/60 border-slate-200/60 text-blue-400 hover:text-blue-500 scale-[0.97] origin-bottom'
                 }`}
               >
-                <span className="text-sm">📂</span>
                 หมวดกิจกรรม
               </button>
               {/* งานด่วน / นัดหมาย tabs */}
@@ -867,16 +866,15 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                   <button
                     key={g.key}
                     onClick={() => setActiveQuickTab(g.key)}
-                    className={`flex items-center gap-1.5 px-3 pt-2 pb-2 rounded-t-xl border border-b-0 text-xs font-black transition-all ${
+                    className={`flex-1 whitespace-nowrap flex items-center justify-center gap-1 px-1 pt-2 pb-2 rounded-t-xl border border-b-0 text-xs font-black transition-all ${
                       isActive
-                        ? `${c.bg} ${c.border} ${c.text} relative z-10 -mb-px pb-2.5`
-                        : `bg-slate-100/60 border-slate-200/60 text-slate-400 hover:text-slate-500 scale-[0.97] origin-bottom`
+                        ? 'bg-blue-50 border-blue-200 text-blue-600 relative z-10 -mb-px pb-2.5'
+                        : 'bg-slate-100/60 border-slate-200/60 text-blue-400 hover:text-blue-500 scale-[0.97] origin-bottom'
                     }`}
                   >
-                    <span className="text-sm">{g.emoji}</span>
                     {g.label}
                     {count > 0 && (
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? c.badge : 'bg-slate-200 text-slate-500'}`}>
+                      <span className={`text-[9px] font-bold px-1 py-0.5 rounded-full ${isActive ? 'bg-blue-200 text-blue-700' : 'bg-slate-200 text-slate-500'}`}>
                         {count}
                       </span>
                     )}
@@ -886,15 +884,14 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
               {/* อย่าลืมจ่าย tab */}
               <button
                 onClick={() => setActiveQuickTab('_bills')}
-                className={`flex items-center gap-1.5 px-3 pt-2 pb-2 rounded-t-xl border border-b-0 text-xs font-black transition-all ${
+                className={`flex-1 whitespace-nowrap flex items-center justify-center gap-1 px-1 pt-2 pb-2 rounded-t-xl border border-b-0 text-xs font-black transition-all ${
                   effectiveTab === '_bills'
-                    ? 'bg-amber-50 border-amber-200 text-amber-600 relative z-10 -mb-px pb-2.5'
-                    : 'bg-slate-100/60 border-slate-200/60 text-slate-400 hover:text-slate-500 scale-[0.97] origin-bottom'
+                    ? 'bg-blue-50 border-blue-200 text-blue-600 relative z-10 -mb-px pb-2.5'
+                    : 'bg-slate-100/60 border-slate-200/60 text-blue-400 hover:text-blue-500 scale-[0.97] origin-bottom'
                 }`}
               >
-                <span className="text-sm">💸</span>
                 อย่าลืมจ่าย
-                {(() => { const c = expenses.filter(e => e.type === 'recurring' && e.flow === 'expense').length; return c > 0 ? <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${effectiveTab === '_bills' ? 'bg-amber-200 text-amber-700' : 'bg-slate-200 text-slate-500'}`}>{c}</span> : null; })()}
+                {(() => { const c = expenses.filter(e => e.type === 'recurring' && e.flow === 'expense').length; return c > 0 ? <span className={`text-[9px] font-bold px-1 py-0.5 rounded-full ${effectiveTab === '_bills' ? 'bg-blue-200 text-blue-700' : 'bg-slate-200 text-slate-500'}`}>{c}</span> : null; })()}
               </button>
             </div>
 

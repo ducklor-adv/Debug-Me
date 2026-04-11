@@ -1597,29 +1597,11 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
               <span className="text-[10px] text-slate-400">(คำนวณอัตโนมัติ)</span>
             </div>
 
-            {/* 4. Category selector — หมวดหมู่ */}
+            {/* 4. Group task selector — กลุ่มงาน */}
             <div>
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">หมวดหมู่</label>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">กลุ่มงาน</label>
               <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {DEFAULT_CATEGORIES.map(cat => {
-                  const firstGroup = taskGroups.find(g => g.categoryKey === cat.key);
-                  const clr = GROUP_COLORS[firstGroup?.color || categoryColorMap[cat.key] || 'orange'] || GROUP_COLORS.orange;
-                  const isActive = slotForm.groupKey === cat.key;
-                  return (
-                    <button
-                      key={cat.key}
-                      onClick={() => setSlotForm(f => ({ ...f, groupKey: cat.key }))}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                        isActive
-                          ? `${clr.bg} ${clr.border} ${clr.text} ring-2 ${clr.ring}`
-                          : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
-                      }`}
-                    >
-                      {cat.emoji} {cat.label}
-                    </button>
-                  );
-                })}
-                {taskGroups.filter(g => !g.categoryKey).map(g => {
+                {taskGroups.map(g => {
                   const clr = GROUP_COLORS[g.color] || GROUP_COLORS.orange;
                   const isActive = slotForm.groupKey === g.key;
                   return (

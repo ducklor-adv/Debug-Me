@@ -879,23 +879,11 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({
                 <span className="text-[11px] font-bold text-slate-500 w-16">สิ้นสุด</span>
                 <span className="text-sm font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg">{slotForm.endTime}</span>
               </div>
-              {/* Category selector */}
+              {/* Group task selector */}
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-slate-500">หมวดหมู่</label>
+                <label className="text-[11px] font-bold text-slate-500">กลุ่มงาน</label>
                 <div className="flex flex-wrap gap-1.5">
-                  {DEFAULT_CATEGORIES.map(cat => {
-                    const isSelected = slotForm.groupKey === cat.key;
-                    return (
-                      <button key={cat.key} onClick={() => setSlotForm(f => ({ ...f, groupKey: cat.key }))}
-                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
-                          isSelected ? 'bg-emerald-500 text-white ring-2 ring-emerald-300 ring-offset-1' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                        }`}>
-                        <span>{cat.emoji}</span> {cat.label}
-                      </button>
-                    );
-                  })}
-                  {/* Uncategorized groups */}
-                  {taskGroups.filter(g => !g.categoryKey).map(g => {
+                  {taskGroups.map(g => {
                     const isSelected = slotForm.groupKey === g.key;
                     const gc = GROUP_COLORS[g.color] || GROUP_COLORS.orange;
                     return (
