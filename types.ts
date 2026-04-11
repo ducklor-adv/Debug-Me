@@ -423,7 +423,7 @@ export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   { key: 'health', label: 'ยารักษาโรค', emoji: '💊', color: 'rose', flow: 'expense', group: 'จำเป็น' },
 
   // ══ ค่าใช้จ่ายอื่นๆ (เรียงจากจำเป็น) ══
-  { key: 'transport', label: 'เดินทาง', emoji: '🚗', color: 'blue', flow: 'expense', group: 'อื่นๆ' },
+  { key: 'transport', label: 'เดินทาง', emoji: '🚗', color: 'blue', flow: 'expense', group: 'จำเป็น' },
   { key: 'family', label: 'ครอบครัว/ให้พ่อแม่', emoji: '👨‍👩‍👧', color: 'rose', flow: 'expense', group: 'อื่นๆ' },
   { key: 'subscription', label: 'Subscription', emoji: '📺', color: 'violet', flow: 'expense', group: 'อื่นๆ' },
   { key: 'social', label: 'สังคม/งานเลี้ยง', emoji: '🤝', color: 'green', flow: 'expense', group: 'อื่นๆ' },

@@ -1,13 +1,90 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Task, TaskAttachment, SubTask, Recurrence, TaskGroup, GROUP_COLORS, LocationReminder, DEFAULT_CATEGORIES, PRIORITY_DEFAULT, getPriorityMeta } from '../types';
+import { Task, TaskAttachment, SubTask, Recurrence, TaskGroup, GROUP_COLORS, LocationReminder, DEFAULT_CATEGORIES, PRIORITY_DEFAULT, getPriorityMeta, Expense, EXPENSE_CATEGORIES, EXPENSE_GROUPS } from '../types';
 import { Plus, Trash2, CheckCircle2, Circle, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning, Handshake, GripVertical, ListTodo, AlertTriangle, Loader2, ChevronDown } from 'lucide-react';
 import TaskEditModal from './TaskEditModal';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { arrayMove } from '@dnd-kit/sortable';
+
+// Default recurring bills — common expenses grouped by financial statement categories
+const DEFAULT_BILLS: { title: string; amount: number; category: string; group: string; recurrence: string; dueDay?: number }[] = [
+  // ═══════════════════════════════════════
+  // รายวัน
+  // ═══════════════════════════════════════
+  // 📌 จำเป็น
+  { title: 'ค่าอาหาร 3 มื้อ', amount: 300, category: 'food', group: 'จำเป็น', recurrence: 'daily' },
+  { title: 'ค่ากาแฟ/ของว่าง', amount: 50, category: 'food_extra', group: 'จำเป็น', recurrence: 'daily' },
+  // 📋 อื่นๆ
+  { title: 'ค่าเดินทาง/น้ำมัน/ทางด่วน', amount: 150, category: 'transport', group: 'จำเป็น', recurrence: 'daily' },
+
+  // ═══════════════════════════════════════
+  // รายเดือน
+  // ═══════════════════════════════════════
+  // 📌 จำเป็น — ที่อยู่อาศัย
+  { title: 'ค่าเช่าบ้าน/ผ่อนบ้าน', amount: 8000, category: 'housing', group: 'จำเป็น', recurrence: 'monthly', dueDay: 1 },
+  { title: 'ค่าไฟฟ้า', amount: 1500, category: 'housing', group: 'จำเป็น', recurrence: 'monthly', dueDay: 15 },
+  { title: 'ค่าน้ำประปา', amount: 200, category: 'housing', group: 'จำเป็น', recurrence: 'monthly', dueDay: 15 },
+  { title: 'ค่าส่วนกลาง/นิติบุคคล', amount: 1500, category: 'housing', group: 'จำเป็น', recurrence: 'monthly', dueDay: 5 },
+  // 📌 จำเป็น — สุขภาพ
+  { title: 'ค่ายา/อาหารเสริม', amount: 500, category: 'health', group: 'จำเป็น', recurrence: 'monthly' },
+  // 📋 อื่นๆ — สื่อสาร
+  { title: 'ค่าอินเทอร์เน็ตบ้าน', amount: 600, category: 'phone', group: 'อื่นๆ', recurrence: 'monthly', dueDay: 25 },
+  { title: 'ค่ามือถือ (เบอร์หลัก)', amount: 500, category: 'phone', group: 'อื่นๆ', recurrence: 'monthly', dueDay: 25 },
+  // 📋 อื่นๆ — Subscription
+  { title: 'ค่า Netflix/YouTube/Spotify', amount: 350, category: 'subscription', group: 'อื่นๆ', recurrence: 'monthly', dueDay: 1 },
+  { title: 'ค่า Cloud/iCloud/Google One', amount: 100, category: 'subscription', group: 'อื่นๆ', recurrence: 'monthly', dueDay: 1 },
+  // 📋 อื่นๆ — ครอบครัว/สังคม
+  { title: 'ให้เงินพ่อแม่', amount: 3000, category: 'family', group: 'อื่นๆ', recurrence: 'monthly', dueDay: 1 },
+  { title: 'ค่าเรียนลูก/ค่าเลี้ยงดู', amount: 3000, category: 'family', group: 'อื่นๆ', recurrence: 'monthly', dueDay: 1 },
+  // 📋 อื่นๆ — พัฒนาตัวเอง
+  { title: 'ค่าคอร์สเรียน/สัมมนา', amount: 500, category: 'self_dev', group: 'อื่นๆ', recurrence: 'monthly' },
+  // 🏦 ชำระหนี้
+  { title: 'ค่าผ่อนบ้าน (สินเชื่อ)', amount: 10000, category: 'debt_mortgage', group: 'ชำระหนี้', recurrence: 'monthly', dueDay: 5 },
+  { title: 'ค่าผ่อนรถ', amount: 7000, category: 'debt_mortgage', group: 'ชำระหนี้', recurrence: 'monthly', dueDay: 5 },
+  { title: 'ค่าบัตรเครดิต', amount: 5000, category: 'debt_credit', group: 'ชำระหนี้', recurrence: 'monthly', dueDay: 10 },
+  { title: 'ค่าสินเชื่อส่วนบุคคล', amount: 3000, category: 'debt_loan', group: 'ชำระหนี้', recurrence: 'monthly', dueDay: 15 },
+  { title: 'ค่าผ่อนมือถือ/อุปกรณ์', amount: 1000, category: 'debt_loan', group: 'ชำระหนี้', recurrence: 'monthly', dueDay: 20 },
+  // 📊 ลงทุน/ออม
+  { title: 'เงินออมอัตโนมัติ', amount: 3000, category: 'saving', group: 'ลงทุน', recurrence: 'monthly', dueDay: 1 },
+  { title: 'กองทุนรวม/DCA', amount: 2000, category: 'invest_out', group: 'ลงทุน', recurrence: 'monthly', dueDay: 1 },
+  { title: 'ค่าประกันสุขภาพ (รายเดือน)', amount: 1500, category: 'insurance', group: 'ลงทุน', recurrence: 'monthly', dueDay: 1 },
+  { title: 'กองทุนสำรองเลี้ยงชีพ/SSF/RMF', amount: 2000, category: 'saving', group: 'ลงทุน', recurrence: 'monthly', dueDay: 1 },
+
+  // ═══════════════════════════════════════
+  // รายไตรมาส
+  // ═══════════════════════════════════════
+  // 📌 จำเป็น
+  { title: 'ค่าบำรุงรักษาคอนโด/หมู่บ้าน (รายไตรมาส)', amount: 3000, category: 'housing', group: 'จำเป็น', recurrence: 'quarterly' },
+  { title: 'ค่าตรวจสุขภาพ/ทันตแพทย์', amount: 1500, category: 'health', group: 'จำเป็น', recurrence: 'quarterly' },
+  // 📋 อื่นๆ
+  { title: 'ค่าซ่อมบำรุงรถ/เช็คระยะ', amount: 2500, category: 'repair', group: 'อื่นๆ', recurrence: 'quarterly' },
+  { title: 'ค่าทำความสะอาดบ้าน (ใหญ่)', amount: 1500, category: 'repair', group: 'อื่นๆ', recurrence: 'quarterly' },
+  { title: 'ค่าสังสรรค์/งานเลี้ยง', amount: 2000, category: 'social', group: 'อื่นๆ', recurrence: 'quarterly' },
+
+  // ═══════════════════════════════════════
+  // รายปี
+  // ═══════════════════════════════════════
+  // 📌 จำเป็น
+  { title: 'ค่าภาษีที่ดิน/สิ่งปลูกสร้าง', amount: 2000, category: 'housing', group: 'จำเป็น', recurrence: 'yearly' },
+  { title: 'ค่าเสื้อผ้า/รองเท้า (ซื้อใหม่)', amount: 5000, category: 'clothing', group: 'จำเป็น', recurrence: 'yearly' },
+  { title: 'ค่าตรวจสุขภาพประจำปี', amount: 3000, category: 'health', group: 'จำเป็น', recurrence: 'yearly' },
+  // 📋 อื่นๆ
+  { title: 'ต่อทะเบียนรถ/ภาษีรถ', amount: 3000, category: 'transport', group: 'จำเป็น', recurrence: 'yearly' },
+  { title: 'ค่าต่ออายุสมาชิก/ลิขสิทธิ์ซอฟต์แวร์', amount: 3000, category: 'subscription', group: 'อื่นๆ', recurrence: 'yearly' },
+  { title: 'ค่าซ่อมแซมบ้าน/เครื่องใช้ไฟฟ้า', amount: 5000, category: 'repair', group: 'อื่นๆ', recurrence: 'yearly' },
+  { title: 'ค่าท่องเที่ยว/พักผ่อนประจำปี', amount: 15000, category: 'luxury', group: 'อื่นๆ', recurrence: 'yearly' },
+  { title: 'ค่าของขวัญ/งานบุญ/กฐิน', amount: 3000, category: 'social', group: 'อื่นๆ', recurrence: 'yearly' },
+  // 🏦 ชำระหนี้
+  { title: 'ค่าธรรมเนียมบัตรเครดิต (รายปี)', amount: 2000, category: 'debt_credit', group: 'ชำระหนี้', recurrence: 'yearly' },
+  // 📊 ลงทุน/ออม
+  { title: 'ต่อ พ.ร.บ. + ประกันรถชั้น 1', amount: 15000, category: 'insurance', group: 'ลงทุน', recurrence: 'yearly' },
+  { title: 'ค่าประกันชีวิต (รายปี)', amount: 15000, category: 'insurance', group: 'ลงทุน', recurrence: 'yearly' },
+  { title: 'ค่าประกันอัคคีภัย/บ้าน', amount: 3000, category: 'insurance', group: 'ลงทุน', recurrence: 'yearly' },
+  { title: 'ภาษีเงินได้บุคคลธรรมดา', amount: 10000, category: 'other_expense', group: 'อื่นๆ', recurrence: 'yearly' },
+];
 
 // Custom SVG icons (lucide style: 24x24 viewBox, stroke-based)
 const BroomIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -82,6 +159,7 @@ interface TaskManagerProps {
   onImmediateSave?: (updatedTasks?: Task[], updatedDeletedIds?: string[]) => Promise<void>;
   initialGroupKey?: string | null;
   defaultTasks?: Task[];
+  expenses?: Expense[];
 }
 
 // Derive style from a TaskGroup using GROUP_COLORS
@@ -162,7 +240,7 @@ const emptyForm = (): Omit<Task, 'id'> => ({
   dayTypes: ['workday', 'saturday', 'sunday'],
 });
 
-const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups, deletedDefaultTaskIds, setDeletedDefaultTaskIds, onImmediateSave, initialGroupKey, defaultTasks = [] }) => {
+const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups, deletedDefaultTaskIds, setDeletedDefaultTaskIds, onImmediateSave, initialGroupKey, defaultTasks = [], expenses = [] }) => {
   // DnD sensors for task reordering
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -207,6 +285,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   const [initialAttachments, setInitialAttachments] = useState<TaskAttachment[]>([]);
   const [initialRecurrence, setInitialRecurrence] = useState<Recurrence | undefined>(undefined);
   const [activeQuickTab, setActiveQuickTab] = useState<string>('_categories');
+  const [activeBillsTab, setActiveBillsTab] = useState<string>('monthly');
 
   // Save status tracking
   const [taskSaveStatus, setTaskSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -842,6 +921,19 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                   </button>
                 );
               })}
+              {/* อย่าลืมจ่าย tab */}
+              <button
+                onClick={() => setActiveQuickTab('_bills')}
+                className={`flex items-center gap-1.5 px-3 pt-2 pb-2 rounded-t-xl border border-b-0 text-xs font-black transition-all ${
+                  effectiveTab === '_bills'
+                    ? 'bg-amber-50 border-amber-200 text-amber-600 relative z-10 -mb-px pb-2.5'
+                    : 'bg-slate-100/60 border-slate-200/60 text-slate-400 hover:text-slate-500 scale-[0.97] origin-bottom'
+                }`}
+              >
+                <span className="text-sm">💸</span>
+                อย่าลืมจ่าย
+                {(() => { const c = expenses.filter(e => e.type === 'recurring' && e.flow === 'expense').length; return c > 0 ? <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${effectiveTab === '_bills' ? 'bg-amber-200 text-amber-700' : 'bg-slate-200 text-slate-500'}`}>{c}</span> : null; })()}
+              </button>
             </div>
 
             {/* Content */}
@@ -881,6 +973,164 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                     );
                   })}
                 </div>
+              </div>
+            ) : effectiveTab === '_bills' ? (
+              <div className="rounded-b-xl border p-3 bg-amber-50 border-amber-200">
+                {/* Sub-tabs: รายวัน / รายเดือน / รายไตรมาส / รายปี */}
+                <div className="flex gap-1 mb-3">
+                  {([
+                    { key: 'daily', label: 'รายวัน', emoji: '📅' },
+                    { key: 'monthly', label: 'รายเดือน', emoji: '🗓️' },
+                    { key: 'quarterly', label: 'รายไตรมาส', emoji: '📊' },
+                    { key: 'yearly', label: 'รายปี', emoji: '🎯' },
+                  ] as const).map(tab => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setActiveBillsTab(tab.key)}
+                      className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                        activeBillsTab === tab.key
+                          ? 'bg-amber-500 text-white shadow-sm'
+                          : 'bg-white text-amber-600 border border-amber-200 hover:bg-amber-100'
+                      }`}
+                    >
+                      {tab.emoji} {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Recurring expenses filtered by recurrence type */}
+                {(() => {
+                  const recurrenceMap: Record<string, string> = { daily: 'daily', monthly: 'monthly', quarterly: 'quarterly', yearly: 'yearly' };
+                  const filtered = expenses.filter(e =>
+                    e.type === 'recurring' && e.flow === 'expense' && e.recurrence === recurrenceMap[activeBillsTab]
+                  );
+                  const catMap = new Map(EXPENSE_CATEGORIES.map(c => [c.key, c]));
+                  const now = new Date();
+                  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+                  // Show default suggestions if no user expenses for this recurrence
+                  const defaults = DEFAULT_BILLS.filter(b => b.recurrence === recurrenceMap[activeBillsTab]);
+                  const periodLabel = activeBillsTab === 'daily' ? 'วัน' : activeBillsTab === 'monthly' ? 'เดือน' : activeBillsTab === 'quarterly' ? 'ไตรมาส' : 'ปี';
+                  const groupEmojiMap: Record<string, string> = { 'จำเป็น': '📌', 'อื่นๆ': '📋', 'ชำระหนี้': '🏦', 'ลงทุน': '📊' };
+
+                  if (filtered.length === 0 && defaults.length > 0) {
+                    // Group defaults by financial group
+                    const defaultGrouped: Record<string, typeof defaults> = {};
+                    defaults.forEach(d => {
+                      if (!defaultGrouped[d.group]) defaultGrouped[d.group] = [];
+                      defaultGrouped[d.group].push(d);
+                    });
+                    return (
+                      <div className="space-y-2.5">
+                        <p className="text-[10px] font-bold text-amber-600 mb-1">💡 รายการแนะนำ — กดเพิ่มได้ที่หน้า Expenses</p>
+                        <div className="grid grid-cols-[2rem_1fr_auto_auto] items-center gap-x-2 px-1 pb-1 border-b border-amber-200 mb-1">
+                          <span className="text-[8px] font-bold text-amber-400 text-center">ครบ</span>
+                          <span className="text-[8px] font-bold text-amber-400">รายการ</span>
+                          <span className="text-[8px] font-bold text-amber-400 text-right w-16">จำนวน</span>
+                          <span className="text-[8px] font-bold text-amber-400 text-right w-20">จ่ายล่าสุด</span>
+                        </div>
+                        {EXPENSE_GROUPS.filter(g => defaultGrouped[g.key]?.length).map(group => (
+                          <div key={group.key}>
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="text-[10px]">{group.emoji}</span>
+                              <span className="text-[10px] font-bold text-amber-700">{group.label}</span>
+                              <div className="flex-1 h-px bg-amber-200" />
+                              <span className="text-[9px] font-bold text-amber-400">{defaultGrouped[group.key].reduce((s, e) => s + e.amount, 0).toLocaleString()}฿</span>
+                            </div>
+                            <div className="space-y-1">
+                              {defaultGrouped[group.key].map((d, i) => {
+                                const cat = catMap.get(d.category);
+                                return (
+                                  <div key={i} className="grid grid-cols-[2rem_1fr_auto_auto] items-center gap-x-2 px-1 py-1">
+                                    <span className="text-[9px] text-slate-400 text-center">{d.dueDay ? `${d.dueDay}` : '-'}</span>
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <span className="text-sm shrink-0">{cat?.emoji || '📦'}</span>
+                                      <span className="text-xs text-slate-600 truncate">{d.title}</span>
+                                      <span className="text-[10px] text-slate-300 shrink-0">({cat?.label})</span>
+                                    </div>
+                                    <span className="text-xs font-black text-amber-500 text-right w-16">{d.amount.toLocaleString()}฿</span>
+                                    <span className="text-[9px] text-slate-300 text-right w-20">-</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                        <div className="pt-1 border-t border-amber-200 flex justify-between items-center">
+                          <span className="text-[10px] text-amber-500">ประมาณ {defaults.length} รายการ</span>
+                          <span className="text-xs font-black text-amber-400">{defaults.reduce((s, e) => s + e.amount, 0).toLocaleString()}฿/{periodLabel}</span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="text-center py-6">
+                        <span className="text-3xl block mb-2">💸</span>
+                        <p className="text-xs text-slate-400">ไม่มีรายจ่ายประจำ{activeBillsTab === 'daily' ? 'วัน' : activeBillsTab === 'monthly' ? 'เดือน' : activeBillsTab === 'quarterly' ? 'ไตรมาส' : 'ปี'}</p>
+                      </div>
+                    );
+                  }
+
+                  // Group by expense group
+                  const grouped: Record<string, typeof filtered> = {};
+                  filtered.forEach(e => {
+                    const cat = catMap.get(e.category);
+                    const groupKey = cat?.group || 'อื่นๆ';
+                    if (!grouped[groupKey]) grouped[groupKey] = [];
+                    grouped[groupKey].push(e);
+                  });
+
+                  return (
+                    <div className="space-y-2">
+                      {EXPENSE_GROUPS.filter(g => grouped[g.key]?.length).map(group => (
+                        <div key={group.key}>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-[10px]">{group.emoji}</span>
+                            <span className="text-[10px] font-bold text-amber-700">{group.label}</span>
+                            <div className="flex-1 h-px bg-amber-200" />
+                          </div>
+                          <div className="space-y-1">
+                            {grouped[group.key].map(exp => {
+                              const cat = catMap.get(exp.category);
+                              const isPaidThisMonth = !!(exp.paidHistory?.[currentMonth]);
+                              return (
+                                <div key={exp.id} className={`grid grid-cols-[2rem_1fr_auto_auto] items-center gap-x-2 px-1 py-1 ${isPaidThisMonth ? 'opacity-50' : ''}`}>
+                                  <span className="text-[9px] text-slate-400 text-center">{exp.dueDay ? `${exp.dueDay}` : '-'}</span>
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="text-sm shrink-0">{cat?.emoji || '📦'}</span>
+                                    <span className={`text-xs truncate ${isPaidThisMonth ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{exp.title}</span>
+                                    <span className="text-[10px] text-slate-300 shrink-0">({cat?.label})</span>
+                                  </div>
+                                  <span className={`text-xs font-black text-right w-16 ${isPaidThisMonth ? 'text-emerald-500' : 'text-amber-600'}`}>
+                                    {exp.amount.toLocaleString()}฿
+                                  </span>
+                                  <span className="text-[9px] text-right w-20">
+                                    {(() => {
+                                      const history = exp.paidHistory ? Object.entries(exp.paidHistory).sort(([a], [b]) => b.localeCompare(a))[0] : null;
+                                      if (!history) return <span className="text-slate-300">-</span>;
+                                      const [month, detail] = history;
+                                      return <span className="text-emerald-500">{month} {detail.amount.toLocaleString()}฿</span>;
+                                    })()}
+                                  </span>
+                                  {isPaidThisMonth ? (
+                                    <span className="text-[9px] font-bold bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full">จ่ายแล้ว</span>
+                                  ) : (
+                                    <span className="text-[9px] font-bold bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full">รอจ่าย</span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                      <div className="pt-1 border-t border-amber-200 flex justify-between items-center">
+                        <span className="text-[10px] font-bold text-amber-700">รวม {filtered.length} รายการ</span>
+                        <span className="text-xs font-black text-amber-600">{filtered.reduce((s, e) => s + e.amount, 0).toLocaleString()}฿</span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             ) : activeGroup && activeColor ? (
               <div className={`rounded-b-xl border p-3 ${activeColor.bg} ${activeColor.border} rounded-t-xl`}>
