@@ -1525,8 +1525,8 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
       {/* Slot Editor Modal */}
       {isAddingSlot && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setIsAddingSlot(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-[90vw] max-w-sm p-5 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm overflow-y-auto p-4" onClick={() => setIsAddingSlot(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-[90vw] max-w-sm p-5 space-y-4 my-auto max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-black text-slate-800">
                 {editingSlot ? 'แก้ไข Slot' : 'เพิ่ม Slot ใหม่'}

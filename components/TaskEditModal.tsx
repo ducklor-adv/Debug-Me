@@ -1,6 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import TimePicker from './TimePicker';
 import { Task, TaskAttachment, SubTask, Recurrence, TaskGroup, GROUP_COLORS, DayType, PRIORITY_DEFAULT, PRIORITY_LEVELS, getPriorityMeta } from '../types';
 import {
   Plus, Trash2, CheckCircle2, Circle, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin,
@@ -376,8 +377,8 @@ const TaskEditModal: React.FC<TaskEditModalProps> = ({
                   <div>
                     <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">กำหนดเวลา</label>
                     <div className="grid grid-cols-2 gap-3">
-                      <div><span className="text-[10px] text-slate-400 font-bold block mb-1">เริ่ม</span><input type="time" value={form.startTime || ''} onChange={e => setForm({...form, startTime: e.target.value || undefined})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" /></div>
-                      <div><span className="text-[10px] text-slate-400 font-bold block mb-1">ถึง</span><input type="time" value={form.endTime || ''} onChange={e => setForm({...form, endTime: e.target.value || undefined})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" /></div>
+                      <TimePicker label="เริ่ม" value={form.startTime || '00:00'} onChange={v => setForm({...form, startTime: v || undefined})} />
+                      <TimePicker label="ถึง" value={form.endTime || '00:00'} onChange={v => setForm({...form, endTime: v || undefined})} />
                     </div>
                     <p className="text-[10px] text-slate-400 mt-1">เว้นว่าง = ไม่กำหนดเวลา</p>
                   </div>
