@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Task, TaskAttachment, SubTask, Recurrence, TaskGroup, GROUP_COLORS, LocationReminder, DEFAULT_CATEGORIES, PRIORITY_DEFAULT, getPriorityMeta, Expense, EXPENSE_CATEGORIES, EXPENSE_GROUPS } from '../types';
+import { Task, TaskAttachment, SubTask, Recurrence, TaskGroup, GROUP_COLORS, LocationReminder, DEFAULT_CATEGORIES, PRIORITY_DEFAULT, getPriorityMeta, Expense, EXPENSE_CATEGORIES, EXPENSE_GROUPS, PAYMENT_METHODS, PaymentMethod } from '../types';
 import { Plus, Trash2, CheckCircle2, Circle, X, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Square, Image, Paperclip, Save, Sun, Moon, Coffee, Code, FileText, Home, Wrench, Dumbbell, BookOpen, Brain, RefreshCw, Pencil, Heart, HeartPulse, Users, Zap, Briefcase, ShoppingCart, Star, Calendar, Clock, Target, TrendingUp, Lightbulb, Music, Gamepad2, Book, Utensils, Bike, Palette, Rocket, CloudLightning, Handshake, GripVertical, ListTodo, AlertTriangle, Loader2, ChevronDown } from 'lucide-react';
 import TaskEditModal from './TaskEditModal';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
@@ -279,6 +279,13 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   const [durationValue, setDurationValue] = useState<number>(0);
   const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
   const [bulkDeleteIds, setBulkDeleteIds] = useState<Set<string>>(new Set());
+  // Expense quick-add popup
+  const [expensePopup, setExpensePopup] = useState<{ category: string; title: string; recurrence: string; dueDay?: number } | null>(null);
+  const [expenseForm, setExpenseForm] = useState({
+    title: '', amount: '', date: new Date().toISOString().split('T')[0],
+    isRecurring: true, method: 'transfer' as PaymentMethod, notes: '', slipUrl: '',
+  });
+  const slipInputRef = React.useRef<HTMLInputElement>(null);
 
   // Form state (shared modal)
   const [formOpen, setFormOpen] = useState(false);
@@ -996,74 +1003,47 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                   };
 
                   // Render expense rows (shared between defaults and real)
+                  const isDaily = activeBillsTab === 'daily';
                   const renderExpenseRow = (exp: Expense) => {
                     const cat = catMap.get(exp.category);
                     const isPaid = !!(exp.paidHistory?.[currentMonth]);
                     const lastEntry = exp.paidHistory ? Object.entries(exp.paidHistory).sort(([a], [b]) => b.localeCompare(a))[0] : null;
                     const monthTotal = exp.paidHistory ? Object.entries(exp.paidHistory).filter(([k]) => k === currentMonth).reduce((s, [, v]) => s + v.amount, 0) : 0;
+                    // รายวันไม่ขีดฆ่า, รายอื่นขีดเฉพาะชื่อ
+                    const showStrike = isPaid && !isDaily;
                     return (
-                      <div key={exp.id} className={`flex items-center gap-1.5 px-1 py-1 ${isPaid ? 'opacity-50' : ''}`}>
-                        <span className="text-[9px] text-slate-400 w-5 text-center shrink-0">{exp.dueDay || '-'}</span>
+                      <div key={exp.id} className="flex items-center gap-1.5 px-1 py-1">
+                        <span className="text-[9px] text-slate-700 w-5 text-center shrink-0">{exp.dueDay || '-'}</span>
                         <span className="text-sm shrink-0">{cat?.emoji || '📦'}</span>
-                        <span className={`text-xs flex-1 truncate ${isPaid ? 'line-through text-slate-400' : 'text-slate-700'}`}>{exp.title}</span>
+                        <span className={`text-xs flex-1 truncate ${showStrike ? 'line-through text-slate-400' : 'text-slate-700'}`}>{exp.title}</span>
                         {isPaid ? (
                           <span className="text-[9px] text-emerald-500 shrink-0 w-6 text-center">✓</span>
                         ) : (
-                          <button onClick={() => handlePayNow(exp)} className="text-[9px] font-bold text-amber-500 hover:text-amber-700 shrink-0 w-6 text-center">+</button>
+                          <button onClick={() => { setExpensePopup({ category: exp.category, title: exp.title, recurrence: exp.recurrence || 'monthly', dueDay: exp.dueDay }); setExpenseForm({ title: exp.title, amount: String(exp.amount), date: new Date().toISOString().split('T')[0], isRecurring: true, method: (exp.paymentMethod || 'transfer') as PaymentMethod, notes: '', slipUrl: '' }); }} className="text-[9px] font-bold text-blue-500 hover:text-blue-700 shrink-0 w-6 text-center">+</button>
                         )}
-                        <span className="text-[9px] text-slate-600 shrink-0 w-16 text-right">{lastEntry ? `${lastEntry[0].slice(5)} ${lastEntry[1].amount.toLocaleString()}` : '-'}</span>
+                        {/* วันที่จ่าย */}
+                        <span className="text-[9px] text-slate-700 shrink-0 w-10 text-center">{(() => {
+                          const thisMonth = exp.paidHistory?.[currentMonth];
+                          if (!thisMonth) return '-';
+                          const d = new Date(thisMonth.paidAt);
+                          return `${d.getDate()}/${d.getMonth() + 1}`;
+                        })()}</span>
+                        <span className="text-[9px] text-slate-700 shrink-0 w-14 text-right">{lastEntry ? `${lastEntry[0].slice(5)} ${lastEntry[1].amount.toLocaleString()}` : '-'}</span>
                         <span className="text-[9px] text-slate-700 shrink-0 w-12 text-right">{monthTotal > 0 ? monthTotal.toLocaleString() : '-'}</span>
-                        <span className="text-[10px] text-slate-600 shrink-0 w-12 text-right">{exp.amount.toLocaleString()}</span>
+                        <span className="text-[10px] text-slate-700 shrink-0 w-12 text-right">{exp.amount.toLocaleString()}</span>
                       </div>
                     );
                   };
 
-                  if (filtered.length === 0 && defaults.length > 0) {
-                    return (
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-bold text-amber-600">💡 รายการแนะนำ — เพิ่มได้ที่หน้า Expenses</p>
-                        {/* Column headers */}
-                        <div className="flex items-center gap-1.5 px-1 pb-1 border-b border-amber-200">
-                          <span className="text-[7px] font-bold text-slate-500 w-5 text-center shrink-0">ครบ</span>
-                          <span className="text-[7px] font-bold text-slate-500 shrink-0 w-5" />
-                          <span className="text-[7px] font-bold text-slate-500 flex-1">รายการ</span>
-                          <span className="text-[7px] font-bold text-slate-500 w-6 text-center shrink-0">จ่าย</span>
-                          <span className="text-[7px] font-bold text-slate-500 w-16 text-right shrink-0">ล่าสุด</span>
-                          <span className="text-[7px] font-bold text-slate-500 w-12 text-right shrink-0">เดือนนี้</span>
-                          <span className="text-[7px] font-bold text-slate-500 w-12 text-right shrink-0">งบ</span>
-                        </div>
-                        {(() => {
-                          const defaultGrouped: Record<string, typeof defaults> = {};
-                          defaults.forEach(d => { if (!defaultGrouped[d.group]) defaultGrouped[d.group] = []; defaultGrouped[d.group].push(d); });
-                          return EXPENSE_GROUPS.filter(g => defaultGrouped[g.key]?.length).map(group => (
-                            <div key={group.key}>
-                              <div className="flex items-center gap-1 mb-0.5">
-                                <span className="text-[9px]">{group.emoji}</span>
-                                <span className="text-[9px] font-bold text-amber-700">{group.label}</span>
-                                <div className="flex-1 h-px bg-amber-200" />
-                                <span className="text-[9px] text-amber-400">{defaultGrouped[group.key].reduce((s, e) => s + e.amount, 0).toLocaleString()}</span>
-                              </div>
-                              {defaultGrouped[group.key].map((d, i) => {
-                                const cat = catMap.get(d.category);
-                                return (
-                                  <div key={i} className="flex items-center gap-1.5 px-1 py-1">
-                                    <span className="text-[9px] text-slate-400 w-5 text-center shrink-0">{d.dueDay || '-'}</span>
-                                    <span className="text-sm shrink-0">{cat?.emoji || '📦'}</span>
-                                    <span className="text-xs text-slate-500 flex-1 truncate">{d.title}</span>
-                                    <span className="text-[9px] text-slate-300 shrink-0 w-6 text-center">-</span>
-                                    <span className="text-[9px] text-slate-300 shrink-0 w-16 text-right">-</span>
-                                    <span className="text-[9px] text-slate-300 shrink-0 w-12 text-right">-</span>
-                                    <span className="text-[10px] text-slate-600 shrink-0 w-12 text-right">{d.amount.toLocaleString()}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ));
-                        })()}
-                      </div>
-                    );
-                  }
-                  if (filtered.length === 0) {
+                  // Merge defaults with real expenses — show all, use real data when available
+                  const defaultGrouped: Record<string, typeof defaults> = {};
+                  defaults.forEach(d => { if (!defaultGrouped[d.group]) defaultGrouped[d.group] = []; defaultGrouped[d.group].push(d); });
+
+                  // Also add real expenses not in defaults
+                  const defaultTitles = new Set(defaults.map(d => `${d.title}|${d.category}`));
+                  const extraExpenses = filtered.filter(e => !defaultTitles.has(`${e.title}|${e.category}`));
+
+                  if (defaults.length === 0 && filtered.length === 0) {
                     return (
                       <div className="text-center py-6">
                         <span className="text-3xl block mb-2">💸</span>
@@ -1072,40 +1052,65 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                     );
                   }
 
-                  // Group by expense group
-                  const grouped: Record<string, typeof filtered> = {};
-                  filtered.forEach(e => {
-                    const cat = catMap.get(e.category);
-                    const groupKey = cat?.group || 'อื่นๆ';
-                    if (!grouped[groupKey]) grouped[groupKey] = [];
-                    grouped[groupKey].push(e);
-                  });
-
                   return (
                     <div className="space-y-2">
                       {/* Column headers */}
                       <div className="flex items-center gap-1.5 px-1 pb-1 border-b border-amber-200">
-                        <span className="text-[7px] font-bold text-amber-400 w-5 text-center shrink-0">ครบ</span>
-                        <span className="text-[7px] font-bold text-amber-400 shrink-0 w-5" />
-                        <span className="text-[7px] font-bold text-amber-400 flex-1">รายการ</span>
-                        <span className="text-[7px] font-bold text-amber-400 w-12 text-right shrink-0">งบ</span>
-                        <span className="text-[7px] font-bold text-amber-400 w-6 text-center shrink-0">จ่าย</span>
-                        <span className="text-[7px] font-bold text-amber-400 w-16 text-right shrink-0">ล่าสุด</span>
-                        <span className="text-[7px] font-bold text-amber-400 w-12 text-right shrink-0">เดือนนี้</span>
+                        <span className="text-[7px] font-bold text-slate-500 w-5 text-center shrink-0">ครบ</span>
+                        <span className="text-[7px] font-bold text-slate-500 shrink-0 w-5" />
+                        <span className="text-[7px] font-bold text-slate-500 flex-1">รายการ</span>
+                        <span className="text-[7px] font-bold text-slate-500 w-6 text-center shrink-0">จ่าย</span>
+                        <span className="text-[7px] font-bold text-slate-500 w-10 text-center shrink-0">วันที่</span>
+                        <span className="text-[7px] font-bold text-slate-500 w-14 text-right shrink-0">ล่าสุด</span>
+                        <span className="text-[7px] font-bold text-slate-500 w-12 text-right shrink-0">เดือนนี้</span>
+                        <span className="text-[7px] font-bold text-slate-500 w-12 text-right shrink-0">งบ</span>
                       </div>
-                      {EXPENSE_GROUPS.filter(g => grouped[g.key]?.length).map(group => (
+                      {EXPENSE_GROUPS.filter(g => defaultGrouped[g.key]?.length).map(group => (
                         <div key={group.key}>
                           <div className="flex items-center gap-1 mb-0.5">
                             <span className="text-[9px]">{group.emoji}</span>
                             <span className="text-[9px] font-bold text-amber-700">{group.label}</span>
                             <div className="flex-1 h-px bg-amber-200" />
+                            <span className="text-[9px] text-amber-400">{defaultGrouped[group.key].reduce((s, e) => s + e.amount, 0).toLocaleString()}</span>
                           </div>
-                          {grouped[group.key].map(exp => renderExpenseRow(exp))}
+                          {defaultGrouped[group.key].map((d, i) => {
+                            // Check if real expense exists for this item
+                            const realExp = filtered.find(e => e.title === d.title && e.category === d.category);
+                            if (realExp) return renderExpenseRow(realExp);
+                            // Show default with + button
+                            const cat = catMap.get(d.category);
+                            return (
+                              <div key={i} className="flex items-center gap-1.5 px-1 py-1">
+                                <span className="text-[9px] text-slate-400 w-5 text-center shrink-0">{d.dueDay || '-'}</span>
+                                <span className="text-sm shrink-0">{cat?.emoji || '📦'}</span>
+                                <span className="text-xs text-slate-500 flex-1 truncate">{d.title}</span>
+                                <button onClick={() => { setExpensePopup({ category: d.category, title: d.title, recurrence: d.recurrence, dueDay: d.dueDay }); setExpenseForm({ title: d.title, amount: String(d.amount), date: new Date().toISOString().split('T')[0], isRecurring: true, method: 'transfer', notes: '', slipUrl: '' }); }} className="text-[9px] font-bold text-blue-500 hover:text-blue-700 shrink-0 w-6 text-center">+</button>
+                                <span className="text-[9px] text-slate-300 shrink-0 w-10 text-center">-</span>
+                                <span className="text-[9px] text-slate-300 shrink-0 w-14 text-right">-</span>
+                                <span className="text-[9px] text-slate-300 shrink-0 w-12 text-right">-</span>
+                                <span className="text-[10px] text-slate-600 shrink-0 w-12 text-right">{d.amount.toLocaleString()}</span>
+                              </div>
+                            );
+                          })}
                         </div>
                       ))}
+                      {/* Extra expenses not in defaults */}
+                      {extraExpenses.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-1 mb-0.5">
+                            <span className="text-[9px]">📝</span>
+                            <span className="text-[9px] font-bold text-amber-700">รายการเพิ่มเติม</span>
+                            <div className="flex-1 h-px bg-amber-200" />
+                          </div>
+                          {extraExpenses.map(exp => renderExpenseRow(exp))}
+                        </div>
+                      )}
                       <div className="pt-1 border-t border-amber-200 flex justify-between items-center">
-                        <span className="text-[10px] text-amber-700">{filtered.length} รายการ</span>
-                        <span className="text-[10px] text-amber-600">รวม {filtered.reduce((s, e) => s + e.amount, 0).toLocaleString()}/{periodLabel}</span>
+                        <span className="text-[10px] text-amber-700">{filtered.length} รายการจ่ายแล้ว</span>
+                        <span className="text-[10px] text-amber-600">รวม {filtered.reduce((s, e) => {
+                          const m = e.paidHistory?.[currentMonth];
+                          return s + (m ? m.amount : 0);
+                        }, 0).toLocaleString()}/{periodLabel}</span>
                       </div>
                     </div>
                   );
@@ -1167,6 +1172,134 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
           </div>
         );
       })()}
+
+      {/* ===== Expense Quick-Add Popup ===== */}
+      {expensePopup && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setExpensePopup(null)}>
+          <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-black text-slate-800">บันทึกรายจ่าย</h3>
+                <p className="text-[10px] text-slate-400">{EXPENSE_CATEGORIES.find(c => c.key === expensePopup.category)?.emoji} {EXPENSE_CATEGORIES.find(c => c.key === expensePopup.category)?.label} · {expensePopup.recurrence === 'daily' ? 'รายวัน' : expensePopup.recurrence === 'monthly' ? 'รายเดือน' : expensePopup.recurrence === 'quarterly' ? 'รายไตรมาส' : 'รายปี'}</p>
+              </div>
+              <button onClick={() => setExpensePopup(null)} className="p-1.5 hover:bg-slate-100 rounded-lg"><X className="w-4 h-4 text-slate-400" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              {/* ชื่อรายการ */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">ชื่อรายการ</label>
+                <input type="text" value={expenseForm.title} onChange={e => setExpenseForm(f => ({ ...f, title: e.target.value }))} placeholder="เช่น ค่าเช่า, Netflix, กาแฟ..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              </div>
+              {/* จำนวนเงิน + วันที่ */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">จำนวนเงิน (บาท)</label>
+                  <input type="number" value={expenseForm.amount} onChange={e => setExpenseForm(f => ({ ...f, amount: e.target.value }))} placeholder="0" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">วันที่</label>
+                  <input type="date" value={expenseForm.date} onChange={e => setExpenseForm(f => ({ ...f, date: e.target.value }))} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                </div>
+              </div>
+              {/* รายการประจำ */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={expenseForm.isRecurring} onChange={e => setExpenseForm(f => ({ ...f, isRecurring: e.target.checked }))} className="w-4 h-4 rounded border-slate-300 text-blue-500 focus:ring-blue-300" />
+                <div>
+                  <span className="text-xs font-bold text-slate-700">รายการประจำ</span>
+                  <p className="text-[9px] text-slate-400">ติ๊กเพื่อตั้งเป็น Budget ประจำ</p>
+                </div>
+              </label>
+              {/* วิธีจ่าย */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">วิธีจ่าย</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {PAYMENT_METHODS.map(m => (
+                    <button key={m.key} onClick={() => setExpenseForm(f => ({ ...f, method: m.key }))}
+                      className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${
+                        expenseForm.method === m.key ? 'bg-blue-500 text-white border-blue-500' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}>
+                      <span>{m.emoji}</span> {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* ถ่ายรูป / Upload Slip */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">สลิป / ใบเสร็จ</label>
+                <input ref={slipInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const url = URL.createObjectURL(file);
+                    setExpenseForm(f => ({ ...f, slipUrl: url }));
+                  }
+                  e.target.value = '';
+                }} />
+                {expenseForm.slipUrl ? (
+                  <div className="relative">
+                    <img src={expenseForm.slipUrl} alt="slip" className="w-full max-h-40 object-contain rounded-xl border border-slate-200" />
+                    <button onClick={() => setExpenseForm(f => ({ ...f, slipUrl: '' }))} className="absolute top-1 right-1 w-6 h-6 bg-rose-500 text-white rounded-full flex items-center justify-center text-xs">✕</button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <button onClick={() => slipInputRef.current?.click()} className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100">
+                      📷 ถ่ายรูป / Upload
+                    </button>
+                  </div>
+                )}
+              </div>
+              {/* หมายเหตุ */}
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 block mb-1">หมายเหตุ</label>
+                <input type="text" value={expenseForm.notes} onChange={e => setExpenseForm(f => ({ ...f, notes: e.target.value }))} placeholder="ไม่บังคับ" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" />
+              </div>
+            </div>
+            {/* Footer */}
+            <div className="flex border-t border-slate-100">
+              <button onClick={() => setExpensePopup(null)} className="flex-1 py-3 text-sm font-bold text-slate-500 hover:bg-slate-50">ยกเลิก</button>
+              <button
+                onClick={() => {
+                  if (!setExpenses || !expenseForm.title.trim() || !expenseForm.amount) return;
+                  const now = new Date();
+                  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                  const amount = parseFloat(expenseForm.amount) || 0;
+                  if (amount <= 0) return;
+
+                  const existing = expenses.find(e => e.title === expenseForm.title && e.category === expensePopup.category && e.type === 'recurring');
+                  if (existing) {
+                    setExpenses(prev => prev.map(e => e.id === existing.id ? {
+                      ...e, amount,
+                      paidHistory: { ...(e.paidHistory || {}), [currentMonth]: { amount, paidAt: now.toISOString(), method: expenseForm.method } },
+                      paid: true, paidAt: now.toISOString(), paymentMethod: expenseForm.method,
+                      notes: expenseForm.notes || e.notes,
+                    } : e));
+                  } else {
+                    const newExp: Expense = {
+                      id: `exp-${Date.now()}`,
+                      title: expenseForm.title.trim(), amount, flow: 'expense',
+                      category: expensePopup.category,
+                      type: expenseForm.isRecurring ? 'recurring' : 'one-time',
+                      date: expenseForm.date,
+                      recurrence: expenseForm.isRecurring ? expensePopup.recurrence as Expense['recurrence'] : undefined,
+                      dueDay: expenseForm.isRecurring ? expensePopup.dueDay : undefined,
+                      paymentMethod: expenseForm.method,
+                      notes: expenseForm.notes.trim() || undefined,
+                      createdAt: now.toISOString(),
+                      paidHistory: { [currentMonth]: { amount, paidAt: now.toISOString(), method: expenseForm.method } },
+                      paid: true, paidAt: now.toISOString(),
+                    };
+                    setExpenses(prev => [newExp, ...prev]);
+                  }
+                  setExpensePopup(null);
+                }}
+                disabled={!expenseForm.title.trim() || !expenseForm.amount || parseFloat(expenseForm.amount) <= 0}
+                className="flex-1 py-3 text-sm font-bold text-white bg-rose-500 hover:bg-rose-600 border-l border-slate-100 disabled:opacity-40"
+              >
+                เพิ่มรายจ่าย
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== Category Cards (old standalone section removed — now inside หมวดกิจกรรม tab) ===== */}
       {false && <div className="grid grid-cols-2 gap-2.5 animate-fadeIn">
