@@ -416,13 +416,15 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({
 
   const resolveSlotInfo = (key: string): { label: string; emoji: string; color: string } => {
     if (key === 'ว่าง') return { label: 'ว่าง', emoji: '⬜', color: 'slate' };
+    // Check group task first (new style)
+    const g = groupMap.get(key);
+    if (g) return { label: g.label, emoji: g.emoji, color: g.color };
+    // Fallback to category (legacy)
     const cat = categoryMap.get(key);
     if (cat) {
       const firstGroup = taskGroups.find(g => g.categoryKey === key);
       return { label: cat.label, emoji: cat.emoji, color: firstGroup?.color || categoryColorMap[key] || 'orange' };
     }
-    const g = groupMap.get(key);
-    if (g) return { label: g.label, emoji: g.emoji, color: g.color };
     return { label: key, emoji: '', color: 'orange' };
   };
 

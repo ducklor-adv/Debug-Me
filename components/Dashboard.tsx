@@ -276,13 +276,13 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
   const categoryMap = new Map<string, Category>(DEFAULT_CATEGORIES.map(c => [c.key, c]));
   const categoryColorMap: Record<string, string> = { break: 'cyan', sleep: 'indigo' };
   const resolveSlotInfo = (key: string): { label: string; emoji: string; color: string } => {
+    const g = groupMap.get(key);
+    if (g) return { label: g.label, emoji: g.emoji, color: g.color };
     const cat = categoryMap.get(key);
     if (cat) {
       const firstGroup = taskGroups.find(g => g.categoryKey === key);
       return { label: cat.label, emoji: cat.emoji, color: firstGroup?.color || categoryColorMap[key] || 'orange' };
     }
-    const g = groupMap.get(key);
-    if (g) return { label: g.label, emoji: g.emoji, color: g.color };
     return { label: key, emoji: '', color: 'orange' };
   };
   const getSlotColor = (s: TimeSlot) => GROUP_COLORS[resolveSlotInfo(s.groupKey).color] || GROUP_COLORS.orange;

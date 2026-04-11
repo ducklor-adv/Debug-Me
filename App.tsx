@@ -89,118 +89,136 @@ const DEFAULT_MILESTONES: Milestone[] = [
 ];
 
 export const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
+  // ═══ จ-ศ: พนักงานประจำ (ตื่น 05:00 นอน 22:00) ═══
   workday: [
-    { id: 'wd-1',  startTime: '05:00', endTime: '07:00', groupKey: 'กิจวัตร' },
-    { id: 'wd-2',  startTime: '07:00', endTime: '08:00', groupKey: 'ออกกำลังกาย' },
-    { id: 'wd-3',  startTime: '08:00', endTime: '12:00', groupKey: 'งานหลัก' },
-    { id: 'wd-4',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },
-    { id: 'wd-5',  startTime: '13:00', endTime: '17:00', groupKey: 'งานหลัก' },
-    { id: 'wd-6',  startTime: '17:00', endTime: '18:00', groupKey: 'งานบ้าน' },
-    { id: 'wd-7',  startTime: '18:00', endTime: '19:00', groupKey: 'กิจวัตร' },
-    { id: 'wd-8',  startTime: '19:00', endTime: '20:00', groupKey: 'ครอบครัว' },
-    { id: 'wd-9',  startTime: '20:00', endTime: '21:00', groupKey: 'พัฒนาตัวเอง' },
-    { id: 'wd-10', startTime: '21:00', endTime: '22:00', groupKey: 'พักผ่อน' },
+    { id: 'wd-1',  startTime: '05:00', endTime: '06:00', groupKey: 'กิจวัตร' },        // ตื่น ล้างหน้า เตรียมตัว
+    { id: 'wd-2',  startTime: '06:00', endTime: '06:30', groupKey: 'ออกกำลังกาย' },    // วิ่ง/ยืดเหยียด
+    { id: 'wd-3',  startTime: '06:30', endTime: '07:30', groupKey: 'กิจวัตร' },        // อาบน้ำ แต่งตัว อาหารเช้า
+    { id: 'wd-4',  startTime: '07:30', endTime: '08:30', groupKey: 'ธุระส่วนตัว' },    // เดินทางไปทำงาน
+    { id: 'wd-5',  startTime: '08:30', endTime: '12:00', groupKey: 'งานหลัก' },        // Deep Work เช้า
+    { id: 'wd-6',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },        // พักเที่ยง กินข้าว
+    { id: 'wd-7',  startTime: '13:00', endTime: '17:30', groupKey: 'งานหลัก' },        // Deep Work บ่าย
+    { id: 'wd-8',  startTime: '17:30', endTime: '18:30', groupKey: 'ธุระส่วนตัว' },    // เดินทางกลับบ้าน
+    { id: 'wd-9',  startTime: '18:30', endTime: '19:30', groupKey: 'กิจวัตร' },        // อาบน้ำ กินข้าวเย็น
+    { id: 'wd-10', startTime: '19:30', endTime: '20:00', groupKey: 'ครอบครัว' },       // เวลาครอบครัว
+    { id: 'wd-11', startTime: '20:00', endTime: '21:00', groupKey: 'งานรอง' },         // งานรอง / Side Project
+    { id: 'wd-12', startTime: '21:00', endTime: '21:30', groupKey: 'พัฒนาตัวเอง' },   // อ่านหนังสือ / เรียนรู้
+    { id: 'wd-13', startTime: '21:30', endTime: '22:00', groupKey: 'สงบใจ' },          // นั่งสมาธิ เตรียมนอน
   ],
+  // ═══ เสาร์: วันพัก + งานบ้าน + ครอบครัว ═══
   saturday: [
-    { id: 'sat-1',  startTime: '06:00', endTime: '07:00', groupKey: 'กิจวัตร' },
-    { id: 'sat-2',  startTime: '07:00', endTime: '08:00', groupKey: 'ออกกำลังกาย' },
-    { id: 'sat-3',  startTime: '08:00', endTime: '10:00', groupKey: 'งานบ้าน' },
-    { id: 'sat-4',  startTime: '10:00', endTime: '12:00', groupKey: 'ธุระส่วนตัว' },
-    { id: 'sat-5',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },
-    { id: 'sat-6',  startTime: '13:00', endTime: '15:00', groupKey: 'ครอบครัว' },
-    { id: 'sat-7',  startTime: '15:00', endTime: '17:00', groupKey: 'พัฒนาตัวเอง' },
-    { id: 'sat-8',  startTime: '17:00', endTime: '18:00', groupKey: 'สุขภาพ' },
-    { id: 'sat-9',  startTime: '18:00', endTime: '20:00', groupKey: 'เข้าสังคม' },
-    { id: 'sat-10', startTime: '20:00', endTime: '22:00', groupKey: 'พักผ่อน' },
+    { id: 'sat-1',  startTime: '06:00', endTime: '07:00', groupKey: 'กิจวัตร' },       // ตื่นสาย ล้างหน้า
+    { id: 'sat-2',  startTime: '07:00', endTime: '08:00', groupKey: 'ออกกำลังกาย' },   // ออกกำลังกายจริงจัง
+    { id: 'sat-3',  startTime: '08:00', endTime: '09:00', groupKey: 'กิจวัตร' },       // อาบน้ำ อาหารเช้า
+    { id: 'sat-4',  startTime: '09:00', endTime: '11:00', groupKey: 'งานบ้าน' },       // ทำความสะอาดบ้าน ซักผ้า
+    { id: 'sat-5',  startTime: '11:00', endTime: '12:00', groupKey: 'ธุระส่วนตัว' },   // ซื้อของ จ่ายตลาด
+    { id: 'sat-6',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },       // กินข้าวกลางวัน
+    { id: 'sat-7',  startTime: '13:00', endTime: '15:00', groupKey: 'ครอบครัว' },      // เวลาครอบครัว / เที่ยว
+    { id: 'sat-8',  startTime: '15:00', endTime: '17:00', groupKey: 'พัฒนาตัวเอง' },  // คอร์สเรียน / Side Project
+    { id: 'sat-9',  startTime: '17:00', endTime: '18:00', groupKey: 'สุขภาพ' },       // ยืดเหยียด / ดูแลสุขภาพ
+    { id: 'sat-10', startTime: '18:00', endTime: '20:00', groupKey: 'เข้าสังคม' },    // เจอเพื่อน / สังสรรค์
+    { id: 'sat-11', startTime: '20:00', endTime: '22:00', groupKey: 'พักผ่อน' },      // ดูหนัง เล่นเกม ชิลล์
   ],
+  // ═══ อาทิตย์: วันพักผ่อน + เตรียมสัปดาห์ ═══
   sunday: [
-    { id: 'sun-1',  startTime: '06:00', endTime: '08:00', groupKey: 'กิจวัตร' },
-    { id: 'sun-2',  startTime: '08:00', endTime: '09:00', groupKey: 'สุขภาพ' },
-    { id: 'sun-3',  startTime: '09:00', endTime: '12:00', groupKey: 'ครอบครัว' },
-    { id: 'sun-4',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },
-    { id: 'sun-5',  startTime: '13:00', endTime: '15:00', groupKey: 'พัฒนาตัวเอง' },
-    { id: 'sun-6',  startTime: '15:00', endTime: '17:00', groupKey: 'เข้าสังคม' },
-    { id: 'sun-7',  startTime: '17:00', endTime: '19:00', groupKey: 'งานบ้าน' },
-    { id: 'sun-8',  startTime: '19:00', endTime: '21:00', groupKey: 'พักผ่อน' },
-    { id: 'sun-9',  startTime: '21:00', endTime: '22:00', groupKey: 'สงบใจ' },
+    { id: 'sun-1',  startTime: '07:00', endTime: '08:00', groupKey: 'กิจวัตร' },      // ตื่นสบายๆ
+    { id: 'sun-2',  startTime: '08:00', endTime: '09:00', groupKey: 'สุขภาพ' },       // นั่งสมาธิ / โยคะ
+    { id: 'sun-3',  startTime: '09:00', endTime: '12:00', groupKey: 'ครอบครัว' },     // กิจกรรมครอบครัว / ไปวัด
+    { id: 'sun-4',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },      // กินข้าว
+    { id: 'sun-5',  startTime: '13:00', endTime: '15:00', groupKey: 'พักผ่อน' },      // พักผ่อนเต็มที่ / งานอดิเรก
+    { id: 'sun-6',  startTime: '15:00', endTime: '17:00', groupKey: 'พัฒนาตัวเอง' }, // อ่านหนังสือ / วางแผนสัปดาห์
+    { id: 'sun-7',  startTime: '17:00', endTime: '18:00', groupKey: 'งานบ้าน' },      // เตรียมของสัปดาห์หน้า
+    { id: 'sun-8',  startTime: '18:00', endTime: '19:00', groupKey: 'กิจวัตร' },      // กินข้าวเย็น
+    { id: 'sun-9',  startTime: '19:00', endTime: '20:30', groupKey: 'ครอบครัว' },     // เวลาครอบครัว
+    { id: 'sun-10', startTime: '20:30', endTime: '21:30', groupKey: 'สงบใจ' },        // ผ่อนคลาย เตรียมจิตใจ
+    { id: 'sun-11', startTime: '21:30', endTime: '22:00', groupKey: 'กิจวัตร' },      // เตรียมตัวนอน
   ],
   customTemplates: [
     {
+      // ═══ วันขี้เกียจ: ตื่นสาย ชิลล์ทั้งวัน ═══
       id: 'ct-lazy', name: 'วันขี้เกียจ', emoji: '😴',
       slots: [
-        { id: 'lazy-1',  startTime: '09:00', endTime: '10:00', groupKey: 'กิจวัตร' },
-        { id: 'lazy-2',  startTime: '10:00', endTime: '12:00', groupKey: 'พักผ่อน' },
-        { id: 'lazy-3',  startTime: '12:00', endTime: '13:00', groupKey: 'กิจวัตร' },
-        { id: 'lazy-4',  startTime: '13:00', endTime: '15:00', groupKey: 'พักผ่อน' },
-        { id: 'lazy-5',  startTime: '15:00', endTime: '16:00', groupKey: 'กิจวัตร' },
-        { id: 'lazy-6',  startTime: '16:00', endTime: '18:00', groupKey: 'พักผ่อน' },
-        { id: 'lazy-7',  startTime: '18:00', endTime: '19:00', groupKey: 'กิจวัตร' },
-        { id: 'lazy-8',  startTime: '19:00', endTime: '22:00', groupKey: 'พักผ่อน' },
+        { id: 'lazy-1',  startTime: '09:00', endTime: '10:00', groupKey: 'กิจวัตร' },       // ตื่นสาย กินข้าว
+        { id: 'lazy-2',  startTime: '10:00', endTime: '12:00', groupKey: 'พักผ่อน' },       // ดูซีรีส์ / เล่นเกม
+        { id: 'lazy-3',  startTime: '12:00', endTime: '13:00', groupKey: 'กิจวัตร' },       // กินข้าวกลางวัน
+        { id: 'lazy-4',  startTime: '13:00', endTime: '15:00', groupKey: 'พักผ่อน' },       // นอนกลางวัน / ชิลล์
+        { id: 'lazy-5',  startTime: '15:00', endTime: '16:00', groupKey: 'ธุระส่วนตัว' },   // จัดการธุระเล็กน้อย
+        { id: 'lazy-6',  startTime: '16:00', endTime: '18:00', groupKey: 'พักผ่อน' },       // งานอดิเรก / เล่นเกม
+        { id: 'lazy-7',  startTime: '18:00', endTime: '19:00', groupKey: 'กิจวัตร' },       // กินข้าวเย็น
+        { id: 'lazy-8',  startTime: '19:00', endTime: '22:00', groupKey: 'พักผ่อน' },       // ดูหนัง / ฟังเพลง
       ],
     },
     {
+      // ═══ วันป่วย: พักเยอะ ดูแลตัวเอง ═══
       id: 'ct-sick', name: 'วันป่วย', emoji: '🤒',
       slots: [
-        { id: 'sick-1',  startTime: '08:00', endTime: '09:00', groupKey: 'สุขภาพ' },
-        { id: 'sick-2',  startTime: '09:00', endTime: '10:00', groupKey: 'กิจวัตร' },
-        { id: 'sick-3',  startTime: '10:00', endTime: '12:00', groupKey: 'พักผ่อน' },
-        { id: 'sick-4',  startTime: '12:00', endTime: '13:00', groupKey: 'กิจวัตร' },
-        { id: 'sick-5',  startTime: '13:00', endTime: '15:00', groupKey: 'พักผ่อน' },
-        { id: 'sick-6',  startTime: '15:00', endTime: '16:00', groupKey: 'สุขภาพ' },
-        { id: 'sick-7',  startTime: '16:00', endTime: '18:00', groupKey: 'พักผ่อน' },
-        { id: 'sick-8',  startTime: '18:00', endTime: '19:00', groupKey: 'กิจวัตร' },
-        { id: 'sick-9',  startTime: '19:00', endTime: '21:00', groupKey: 'พักผ่อน' },
+        { id: 'sick-1',  startTime: '08:00', endTime: '09:00', groupKey: 'สุขภาพ' },       // กินยา วัดไข้
+        { id: 'sick-2',  startTime: '09:00', endTime: '10:00', groupKey: 'กิจวัตร' },       // กินข้าว ดื่มน้ำ
+        { id: 'sick-3',  startTime: '10:00', endTime: '12:00', groupKey: 'พักผ่อน' },       // นอนพัก
+        { id: 'sick-4',  startTime: '12:00', endTime: '13:00', groupKey: 'กิจวัตร' },       // กินข้าว กินยา
+        { id: 'sick-5',  startTime: '13:00', endTime: '15:00', groupKey: 'พักผ่อน' },       // นอนพัก
+        { id: 'sick-6',  startTime: '15:00', endTime: '16:00', groupKey: 'สุขภาพ' },       // วัดไข้ กินยา
+        { id: 'sick-7',  startTime: '16:00', endTime: '18:00', groupKey: 'พักผ่อน' },       // พักเบาๆ ดูทีวี
+        { id: 'sick-8',  startTime: '18:00', endTime: '19:00', groupKey: 'กิจวัตร' },       // กินข้าวเย็น
+        { id: 'sick-9',  startTime: '19:00', endTime: '21:00', groupKey: 'พักผ่อน' },       // พักเร็ว เตรียมนอน
       ],
     },
     {
+      // ═══ เที่ยวต่างจังหวัด: เดินทาง + กิจกรรม ═══
       id: 'ct-trip', name: 'เที่ยวต่างจังหวัด', emoji: '🏕️',
       slots: [
-        { id: 'trip-1',  startTime: '06:00', endTime: '07:00', groupKey: 'กิจวัตร' },
-        { id: 'trip-2',  startTime: '07:00', endTime: '08:00', groupKey: 'ออกกำลังกาย' },
-        { id: 'trip-3',  startTime: '08:00', endTime: '09:00', groupKey: 'พักผ่อน' },
-        { id: 'trip-4',  startTime: '09:00', endTime: '12:00', groupKey: 'ครอบครัว' },
-        { id: 'trip-5',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },
-        { id: 'trip-6',  startTime: '13:00', endTime: '17:00', groupKey: 'เข้าสังคม' },
-        { id: 'trip-7',  startTime: '17:00', endTime: '18:00', groupKey: 'พักผ่อน' },
-        { id: 'trip-8',  startTime: '18:00', endTime: '20:00', groupKey: 'ครอบครัว' },
-        { id: 'trip-9',  startTime: '20:00', endTime: '22:00', groupKey: 'สงบใจ' },
+        { id: 'trip-1',  startTime: '06:00', endTime: '07:00', groupKey: 'กิจวัตร' },       // ตื่น เตรียมตัว
+        { id: 'trip-2',  startTime: '07:00', endTime: '08:00', groupKey: 'กิจวัตร' },       // อาหารเช้า
+        { id: 'trip-3',  startTime: '08:00', endTime: '12:00', groupKey: 'เข้าสังคม' },     // เที่ยว / กิจกรรม
+        { id: 'trip-4',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },       // กินข้าว พัก
+        { id: 'trip-5',  startTime: '13:00', endTime: '17:00', groupKey: 'เข้าสังคม' },     // เที่ยวต่อ / ชมวิว
+        { id: 'trip-6',  startTime: '17:00', endTime: '18:00', groupKey: 'พักผ่อน' },       // กลับที่พัก พัก
+        { id: 'trip-7',  startTime: '18:00', endTime: '20:00', groupKey: 'ครอบครัว' },      // กินข้าวเย็น คุยกัน
+        { id: 'trip-8',  startTime: '20:00', endTime: '22:00', groupKey: 'สงบใจ' },        // ชิลล์ ดูดาว
       ],
     },
     {
+      // ═══ วันทำงานหนัก: Focus 100% ═══
       id: 'ct-hustle', name: 'วันทำงานหนัก', emoji: '💪',
       slots: [
-        { id: 'hst-1',  startTime: '05:00', endTime: '06:00', groupKey: 'ออกกำลังกาย' },
-        { id: 'hst-2',  startTime: '06:00', endTime: '07:00', groupKey: 'กิจวัตร' },
-        { id: 'hst-3',  startTime: '07:00', endTime: '12:00', groupKey: 'งานหลัก' },
-        { id: 'hst-4',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },
-        { id: 'hst-5',  startTime: '13:00', endTime: '18:00', groupKey: 'งานหลัก' },
-        { id: 'hst-6',  startTime: '18:00', endTime: '19:00', groupKey: 'กิจวัตร' },
-        { id: 'hst-7',  startTime: '19:00', endTime: '22:00', groupKey: 'งานรอง' },
+        { id: 'hst-1',  startTime: '05:00', endTime: '05:30', groupKey: 'ออกกำลังกาย' },   // วิ่งเบาๆ ปลุกตัว
+        { id: 'hst-2',  startTime: '05:30', endTime: '06:30', groupKey: 'กิจวัตร' },       // อาบน้ำ กินข้าว
+        { id: 'hst-3',  startTime: '06:30', endTime: '12:00', groupKey: 'งานหลัก' },       // Deep Work เช้า
+        { id: 'hst-4',  startTime: '12:00', endTime: '12:30', groupKey: 'พักผ่อน' },       // กินข้าวเร็ว
+        { id: 'hst-5',  startTime: '12:30', endTime: '18:00', groupKey: 'งานหลัก' },       // Deep Work บ่าย
+        { id: 'hst-6',  startTime: '18:00', endTime: '19:00', groupKey: 'กิจวัตร' },       // กินข้าวเย็น
+        { id: 'hst-7',  startTime: '19:00', endTime: '21:00', groupKey: 'งานรอง' },        // งานเสริม / Freelance
+        { id: 'hst-8',  startTime: '21:00', endTime: '22:00', groupKey: 'สงบใจ' },        // ผ่อนคลาย ก่อนนอน
       ],
     },
     {
+      // ═══ วันครอบครัว: อยู่กับคนที่รัก ═══
       id: 'ct-family', name: 'วันครอบครัว', emoji: '👨‍👩‍👧‍👦',
       slots: [
-        { id: 'fam-1',  startTime: '07:00', endTime: '09:00', groupKey: 'กิจวัตร' },
-        { id: 'fam-2',  startTime: '09:00', endTime: '12:00', groupKey: 'ครอบครัว' },
-        { id: 'fam-3',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },
-        { id: 'fam-4',  startTime: '13:00', endTime: '17:00', groupKey: 'ครอบครัว' },
-        { id: 'fam-5',  startTime: '17:00', endTime: '18:00', groupKey: 'พักผ่อน' },
-        { id: 'fam-6',  startTime: '18:00', endTime: '20:00', groupKey: 'ครอบครัว' },
-        { id: 'fam-7',  startTime: '20:00', endTime: '22:00', groupKey: 'พักผ่อน' },
+        { id: 'fam-1',  startTime: '07:00', endTime: '08:00', groupKey: 'กิจวัตร' },       // ตื่น ทำอาหารเช้าด้วยกัน
+        { id: 'fam-2',  startTime: '08:00', endTime: '09:00', groupKey: 'ครอบครัว' },      // กินข้าวเช้าด้วยกัน
+        { id: 'fam-3',  startTime: '09:00', endTime: '12:00', groupKey: 'ครอบครัว' },      // ออกไปเที่ยว / ทำกิจกรรม
+        { id: 'fam-4',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },       // กินข้าวกลางวัน
+        { id: 'fam-5',  startTime: '13:00', endTime: '16:00', groupKey: 'ครอบครัว' },      // เที่ยวต่อ / เล่นกับลูก
+        { id: 'fam-6',  startTime: '16:00', endTime: '17:00', groupKey: 'พักผ่อน' },       // พัก ชิลล์
+        { id: 'fam-7',  startTime: '17:00', endTime: '18:00', groupKey: 'ออกกำลังกาย' },   // เดินเล่น / กีฬาครอบครัว
+        { id: 'fam-8',  startTime: '18:00', endTime: '20:00', groupKey: 'ครอบครัว' },      // กินข้าวเย็น คุยกัน
+        { id: 'fam-9',  startTime: '20:00', endTime: '22:00', groupKey: 'พักผ่อน' },       // ดูหนังด้วยกัน
       ],
     },
     {
+      // ═══ วันพัฒนาตัวเอง: เรียนรู้ + สร้างสรรค์ ═══
       id: 'ct-grow', name: 'วันพัฒนาตัวเอง', emoji: '📚',
       slots: [
-        { id: 'grw-1',  startTime: '06:00', endTime: '07:00', groupKey: 'ออกกำลังกาย' },
-        { id: 'grw-2',  startTime: '07:00', endTime: '08:00', groupKey: 'กิจวัตร' },
-        { id: 'grw-3',  startTime: '08:00', endTime: '12:00', groupKey: 'พัฒนาตัวเอง' },
-        { id: 'grw-4',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },
-        { id: 'grw-5',  startTime: '13:00', endTime: '17:00', groupKey: 'พัฒนาตัวเอง' },
-        { id: 'grw-6',  startTime: '17:00', endTime: '18:00', groupKey: 'สุขภาพ' },
-        { id: 'grw-7',  startTime: '18:00', endTime: '19:00', groupKey: 'ครอบครัว' },
-        { id: 'grw-8',  startTime: '19:00', endTime: '21:00', groupKey: 'สงบใจ' },
+        { id: 'grw-1',  startTime: '05:30', endTime: '06:30', groupKey: 'ออกกำลังกาย' },   // วิ่ง / โยคะ
+        { id: 'grw-2',  startTime: '06:30', endTime: '07:30', groupKey: 'กิจวัตร' },       // อาบน้ำ อาหารเช้า
+        { id: 'grw-3',  startTime: '07:30', endTime: '12:00', groupKey: 'พัฒนาตัวเอง' },  // เรียนคอร์ส / อ่านหนังสือ
+        { id: 'grw-4',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },       // กินข้าว พัก
+        { id: 'grw-5',  startTime: '13:00', endTime: '17:00', groupKey: 'พัฒนาตัวเอง' },  // ฝึกปฏิบัติ / Side Project
+        { id: 'grw-6',  startTime: '17:00', endTime: '18:00', groupKey: 'สุขภาพ' },       // ยืดเหยียด ดูแลตัวเอง
+        { id: 'grw-7',  startTime: '18:00', endTime: '19:00', groupKey: 'กิจวัตร' },       // กินข้าวเย็น
+        { id: 'grw-8',  startTime: '19:00', endTime: '20:30', groupKey: 'ครอบครัว' },      // เวลาครอบครัว
+        { id: 'grw-9',  startTime: '20:30', endTime: '22:00', groupKey: 'สงบใจ' },        // สมาธิ / journal
       ],
     },
   ],
@@ -721,45 +739,21 @@ const App: React.FC = () => {
               dateOverrides: tpl.dateOverrides || undefined,
             };
 
-            // V2 migration: convert startTime/endTime slots to duration-based
-            if (!fixed.scheduleVersion || fixed.scheduleVersion < 2) {
-              const wake = fixed.wakeTime || '05:00';
-              const sleep = fixed.sleepTime || '22:00';
-              fixed.workday = migrateV1Slots(fixed.workday, wake, sleep);
-              fixed.saturday = migrateV1Slots(fixed.saturday, wake, sleep);
-              fixed.sunday = migrateV1Slots(fixed.sunday, wake, sleep);
-              if (fixed.customTemplates) {
-                fixed.customTemplates = fixed.customTemplates.map(ct => ({
-                  ...ct,
-                  slots: migrateV1Slots(ct.slots, ct.wakeTime || wake, ct.sleepTime || sleep),
-                }));
-              }
-              if (fixed.dayPlans) {
-                for (const key of Object.keys(fixed.dayPlans)) {
-                  fixed.dayPlans[key] = migrateV1Slots(fixed.dayPlans[key], wake, sleep);
-                }
-              }
-              fixed.scheduleVersion = 2;
-              saveBack.scheduleTemplates = fixed;
-            }
-
-            // Migrate category-based groupKeys to group-task-based
-            const categoryToGroup: Record<string, string> = {
-              career: 'งานหลัก', health: 'ออกกำลังกาย', home: 'กิจวัตร',
-              relationship: 'ครอบครัว', mind: 'พัฒนาตัวเอง', break: 'พักผ่อน', sleep: 'พักผ่อน',
-            };
-            const migrateGroupKey = (slots: TimeSlot[]): TimeSlot[] =>
-              (slots || []).map(s => categoryToGroup[s.groupKey] ? { ...s, groupKey: categoryToGroup[s.groupKey] } : s);
-            fixed.workday = migrateGroupKey(fixed.workday);
-            fixed.saturday = migrateGroupKey(fixed.saturday);
-            fixed.sunday = migrateGroupKey(fixed.sunday);
-            if (fixed.customTemplates) {
-              fixed.customTemplates = fixed.customTemplates.map(ct => ({ ...ct, slots: migrateGroupKey(ct.slots) }));
-            }
-            if (fixed.dayPlans) {
-              for (const key of Object.keys(fixed.dayPlans)) {
-                fixed.dayPlans[key] = migrateGroupKey(fixed.dayPlans[key]);
-              }
+            // V3 migration: force reset ALL slots to group-task-based templates
+            if (!fixed.scheduleVersion || fixed.scheduleVersion < 3) {
+              const resetted: ScheduleTemplates = {
+                ...DEFAULT_SCHEDULE_TEMPLATES,
+                wakeTime: fixed.wakeTime || '05:00',
+                sleepTime: fixed.sleepTime || '22:00',
+                dayOverrides: undefined,
+                dateOverrides: fixed.dateOverrides,
+                dayPlans: undefined,
+                scheduleVersion: 3,
+              };
+              setScheduleTemplates(resetted);
+              saveBack.scheduleTemplates = resetted;
+              setFirestoreLoading(false);
+              return;
             }
 
             // Strip sleep slots at start/end of day (wake/sleep time handles this now)
