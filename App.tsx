@@ -739,8 +739,8 @@ const App: React.FC = () => {
               dateOverrides: tpl.dateOverrides || undefined,
             };
 
-            // V3 migration: force reset ALL slots to group-task-based templates
-            if (!fixed.scheduleVersion || fixed.scheduleVersion < 3) {
+            // V4 migration: force reset ALL slots to group-task-based templates
+            if (!fixed.scheduleVersion || fixed.scheduleVersion < 4) {
               const resetted: ScheduleTemplates = {
                 ...DEFAULT_SCHEDULE_TEMPLATES,
                 wakeTime: fixed.wakeTime || '05:00',
@@ -748,7 +748,7 @@ const App: React.FC = () => {
                 dayOverrides: undefined,
                 dateOverrides: fixed.dateOverrides,
                 dayPlans: undefined,
-                scheduleVersion: 3,
+                scheduleVersion: 4,
               };
               setScheduleTemplates(resetted);
               saveBack.scheduleTemplates = resetted;

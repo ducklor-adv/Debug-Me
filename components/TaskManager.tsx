@@ -279,11 +279,12 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   const [durationValue, setDurationValue] = useState<number>(0);
   const [bulkDeleteMode, setBulkDeleteMode] = useState(false);
   const [bulkDeleteIds, setBulkDeleteIds] = useState<Set<string>>(new Set());
-  // Expense quick-add popup
-  const [expensePopup, setExpensePopup] = useState<{ category: string; title: string; recurrence: string; dueDay?: number } | null>(null);
+  // Expense quick-add/edit popup
+  const [expensePopup, setExpensePopup] = useState<{ category: string; title: string; recurrence: string; dueDay?: number; editId?: string } | null>(null);
   const [expenseForm, setExpenseForm] = useState({
     title: '', amount: '', date: new Date().toISOString().split('T')[0],
     isRecurring: true, method: 'transfer' as PaymentMethod, notes: '', slipUrl: '',
+    dueDay: 0,
   });
   const slipInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -1015,7 +1016,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                       <div key={exp.id} className="flex items-center gap-1.5 px-1 py-1">
                         <span className="text-[9px] text-slate-700 w-5 text-center shrink-0">{exp.dueDay || '-'}</span>
                         <span className="text-sm shrink-0">{cat?.emoji || '📦'}</span>
-                        <span className={`text-xs flex-1 truncate ${showStrike ? 'line-through text-slate-400' : 'text-slate-700'}`}>{exp.title}</span>
+                        <span onClick={() => { setExpensePopup({ category: exp.category, title: exp.title, recurrence: exp.recurrence || 'monthly', dueDay: exp.dueDay, editId: exp.id }); setExpenseForm({ title: exp.title, amount: String(exp.amount), date: exp.date || new Date().toISOString().split('T')[0], isRecurring: exp.type === 'recurring', method: (exp.paymentMethod || 'transfer') as PaymentMethod, notes: exp.notes || '', slipUrl: '', dueDay: exp.dueDay || 0 }); }} className={`text-xs flex-1 truncate cursor-pointer hover:underline ${showStrike ? 'line-through text-slate-400' : 'text-slate-700'}`}>{exp.title}</span>
                         {isPaid ? (
                           <span className="text-[9px] text-emerald-500 shrink-0 w-6 text-center">✓</span>
                         ) : (
@@ -1112,6 +1113,17 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                           return s + (m ? m.amount : 0);
                         }, 0).toLocaleString()}/{periodLabel}</span>
                       </div>
+                      {/* เพิ่มรายการใหม่ */}
+                      <button
+                        onClick={() => {
+                          const defaultCat = defaults.length > 0 ? defaults[0].category : 'other_expense';
+                          setExpensePopup({ category: defaultCat, title: '', recurrence: recurrenceMap[activeBillsTab], dueDay: undefined });
+                          setExpenseForm({ title: '', amount: '', date: new Date().toISOString().split('T')[0], isRecurring: true, method: 'transfer', notes: '', slipUrl: '', dueDay: 0 });
+                        }}
+                        className="w-full flex items-center justify-center gap-1 py-1.5 rounded-lg border border-dashed border-amber-300 text-[10px] font-bold text-amber-500 hover:bg-amber-50"
+                      >
+                        <Plus className="w-3 h-3" /> เพิ่มรายการ
+                      </button>
                     </div>
                   );
                 })()}
@@ -1179,7 +1191,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
           <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-black text-slate-800">บันทึกรายจ่าย</h3>
+                <h3 className="text-sm font-black text-slate-800">{expensePopup.editId ? 'แก้ไขรายจ่าย' : 'บันทึกรายจ่าย'}</h3>
                 <p className="text-[10px] text-slate-400">{EXPENSE_CATEGORIES.find(c => c.key === expensePopup.category)?.emoji} {EXPENSE_CATEGORIES.find(c => c.key === expensePopup.category)?.label} · {expensePopup.recurrence === 'daily' ? 'รายวัน' : expensePopup.recurrence === 'monthly' ? 'รายเดือน' : expensePopup.recurrence === 'quarterly' ? 'รายไตรมาส' : 'รายปี'}</p>
               </div>
               <button onClick={() => setExpensePopup(null)} className="p-1.5 hover:bg-slate-100 rounded-lg"><X className="w-4 h-4 text-slate-400" /></button>
@@ -1190,6 +1202,29 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                 <label className="text-[10px] font-bold text-slate-500 block mb-1">ชื่อรายการ</label>
                 <input type="text" value={expenseForm.title} onChange={e => setExpenseForm(f => ({ ...f, title: e.target.value }))} placeholder="เช่น ค่าเช่า, Netflix, กาแฟ..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-300" />
               </div>
+              {/* หมวดค่าใช้จ่าย */}
+              {!expensePopup.editId && (
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">หมวด</label>
+                  <select
+                    value={expensePopup.category}
+                    onChange={e => setExpensePopup(p => p ? { ...p, category: e.target.value } : p)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  >
+                    {EXPENSE_GROUPS.map(g => {
+                      const groupCats = EXPENSE_CATEGORIES.filter(c => c.group === g.key && c.flow === 'expense').sort((a, b) => a.label.localeCompare(b.label, 'th'));
+                      if (groupCats.length === 0) return null;
+                      return (
+                        <optgroup key={g.key} label={`${g.emoji} ${g.label}`}>
+                          {groupCats.map(c => (
+                            <option key={c.key} value={c.key}>{c.emoji} {c.label}</option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
+                  </select>
+                </div>
+              )}
               {/* จำนวนเงิน + วันที่ */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -1209,6 +1244,13 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                   <p className="text-[9px] text-slate-400">ติ๊กเพื่อตั้งเป็น Budget ประจำ</p>
                 </div>
               </label>
+              {/* วันครบกำหนดจ่าย (สำหรับรายเดือน/ไตรมาส/ปี) */}
+              {expenseForm.isRecurring && expensePopup.recurrence !== 'daily' && (
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 block mb-1">วันครบกำหนดจ่าย (1-31)</label>
+                  <input type="number" min="1" max="31" value={expenseForm.dueDay || ''} onChange={e => setExpenseForm(f => ({ ...f, dueDay: parseInt(e.target.value) || 0 }))} placeholder="เช่น 5 = วันที่ 5 ของเดือน" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                </div>
+              )}
               {/* วิธีจ่าย */}
               <div>
                 <label className="text-[10px] font-bold text-slate-500 block mb-1">วิธีจ่าย</label>
@@ -1263,38 +1305,50 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
                   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
                   const amount = parseFloat(expenseForm.amount) || 0;
                   if (amount <= 0) return;
+                  const dueDayVal = expenseForm.dueDay > 0 && expenseForm.dueDay <= 31 ? expenseForm.dueDay : undefined;
 
-                  const existing = expenses.find(e => e.title === expenseForm.title && e.category === expensePopup.category && e.type === 'recurring');
-                  if (existing) {
-                    setExpenses(prev => prev.map(e => e.id === existing.id ? {
-                      ...e, amount,
-                      paidHistory: { ...(e.paidHistory || {}), [currentMonth]: { amount, paidAt: now.toISOString(), method: expenseForm.method } },
-                      paid: true, paidAt: now.toISOString(), paymentMethod: expenseForm.method,
-                      notes: expenseForm.notes || e.notes,
+                  if (expensePopup.editId) {
+                    // Edit existing expense
+                    setExpenses(prev => prev.map(e => e.id === expensePopup.editId ? {
+                      ...e, title: expenseForm.title.trim(), amount,
+                      type: expenseForm.isRecurring ? 'recurring' : 'one-time',
+                      recurrence: expenseForm.isRecurring ? expensePopup.recurrence as Expense['recurrence'] : undefined,
+                      dueDay: dueDayVal, paymentMethod: expenseForm.method,
+                      notes: expenseForm.notes.trim() || undefined,
                     } : e));
                   } else {
-                    const newExp: Expense = {
-                      id: `exp-${Date.now()}`,
-                      title: expenseForm.title.trim(), amount, flow: 'expense',
-                      category: expensePopup.category,
-                      type: expenseForm.isRecurring ? 'recurring' : 'one-time',
-                      date: expenseForm.date,
-                      recurrence: expenseForm.isRecurring ? expensePopup.recurrence as Expense['recurrence'] : undefined,
-                      dueDay: expenseForm.isRecurring ? expensePopup.dueDay : undefined,
-                      paymentMethod: expenseForm.method,
-                      notes: expenseForm.notes.trim() || undefined,
-                      createdAt: now.toISOString(),
-                      paidHistory: { [currentMonth]: { amount, paidAt: now.toISOString(), method: expenseForm.method } },
-                      paid: true, paidAt: now.toISOString(),
-                    };
-                    setExpenses(prev => [newExp, ...prev]);
+                    // Check if exists
+                    const existing = expenses.find(e => e.title === expenseForm.title && e.category === expensePopup.category && e.type === 'recurring');
+                    if (existing) {
+                      setExpenses(prev => prev.map(e => e.id === existing.id ? {
+                        ...e, amount, dueDay: dueDayVal,
+                        paidHistory: { ...(e.paidHistory || {}), [currentMonth]: { amount, paidAt: now.toISOString(), method: expenseForm.method } },
+                        paid: true, paidAt: now.toISOString(), paymentMethod: expenseForm.method,
+                        notes: expenseForm.notes || e.notes,
+                      } : e));
+                    } else {
+                      const newExp: Expense = {
+                        id: `exp-${Date.now()}`,
+                        title: expenseForm.title.trim(), amount, flow: 'expense',
+                        category: expensePopup.category,
+                        type: expenseForm.isRecurring ? 'recurring' : 'one-time',
+                        date: expenseForm.date,
+                        recurrence: expenseForm.isRecurring ? expensePopup.recurrence as Expense['recurrence'] : undefined,
+                        dueDay: dueDayVal, paymentMethod: expenseForm.method,
+                        notes: expenseForm.notes.trim() || undefined,
+                        createdAt: now.toISOString(),
+                        paidHistory: { [currentMonth]: { amount, paidAt: now.toISOString(), method: expenseForm.method } },
+                        paid: true, paidAt: now.toISOString(),
+                      };
+                      setExpenses(prev => [newExp, ...prev]);
+                    }
                   }
                   setExpensePopup(null);
                 }}
                 disabled={!expenseForm.title.trim() || !expenseForm.amount || parseFloat(expenseForm.amount) <= 0}
                 className="flex-1 py-3 text-sm font-bold text-white bg-rose-500 hover:bg-rose-600 border-l border-slate-100 disabled:opacity-40"
               >
-                เพิ่มรายจ่าย
+                {expensePopup.editId ? 'บันทึก' : 'เพิ่มรายจ่าย'}
               </button>
             </div>
           </div>
