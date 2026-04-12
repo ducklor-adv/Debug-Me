@@ -222,15 +222,13 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
       }
     }
 
-    // If gaps found, add them to schedule data
-    if (gaps.length > 0 && !autoFillRef.current) {
+    // Only auto-fill if schedule is completely empty (no real slots at all)
+    const hasRealSlots = schedule.some(s => s.groupKey && s.groupKey !== 'ว่าง');
+    if (gaps.length > 0 && !autoFillRef.current && !hasRealSlots && schedule.length === 0) {
       autoFillRef.current = true;
       setScheduleForTab(prev => {
-        // Don't add if already has these slots
-        const existingIds = new Set(prev.map(s => s.id));
-        const newGaps = gaps.filter(g => !existingIds.has(g.id));
-        if (newGaps.length === 0) return prev;
-        return [...prev, ...newGaps].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+        if (prev.length > 0) return prev;
+        return gaps;
       });
     }
   }, [schedule, activeTab]);

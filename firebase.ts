@@ -13,7 +13,7 @@ const firebaseConfig = {
 };
 
 // Clear stale IndexedDB cache (one-time, forces fresh load from server)
-const CACHE_VERSION = 'v3-reset-templates';
+const CACHE_VERSION = 'v4-fix-autofill';
 if (localStorage.getItem('firestoreCacheVersion') !== CACHE_VERSION) {
     indexedDB.databases?.().then(dbs => {
         dbs.filter(d => d.name?.includes('firestore')).forEach(d => {
