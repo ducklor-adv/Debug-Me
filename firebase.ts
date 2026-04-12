@@ -12,6 +12,18 @@ const firebaseConfig = {
     measurementId: "G-MVTLFMRY6T"
 };
 
+// Clear stale IndexedDB cache (one-time, forces fresh load from server)
+const CACHE_VERSION = 'v3-reset-templates';
+if (localStorage.getItem('firestoreCacheVersion') !== CACHE_VERSION) {
+    indexedDB.databases?.().then(dbs => {
+        dbs.filter(d => d.name?.includes('firestore')).forEach(d => {
+            if (d.name) indexedDB.deleteDatabase(d.name);
+        });
+    }).catch(() => {});
+    localStorage.setItem('firestoreCacheVersion', CACHE_VERSION);
+    location.reload();
+}
+
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = initializeFirestore(app, {
