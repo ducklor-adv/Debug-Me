@@ -739,7 +739,22 @@ const App: React.FC = () => {
               dateOverrides: tpl.dateOverrides || undefined,
             };
 
-            // Reset if slots are empty/all-ว่าง (broken by previous migrations)
+            // Clean up stale dayPlans that contain empty/ว่าง slots
+            if (fixed.dayPlans) {
+              const hasStale = Object.values(fixed.dayPlans).some((slots: TimeSlot[]) =>
+                !slots || slots.length === 0 || slots.every((s: TimeSlot) => s.groupKey === 'ว่าง')
+              );
+              if (hasStale) {
+                fixed.dayPlans = undefined;
+                // Force full save to remove dayPlans from Firestore
+                const migVersion = ++saveVersionRef.current;
+                isRemoteUpdateRef.current = true;
+                saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates: fixed, deletedDefaultTaskIds: data.deletedDefaultTaskIds || [], habits: data.habits || [], projects: data.projects || [], expenses: data.expenses || [], balanceItems: data.balanceItems || [] }, false);
+                setTimeout(() => { if (saveVersionRef.current === migVersion) isRemoteUpdateRef.current = false; }, 5000);
+              }
+            }
+
+            // Reset if base slots are empty/all-ว่าง
             const allEmpty = (slots: TimeSlot[]) => !slots || slots.length === 0 || slots.every(s => s.groupKey === 'ว่าง');
             if (allEmpty(fixed.workday) && allEmpty(fixed.saturday) && allEmpty(fixed.sunday)) {
               fixed = {

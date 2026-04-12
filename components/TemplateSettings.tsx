@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TaskGroup, Task, TimeSlot, ScheduleTemplates, CustomScheduleTemplate, GROUP_COLORS, getScheduleForDay, DEFAULT_CATEGORIES, Category, CLEAR_OVERRIDE } from '../types';
 import { ChevronDown, Plus, Pencil, Trash2, X, GripVertical, Save, AlertTriangle, Loader2, Layers, RotateCcw } from 'lucide-react';
 import TimePicker from './TimePicker';
+import { DEFAULT_SCHEDULE_TEMPLATES } from '../App';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -730,6 +731,21 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({
           className="w-full flex items-center justify-center gap-2 py-2.5 bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-bold hover:bg-rose-100 transition-colors"
         >
           <Trash2 className="w-3.5 h-3.5" /> เคลียร์ Slot ทั้งหมด
+        </button>
+        <button
+          onClick={async () => {
+            const resetted: ScheduleTemplates = {
+              ...DEFAULT_SCHEDULE_TEMPLATES,
+              wakeTime: scheduleTemplates.wakeTime || '05:00',
+              sleepTime: scheduleTemplates.sleepTime || '22:00',
+              scheduleVersion: 9,
+            };
+            setScheduleTemplates(resetted);
+            if (onImmediateSave) await onImmediateSave();
+          }}
+          className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-50 text-blue-600 border border-blue-200 rounded-xl text-xs font-bold hover:bg-blue-100 transition-colors"
+        >
+          <RotateCcw className="w-3.5 h-3.5" /> รีเซ็ต Template ทั้งหมด
         </button>
         <button
           onClick={() => { setSaveAsCustomSlots(schedule); openCustomForm(); }}
