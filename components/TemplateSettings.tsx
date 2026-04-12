@@ -330,6 +330,21 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({
   const currentWakeTime = scheduleTemplates.wakeTime || '05:00';
   const currentSleepTime = scheduleTemplates.sleepTime || '22:00';
 
+  // Auto-sync sleepTime = wakeTime + sum of all slot durations
+  useEffect(() => {
+    const wMins = parseInt(currentWakeTime.split(':')[0]) * 60 + parseInt(currentWakeTime.split(':')[1]);
+    const totalMins = (scheduleTemplates.workday || []).reduce((sum: number, s: TimeSlot) => {
+      const dur = s.duration || (s.startTime && s.endTime ? ((parseInt(s.endTime.split(':')[0]) * 60 + parseInt(s.endTime.split(':')[1])) - (parseInt(s.startTime.split(':')[0]) * 60 + parseInt(s.startTime.split(':')[1])) + 1440) % 1440 : 0);
+      return sum + dur;
+    }, 0);
+    if (totalMins === 0) return;
+    const autoSleep = (wMins + totalMins) % 1440;
+    const autoSleepStr = `${String(Math.floor(autoSleep / 60)).padStart(2, '0')}:${String(autoSleep % 60).padStart(2, '0')}`;
+    if (autoSleepStr !== currentSleepTime) {
+      setScheduleTemplates(prev => ({ ...prev, sleepTime: autoSleepStr }));
+    }
+  }, [scheduleTemplates.workday, currentWakeTime]);
+
   const addMinutesToTime = (time: string, mins: number): string => {
     const [h, m] = time.split(':').map(Number);
     let total = h * 60 + m + mins;
@@ -577,40 +592,68 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({
       {/* 4. Wake/Sleep Time */}
       {(() => {
         const wMins = parseInt(currentWakeTime.split(':')[0]) * 60 + parseInt(currentWakeTime.split(':')[1]);
-        const sMins = parseInt(currentSleepTime.split(':')[0]) * 60 + parseInt(currentSleepTime.split(':')[1]);
-        const sleepHours = ((wMins - sMins) + 1440) % 1440;
+        // Auto-calculate: sleepTime = wakeTime + sum of all slot durations
+        const totalSlotMins = sortedSchedule.reduce((sum, s) => {
+          const dur = s.duration || (s.startTime && s.endTime ? getDurationMinutes(s.startTime, s.endTime) : 0);
+          return sum + dur;
+        }, 0);
+        const autoSleepMins = (wMins + totalSlotMins) % (24 * 60);
+        const autoSleepTime = `${String(Math.floor(autoSleepMins / 60)).padStart(2, '0')}:${String(autoSleepMins % 60).padStart(2, '0')}`;
+        // Sleep duration = 24hr - total activity = nighttime rest
+        const nightSleepMins = 24 * 60 - totalSlotMins;
         return (
           <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl px-3 py-2 space-y-1.5">
-            <div className="flex items-center justify-center gap-3">
+            <div className="flex items-center justify-center gap-3 flex-wrap">
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px]">☀️</span>
                 <span className="text-[10px] font-bold text-indigo-400">ตื่น</span>
                 <TimePicker
                   value={currentWakeTime}
-                  onChange={(v) => { setScheduleTemplates(prev => ({ ...prev, wakeTime: v })); setScheduleDirty(true); }}
+                  onChange={(v) => {
+                    const newWakeMins = parseInt(v.split(':')[0]) * 60 + parseInt(v.split(':')[1]);
+                    const toHHMM = (mins: number) => {
+                      const m = ((mins % (24 * 60)) + 24 * 60) % (24 * 60);
+                      return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+                    };
+                    // Repack: slot แรก = wake time, slot ถัดไปเรียงต่อกันตาม duration เดิม
+                    const repackSlots = (slots: TimeSlot[]) => {
+                      if (!slots || slots.length === 0) return slots;
+                      const sorted = [...slots].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+                      let cursor = newWakeMins;
+                      return sorted.map(s => {
+                        if (!s.startTime || !s.endTime) return s;
+                        const sm = parseInt(s.startTime.split(':')[0]) * 60 + parseInt(s.startTime.split(':')[1]);
+                        const em = parseInt(s.endTime.split(':')[0]) * 60 + parseInt(s.endTime.split(':')[1]);
+                        const dur = s.duration || ((em - sm + 24 * 60) % (24 * 60));
+                        const newStart = toHHMM(cursor);
+                        const newEnd = toHHMM(cursor + dur);
+                        cursor += dur;
+                        return { ...s, startTime: newStart, endTime: newEnd };
+                      });
+                    };
+                    setScheduleTemplates(prev => ({
+                      ...prev, wakeTime: v,
+                      workday: repackSlots(prev.workday),
+                      saturday: repackSlots(prev.saturday),
+                      sunday: repackSlots(prev.sunday),
+                      customTemplates: (prev.customTemplates || []).map(ct => ({ ...ct, slots: repackSlots(ct.slots) })),
+                      dayPlans: prev.dayPlans ? Object.fromEntries(Object.entries(prev.dayPlans).map(([k, vv]) => [k, repackSlots(vv)])) : prev.dayPlans,
+                    }));
+                    setScheduleDirty(true);
+                  }}
                   compact
                 />
               </div>
-              <span className="bg-indigo-100 border border-indigo-300 text-indigo-600 text-xs font-black px-2.5 py-1 rounded-full shadow-sm flex items-center gap-1"><span className="text-sm leading-none">😴</span> {formatDuration(sleepHours)}</span>
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px]">🌙</span>
-                <span className="text-[10px] font-bold text-indigo-400">นอน</span>
-                <TimePicker
-                  value={currentSleepTime}
-                  onChange={(v) => { setScheduleTemplates(prev => ({ ...prev, sleepTime: v })); setScheduleDirty(true); }}
-                  compact
-                />
+                <span className="text-[10px] font-bold text-indigo-400">นอน (auto)</span>
+                <span className="text-xs font-black text-indigo-600 bg-white border border-indigo-200 rounded-lg px-2 py-1">{autoSleepTime}</span>
               </div>
             </div>
-            <button
-              onClick={async () => {
-                setScheduleTemplates(prev => ({ ...prev, wakeTime: currentWakeTime, sleepTime: currentSleepTime }));
-                if (onImmediateSave) await onImmediateSave();
-              }}
-              className="w-full text-center text-[10px] font-bold text-indigo-400 hover:text-indigo-600 transition-colors py-0.5"
-            >
-              ✓ ตั้งเวลาตื่น-นอน เป็นค่ามาตรฐานทุกวัน
-            </button>
+            <div className="flex items-center justify-center gap-2">
+              <span className="bg-emerald-100 border border-emerald-300 text-emerald-700 text-[10px] font-black px-2 py-0.5 rounded-full">กิจกรรม {formatDuration(totalSlotMins)}</span>
+              <span className="bg-indigo-100 border border-indigo-300 text-indigo-600 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1">😴 {formatDuration(nightSleepMins)}</span>
+            </div>
           </div>
         );
       })()}
