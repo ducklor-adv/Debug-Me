@@ -739,22 +739,19 @@ const App: React.FC = () => {
               dateOverrides: tpl.dateOverrides || undefined,
             };
 
-            // V5 migration: force reset ALL slots to group-task-based templates
-            if (!fixed.scheduleVersion || fixed.scheduleVersion < 5) {
-              const resetted: ScheduleTemplates = {
+            // V6 migration: force reset ALL slots to group-task-based templates
+            if (!fixed.scheduleVersion || fixed.scheduleVersion < 6) {
+              fixed = {
                 ...DEFAULT_SCHEDULE_TEMPLATES,
                 wakeTime: fixed.wakeTime || '05:00',
                 sleepTime: fixed.sleepTime || '22:00',
                 dayOverrides: undefined,
                 dateOverrides: fixed.dateOverrides,
                 dayPlans: undefined,
-                scheduleVersion: 5,
+                scheduleVersion: 6,
               };
-              setScheduleTemplates(resetted);
-              // Save immediately — don't rely on saveBack (we return early)
-              saveAppData(user.uid, { scheduleTemplates: resetted });
-              setFirestoreLoading(false);
-              return;
+              // Save immediately with merge to ensure it persists
+              saveAppData(user.uid, { scheduleTemplates: fixed });
             }
 
             // Strip sleep slots at start/end of day (wake/sleep time handles this now)
