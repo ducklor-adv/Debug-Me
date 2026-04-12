@@ -751,10 +751,10 @@ const App: React.FC = () => {
                 dayPlans: undefined,
                 scheduleVersion: 9,
               };
-              // Block echoes + auto-save before writing migration data
+              // Block echoes + write FULL document (merge:false) to clear stale dayPlans
               const migVersion = ++saveVersionRef.current;
               isRemoteUpdateRef.current = true;
-              saveAppData(user.uid, { scheduleTemplates: fixed }, true);
+              saveAppData(user.uid, { tasks, groups: taskGroups, milestones, scheduleTemplates: fixed, deletedDefaultTaskIds: data.deletedDefaultTaskIds || [], habits: data.habits || [], projects: data.projects || [], expenses: data.expenses || [], balanceItems: data.balanceItems || [] }, false);
               setTimeout(() => { if (saveVersionRef.current === migVersion) isRemoteUpdateRef.current = false; }, 5000);
             }
 
