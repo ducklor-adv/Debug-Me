@@ -739,8 +739,9 @@ const App: React.FC = () => {
               dateOverrides: tpl.dateOverrides || undefined,
             };
 
-            // V8 migration: force reset ALL slots to group-task-based templates
-            if (!fixed.scheduleVersion || fixed.scheduleVersion < 8) {
+            // Reset if slots are empty/all-ว่าง (broken by previous migrations)
+            const allEmpty = (slots: TimeSlot[]) => !slots || slots.length === 0 || slots.every(s => s.groupKey === 'ว่าง');
+            if (allEmpty(fixed.workday) && allEmpty(fixed.saturday) && allEmpty(fixed.sunday)) {
               fixed = {
                 ...DEFAULT_SCHEDULE_TEMPLATES,
                 wakeTime: fixed.wakeTime || '05:00',
@@ -748,10 +749,13 @@ const App: React.FC = () => {
                 dayOverrides: undefined,
                 dateOverrides: fixed.dateOverrides,
                 dayPlans: undefined,
-                scheduleVersion: 8,
+                scheduleVersion: 9,
               };
-              // Save immediately with merge to ensure it persists
-              saveAppData(user.uid, { scheduleTemplates: fixed });
+              // Block echoes + auto-save before writing migration data
+              const migVersion = ++saveVersionRef.current;
+              isRemoteUpdateRef.current = true;
+              saveAppData(user.uid, { scheduleTemplates: fixed }, true);
+              setTimeout(() => { if (saveVersionRef.current === migVersion) isRemoteUpdateRef.current = false; }, 5000);
             }
 
             // Strip sleep slots at start/end of day (wake/sleep time handles this now)
@@ -836,7 +840,11 @@ const App: React.FC = () => {
         }
 
         if (Object.keys(saveBack).length > 0 && !wasOwnSave) {
+          // Block echoes for saveBack too
+          const sbVersion = ++saveVersionRef.current;
+          isRemoteUpdateRef.current = true;
           saveAppData(user.uid, saveBack);
+          setTimeout(() => { if (saveVersionRef.current === sbVersion) isRemoteUpdateRef.current = false; }, 5000);
         }
       } else {
         // First time user — show onboarding
