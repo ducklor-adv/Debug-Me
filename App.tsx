@@ -739,8 +739,8 @@ const App: React.FC = () => {
               dateOverrides: tpl.dateOverrides || undefined,
             };
 
-            // V7 migration: force reset ALL slots to group-task-based templates
-            if (!fixed.scheduleVersion || fixed.scheduleVersion < 7) {
+            // V8 migration: force reset ALL slots to group-task-based templates
+            if (!fixed.scheduleVersion || fixed.scheduleVersion < 8) {
               fixed = {
                 ...DEFAULT_SCHEDULE_TEMPLATES,
                 wakeTime: fixed.wakeTime || '05:00',
@@ -748,7 +748,7 @@ const App: React.FC = () => {
                 dayOverrides: undefined,
                 dateOverrides: fixed.dateOverrides,
                 dayPlans: undefined,
-                scheduleVersion: 7,
+                scheduleVersion: 8,
               };
               // Save immediately with merge to ensure it persists
               saveAppData(user.uid, { scheduleTemplates: fixed });

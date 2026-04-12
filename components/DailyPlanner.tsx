@@ -195,46 +195,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
   const mergedSchedule = rawSchedule;
 
-  // Auto-fill gaps with real empty slots and save to schedule data
-  const autoFillRef = useRef(false);
-  useEffect(() => {
-    const wake = scheduleTemplates.wakeTime || '05:00';
-    const sleep = scheduleTemplates.sleepTime || '22:00';
-    const wMin = parseInt(wake.split(':')[0]) * 60 + parseInt(wake.split(':')[1]);
-    const sMin = parseInt(sleep.split(':')[0]) * 60 + parseInt(sleep.split(':')[1]);
-
-    // Check which hours are covered by existing non-sleep slots
-    const covered = new Set<number>();
-    schedule.forEach(s => {
-      if (!s.startTime || !s.endTime || s.groupKey === 'sleep') return;
-      const a = parseInt(s.startTime.split(':')[0]) * 60 + parseInt(s.startTime.split(':')[1]);
-      const b = parseInt(s.endTime.split(':')[0]) * 60 + parseInt(s.endTime.split(':')[1]);
-      for (let m = a; m < b; m++) covered.add(m);
-    });
-
-    // Find uncovered hours
-    const gaps: TimeSlot[] = [];
-    for (let h = wMin; h < sMin; h += 60) {
-      if (!covered.has(h)) {
-        const hh = `${String(Math.floor(h / 60)).padStart(2, '0')}:${String(h % 60).padStart(2, '0')}`;
-        const eh = `${String(Math.floor((h + 60) / 60) % 24).padStart(2, '0')}:${String((h + 60) % 60).padStart(2, '0')}`;
-        gaps.push({ id: `${activeTab}-empty-${hh}`, startTime: hh, endTime: eh, groupKey: 'ว่าง' });
-      }
-    }
-
-    // Only auto-fill if schedule is completely empty (no real slots at all)
-    const hasRealSlots = schedule.some(s => s.groupKey && s.groupKey !== 'ว่าง');
-    if (gaps.length > 0 && !autoFillRef.current && !hasRealSlots && schedule.length === 0) {
-      autoFillRef.current = true;
-      setScheduleForTab(prev => {
-        if (prev.length > 0) return prev;
-        return gaps;
-      });
-    }
-  }, [schedule, activeTab]);
-
-  // Reset auto-fill flag when tab changes
-  useEffect(() => { autoFillRef.current = false; }, [activeTab]);
+  // Auto-fill removed — user adds slots manually via "+ เพิ่ม Slot"
 
   // Wrapper to update only the active tab's template (+ mark dirty)
   const setScheduleForTab = useCallback((updater: (prev: TimeSlot[]) => TimeSlot[]) => {
