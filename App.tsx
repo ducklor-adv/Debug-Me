@@ -107,7 +107,8 @@ export const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
   ],
   // ═══ เสาร์: วันพัก + งานบ้าน + ครอบครัว ═══
   saturday: [
-    { id: 'sat-1',  startTime: '06:00', endTime: '07:00', groupKey: 'กิจวัตร' },       // ตื่นสาย ล้างหน้า
+    { id: 'sat-0',  startTime: '05:00', endTime: '06:00', groupKey: 'กิจวัตร' },       // ตื่น เตรียมตัว
+    { id: 'sat-1',  startTime: '06:00', endTime: '07:00', groupKey: 'กิจวัตร' },       // ล้างหน้า อาหารเช้า
     { id: 'sat-2',  startTime: '07:00', endTime: '08:00', groupKey: 'ออกกำลังกาย' },   // ออกกำลังกายจริงจัง
     { id: 'sat-3',  startTime: '08:00', endTime: '09:00', groupKey: 'กิจวัตร' },       // อาบน้ำ อาหารเช้า
     { id: 'sat-4',  startTime: '09:00', endTime: '11:00', groupKey: 'งานบ้าน' },       // ทำความสะอาดบ้าน ซักผ้า
@@ -121,7 +122,8 @@ export const DEFAULT_SCHEDULE_TEMPLATES: ScheduleTemplates = {
   ],
   // ═══ อาทิตย์: วันพักผ่อน + เตรียมสัปดาห์ ═══
   sunday: [
-    { id: 'sun-1',  startTime: '07:00', endTime: '08:00', groupKey: 'กิจวัตร' },      // ตื่นสบายๆ
+    { id: 'sun-0',  startTime: '05:00', endTime: '07:00', groupKey: 'กิจวัตร' },      // ตื่น เตรียมตัว
+    { id: 'sun-1',  startTime: '07:00', endTime: '08:00', groupKey: 'กิจวัตร' },      // อาหารเช้า
     { id: 'sun-2',  startTime: '08:00', endTime: '09:00', groupKey: 'สุขภาพ' },       // นั่งสมาธิ / โยคะ
     { id: 'sun-3',  startTime: '09:00', endTime: '12:00', groupKey: 'ครอบครัว' },     // กิจกรรมครอบครัว / ไปวัด
     { id: 'sun-4',  startTime: '12:00', endTime: '13:00', groupKey: 'พักผ่อน' },      // กินข้าว
