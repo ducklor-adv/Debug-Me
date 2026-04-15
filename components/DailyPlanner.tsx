@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Task, SubTask, TaskGroup, Milestone, TimeSlot, DayType, ScheduleTemplates, CustomScheduleTemplate, GROUP_COLORS, DailyRecord, getTasksForDate, getDayType, getScheduleForDay, DEFAULT_CATEGORIES, Category, isTaskRecurring, CLEAR_OVERRIDE } from '../types';
 import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, Pencil, Trash2, X, ChevronDown, RefreshCw, GripVertical, Save, AlertTriangle, Loader2, Layers, RotateCcw, CalendarDays } from 'lucide-react';
 import TimePicker from './TimePicker';
+import TaskEditModal from './TaskEditModal';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -522,6 +523,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 
   // Task editor modal
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [fullEditTask, setFullEditTask] = useState<Task | null>(null);
   const [taskEditForm, setTaskEditForm] = useState({ estimatedDuration: 0 });
   const [slotForm, setSlotForm] = useState({ startTime: '09:00', endTime: '10:00', groupKey: '', duration: 60 });
 
@@ -1210,6 +1212,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                               {checked ? <CheckCircle2 className={`w-3.5 h-3.5 ${colors.plannerText}`} /> : <Circle className={`w-3.5 h-3.5 ${colors.plannerText} opacity-30`} />}
                               <span className={`text-xs flex-1 truncate ${checked ? 'line-through text-slate-400' : 'text-slate-700'}`}>{task.title}</span>
                             </div>
+                            <button onClick={() => setFullEditTask(task)} className="p-0.5 rounded hover:bg-slate-100 text-slate-300 hover:text-slate-600"><Pencil className="w-2.5 h-2.5" /></button>
                             <button onClick={() => showDeleteTaskConfirm(task.id, startingSlot.id)} className="p-0.5 rounded hover:bg-rose-50 text-slate-300 hover:text-rose-500"><Trash2 className="w-2.5 h-2.5" /></button>
                           </div>
                         );
@@ -1643,6 +1646,29 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
           </div>
         </div>
       )}
+
+      {/* Full Task Editor Modal (edit any task detail from a slot) */}
+      <TaskEditModal
+        isOpen={!!fullEditTask}
+        editId={fullEditTask?.id || null}
+        initialTask={fullEditTask ? {
+          title: fullEditTask.title, description: fullEditTask.description, priority: fullEditTask.priority,
+          completed: fullEditTask.completed, startDate: fullEditTask.startDate, endDate: fullEditTask.endDate,
+          startTime: fullEditTask.startTime, endTime: fullEditTask.endTime,
+          category: fullEditTask.category, notes: fullEditTask.notes || '', attachments: fullEditTask.attachments || [],
+          dayTypes: fullEditTask.dayTypes, estimatedDuration: fullEditTask.estimatedDuration,
+        } : null}
+        initialSubtasks={fullEditTask?.subtasks || []}
+        initialAttachments={fullEditTask?.attachments || []}
+        initialRecurrence={fullEditTask?.recurrence}
+        taskGroups={taskGroups}
+        onClose={() => setFullEditTask(null)}
+        onSave={({ form, subtasks, attachments, recurrence }) => {
+          if (!fullEditTask || !setTasks) { setFullEditTask(null); return; }
+          setTasks(prev => prev.map(t => t.id === fullEditTask.id ? { ...t, ...form, attachments, subtasks: subtasks.length > 0 ? subtasks : undefined, recurrence } : t));
+          setFullEditTask(null);
+        }}
+      />
 
       {/* Task Duration Editor Modal */}
       {editingTask && (

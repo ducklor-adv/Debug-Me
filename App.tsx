@@ -243,7 +243,6 @@ const NAV_ITEMS: { view: View; icon: string; label: string }[] = [
   { view: 'planner', icon: 'BookOpen', label: 'Planner' },
   { view: 'tasks', icon: 'CheckSquare', label: 'Tasks' },
   { view: 'templates', icon: 'LayoutTemplate', label: 'Template' },
-  { view: 'projects', icon: 'FolderKanban', label: 'Projects' },
   { view: 'expenses', icon: 'Wallet', label: 'Expenses' },
 ];
 
@@ -1169,6 +1168,7 @@ const App: React.FC = () => {
 
           <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto scrollbar-hide">
             {enabledModules.includes('diary') && <NavItem icon={<PenLine />} label="Diary" active={activeView === 'diary'} onClick={() => handleNavItemClick('diary')} />}
+            <NavItem icon={<FolderKanban />} label="Projects" active={activeView === 'projects'} onClick={() => handleNavItemClick('projects')} />
             <NavItem icon={<BarChart3 />} label="Analyst" active={activeView === 'analytics'} onClick={() => handleNavItemClick('analytics')} />
             <NavItem icon={<CalendarDays />} label="Calendar" active={activeView === 'calendar'} onClick={() => handleNavItemClick('calendar')} />
           </nav>
