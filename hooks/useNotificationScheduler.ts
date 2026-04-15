@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { ScheduleTemplates, TaskGroup, getScheduleForDay, resolveSlotTimes } from '../types';
-import { sendNotification } from '../services/notificationService';
+import { sendNotification, SoundType } from '../services/notificationService';
 import { BehaviorPattern, minToTime } from '../services/behaviorAnalysis';
 
 export function useNotificationScheduler(
@@ -27,13 +27,16 @@ export function useNotificationScheduler(
       const slotStart = new Date();
       slotStart.setHours(sh, sm, 0, 0);
 
+      const group = taskGroups.find(g => g.key === slot.groupKey);
+      const isUrgent = slot.groupKey === 'นัดหมาย' || slot.groupKey === 'งานด่วน';
+      const startSound: SoundType = isUrgent ? 'urgent' : 'slot_start';
+
       // Smart timing: use behavior pattern if available
       const pattern = behaviorPatterns?.get(slot.id);
       let reminderTime: number;
       let reminderLabel: string;
 
       if (pattern && pattern.consistency > 0) {
-        // Use AI-analyzed best reminder time
         const bestH = Math.floor(pattern.bestReminderMin / 60);
         const bestM = pattern.bestReminderMin % 60;
         const bestDate = new Date();
@@ -41,30 +44,38 @@ export function useNotificationScheduler(
         reminderTime = bestDate.getTime();
         reminderLabel = `เริ่มเร็วๆ นี้ (${slot.startTime}–${slot.endTime})`;
       } else {
-        // Fallback: fixed minutes before slot
         reminderTime = slotStart.getTime() - reminderMinutes * 60 * 1000;
         reminderLabel = `เริ่มในอีก ${reminderMinutes} นาที (${slot.startTime}–${slot.endTime})`;
       }
 
-      if (reminderTime > now) {
-        const group = taskGroups.find(g => g.key === slot.groupKey);
+      if (reminderMinutes > 0 && reminderTime > now) {
         timers.push(setTimeout(() => {
           sendNotification(
             `${group?.emoji || ''} ${group?.label || slot.groupKey}`,
-            reminderLabel
+            reminderLabel,
+            'slot_ending'
           );
         }, reminderTime - now));
       }
 
-      // Notification when slot ends
+      if (slotStart.getTime() > now) {
+        timers.push(setTimeout(() => {
+          sendNotification(
+            `${group?.emoji || ''} ${group?.label || slot.groupKey}`,
+            `ถึงเวลาแล้ว (${slot.startTime}–${slot.endTime})`,
+            startSound
+          );
+        }, slotStart.getTime() - now));
+      }
+
       const slotEnd = new Date();
       slotEnd.setHours(eh, em, 0, 0);
       if (slotEnd.getTime() > now) {
-        const group = taskGroups.find(g => g.key === slot.groupKey);
         timers.push(setTimeout(() => {
           sendNotification(
             'หมดเวลา!',
-            `ช่วง ${group?.emoji || ''} ${group?.label || slot.groupKey} (${slot.startTime}–${slot.endTime}) จบแล้ว`
+            `ช่วง ${group?.emoji || ''} ${group?.label || slot.groupKey} (${slot.startTime}–${slot.endTime}) จบแล้ว`,
+            'slot_ending'
           );
         }, slotEnd.getTime() - now));
       }

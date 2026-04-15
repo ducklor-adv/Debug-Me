@@ -48,6 +48,7 @@ const ProjectManager = lazy(() => import('./components/ProjectManager'));
 const ExpenseTracker = lazy(() => import('./components/ExpenseTracker'));
 const DiaryView = lazy(() => import('./components/DiaryView'));
 const TemplateSettings = lazy(() => import('./components/TemplateSettings'));
+const NotificationSettings = lazy(() => import('./components/NotificationSettings'));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center py-20">
@@ -539,6 +540,9 @@ const App: React.FC = () => {
   });
   const [reminderMinutes, setReminderMinutes] = useState(() => {
     try { return parseInt(localStorage.getItem('debugme-reminder-min') || '5'); } catch { return 5; }
+  });
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    try { return localStorage.getItem('debugme-sound') !== 'false'; } catch { return true; }
   });
   const [showNotifSettings, setShowNotifSettings] = useState(false);
 
@@ -1178,6 +1182,7 @@ const App: React.FC = () => {
             <NavItem icon={<FolderKanban />} label="Projects" active={activeView === 'projects'} onClick={() => handleNavItemClick('projects')} />
             <NavItem icon={<BarChart3 />} label="Analyst" active={activeView === 'analytics'} onClick={() => handleNavItemClick('analytics')} />
             <NavItem icon={<CalendarDays />} label="Calendar" active={activeView === 'calendar'} onClick={() => handleNavItemClick('calendar')} />
+            <NavItem icon={<Bell />} label="Notifications" active={false} onClick={() => setShowNotifSettings(true)} />
           </nav>
 
           <div className="p-4 shrink-0">
@@ -1346,6 +1351,19 @@ const App: React.FC = () => {
 
         {/* Undo Toast */}
         <UndoToast action={undoToast} onUndo={undo} onDismiss={dismissToast} />
+
+        <Suspense fallback={null}>
+          <NotificationSettings
+            isOpen={showNotifSettings}
+            onClose={() => setShowNotifSettings(false)}
+            notificationsEnabled={notificationsEnabled}
+            setNotificationsEnabled={setNotificationsEnabled}
+            soundEnabled={soundEnabled}
+            setSoundEnabled={setSoundEnabled}
+            reminderMinutes={reminderMinutes}
+            setReminderMinutes={setReminderMinutes}
+          />
+        </Suspense>
 
         {/* Delete Account Confirmation */}
         {showDeleteAccount && (
