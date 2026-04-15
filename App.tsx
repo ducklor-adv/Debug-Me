@@ -1070,6 +1070,7 @@ const App: React.FC = () => {
     setTimeout(() => setPendingQuickAdd(null), 100);
   };
 
+
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard': return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} onQuickAddTask={handleQuickAddTask} expenses={expenses} />;

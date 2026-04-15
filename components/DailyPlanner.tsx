@@ -120,8 +120,9 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
 }) => {
   // Date navigation
   const [selectedDate, setSelectedDate] = useState(() => new Date());
-  const selectedDateStr = selectedDate.toISOString().split('T')[0];
-  const todayStr = new Date().toISOString().split('T')[0];
+  const toLocalDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const selectedDateStr = toLocalDateStr(selectedDate);
+  const todayStr = toLocalDateStr(new Date());
   const isToday = selectedDateStr === todayStr;
 
   const dateLabel = `${selectedDate.getDate()} ${monthNames[selectedDate.getMonth()]} ${selectedDate.getFullYear() + 543}`;
@@ -823,14 +824,31 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     return [key];
   };
 
-  // Full tasks for slot: only explicitly assigned tasks (user picks via picker)
+  // Full tasks for slot: explicitly assigned + auto-matched appointments (by time)
   const getFullTasksForSlot = (slot: TimeSlot): Task[] => {
     const assigned = slot.assignedTaskIds || [];
-    if (assigned.length === 0) return [];
     const excludedIds = new Set(slot.excludedTaskIds || []);
-    return assigned
+    const manualTasks = assigned
       .map(id => tasks.find(t => t.id === id))
       .filter((t): t is Task => t !== undefined && !excludedIds.has(t.id));
+
+    // Auto-match appointments whose startTime falls in this slot on selectedDate
+    if (!slot.startTime || !slot.endTime) return manualTasks;
+    const toMin = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+    const slotStart = toMin(slot.startTime);
+    const slotEnd = toMin(slot.endTime);
+    const manualIds = new Set(manualTasks.map(t => t.id));
+    const autoTasks = tasks.filter(t => {
+      if (t.category !== 'นัดหมาย' || !t.startTime) return false;
+      // Date match: exact match, or (no date set AND viewing today)
+      const dateOk = t.startDate ? t.startDate === selectedDateStr : selectedDateStr === todayStr;
+      if (!dateOk) return false;
+      if (manualIds.has(t.id) || excludedIds.has(t.id)) return false;
+      const tMin = toMin(t.startTime);
+      if (slotEnd > slotStart) return tMin >= slotStart && tMin < slotEnd;
+      return tMin >= slotStart || tMin < slotEnd; // midnight crossing
+    });
+    return [...manualTasks, ...autoTasks];
   };
 
   // Summary: time per group from schedule slots (skip free slots)

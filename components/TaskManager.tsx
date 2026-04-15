@@ -388,11 +388,13 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   const handleModalSave = async (data: { form: Omit<Task, 'id'>; subtasks: SubTask[]; attachments: TaskAttachment[]; recurrence?: Recurrence }) => {
     const subtasks = data.subtasks.length > 0 ? data.subtasks : undefined;
     let updatedTasks: Task[];
+    let savedTask: Task;
     if (editId) {
-      updatedTasks = tasks.map(t => t.id === editId ? { ...t, ...data.form, attachments: data.attachments, subtasks, recurrence: data.recurrence } : t);
+      savedTask = { ...tasks.find(t => t.id === editId)!, ...data.form, attachments: data.attachments, subtasks, recurrence: data.recurrence };
+      updatedTasks = tasks.map(t => t.id === editId ? savedTask : t);
     } else {
-      const newTask: Task = { id: Date.now().toString(), ...data.form, attachments: data.attachments, subtasks, recurrence: data.recurrence };
-      updatedTasks = [newTask, ...tasks];
+      savedTask = { id: Date.now().toString(), ...data.form, attachments: data.attachments, subtasks, recurrence: data.recurrence };
+      updatedTasks = [savedTask, ...tasks];
     }
     setTasks(updatedTasks);
     closeForm();
