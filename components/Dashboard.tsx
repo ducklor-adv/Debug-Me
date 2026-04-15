@@ -12,10 +12,11 @@ interface DashboardProps {
   onSaveFocusSession?: (session: FocusSession) => void;
   onNavigateToPlanner?: (startTime: string, endTime: string) => void;
   onNavigateToGroup?: (groupKey: string) => void;
+  onQuickAddTask?: (groupKey: string) => void;
   expenses?: Expense[];
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTemplates, todayRecords = [], onSaveDailyRecord, onTaskComplete, onSaveFocusSession, onNavigateToPlanner, onNavigateToGroup, expenses = [] }) => {
+const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTemplates, todayRecords = [], onSaveDailyRecord, onTaskComplete, onSaveFocusSession, onNavigateToPlanner, onNavigateToGroup, onQuickAddTask, expenses = [] }) => {
   const [showDoneModal, setShowDoneModal] = useState(false);
   const [showEditView, setShowEditView] = useState(false);
   const [notes, setNotes] = useState('');
@@ -188,9 +189,9 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
   const todayTasks = getTasksForDate(tasks, todayStr);
   const focusedTaskObj = focusTaskId ? todayTasks.find(t => t.id === focusTaskId) : undefined;
 
-  // Today's appointments (นัดหมาย) — only those with startDate set to today
+  // Today's appointments (นัดหมาย) — include those dated today OR with no date (treated as today)
   const todayAppointments = tasks
-    .filter((t: Task) => t.category === 'นัดหมาย' && !t.completed && t.startDate === todayStr)
+    .filter((t: Task) => t.category === 'นัดหมาย' && !t.completed && (!t.startDate || t.startDate === todayStr))
     .sort((a: Task, b: Task) => (a.startTime || '99:99').localeCompare(b.startTime || '99:99'));
 
   // Restore checked state from todayRecords — run only ONCE on initial load
@@ -887,6 +888,12 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
 
                   {/* Footer buttons */}
                   <div className="flex border-t border-slate-100 divide-x divide-slate-100">
+                    <button
+                      onClick={() => { setPopupGroup(null); onQuickAddTask?.(popupGroup); }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-bold text-emerald-600 hover:bg-emerald-50 transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> เพิ่ม{group.label}
+                    </button>
                     <button
                       onClick={() => { setPopupGroup(null); onNavigateToGroup?.(popupGroup); }}
                       className="flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-bold text-indigo-500 hover:bg-indigo-50 transition-colors"

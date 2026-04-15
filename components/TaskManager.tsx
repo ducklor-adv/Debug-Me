@@ -158,6 +158,7 @@ interface TaskManagerProps {
   setDeletedDefaultTaskIds: React.Dispatch<React.SetStateAction<string[]>>;
   onImmediateSave?: (updatedTasks?: Task[], updatedDeletedIds?: string[]) => Promise<void>;
   initialGroupKey?: string | null;
+  initialQuickAdd?: string | null;
   defaultTasks?: Task[];
   expenses?: Expense[];
   setExpenses?: React.Dispatch<React.SetStateAction<Expense[]>>;
@@ -241,7 +242,7 @@ const emptyForm = (): Omit<Task, 'id'> => ({
   dayTypes: ['workday', 'saturday', 'sunday'],
 });
 
-const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups, deletedDefaultTaskIds, setDeletedDefaultTaskIds, onImmediateSave, initialGroupKey, defaultTasks = [], expenses = [], setExpenses }) => {
+const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, setTaskGroups, deletedDefaultTaskIds, setDeletedDefaultTaskIds, onImmediateSave, initialGroupKey, initialQuickAdd, defaultTasks = [], expenses = [], setExpenses }) => {
   // DnD sensors for task reordering
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -347,6 +348,15 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
   useEffect(() => {
     if (initialGroupKey) setSelectedCat(initialGroupKey);
   }, [initialGroupKey]);
+
+  // Auto-open new-task form with preset category (quick add from Dashboard popup)
+  useEffect(() => {
+    if (initialQuickAdd) {
+      setActiveQuickTab(initialQuickAdd);
+      openNewFormWithCategory(initialQuickAdd);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuickAdd]);
 
   const openEditForm = (task: Task) => {
     savedCatRef.current = selectedCat;

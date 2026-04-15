@@ -729,7 +729,7 @@ const App: React.FC = () => {
             setScheduleTemplates(migrated);
             saveBack.scheduleTemplates = migrated;
           } else {
-            const fixed: ScheduleTemplates = {
+            let fixed: ScheduleTemplates = {
               workday: vWork,
               saturday: vSat,
               sunday: vSun,
@@ -1050,6 +1050,7 @@ const App: React.FC = () => {
   const [pendingSlot, setPendingSlot] = useState<{ startTime: string; endTime: string } | null>(null);
   // Pending group: passed from Dashboard → TaskManager
   const [pendingGroupKey, setPendingGroupKey] = useState<string | null>(null);
+  const [pendingQuickAdd, setPendingQuickAdd] = useState<string | null>(null);
 
   const handleNavigateToPlanner = (startTime: string, endTime: string) => {
     setPendingSlot({ startTime, endTime });
@@ -1063,11 +1064,17 @@ const App: React.FC = () => {
     setTimeout(() => setPendingGroupKey(null), 100);
   };
 
+  const handleQuickAddTask = (groupKey: string) => {
+    setPendingQuickAdd(groupKey);
+    setActiveView('tasks');
+    setTimeout(() => setPendingQuickAdd(null), 100);
+  };
+
   const renderContent = () => {
     switch (activeView) {
-      case 'dashboard': return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} expenses={expenses} />;
+      case 'dashboard': return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} onQuickAddTask={handleQuickAddTask} expenses={expenses} />;
       case 'planner': return <Suspense fallback={<LazyFallback />}><DailyPlanner tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} pendingSlot={pendingSlot} onPendingSlotHandled={() => setPendingSlot(null)} defaultScheduleTemplates={DEFAULT_SCHEDULE_TEMPLATES} /></Suspense>;
-      case 'tasks': return <Suspense fallback={<LazyFallback />}><TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} initialGroupKey={pendingGroupKey} defaultTasks={defaultTasks} expenses={expenses} setExpenses={setExpenses} /></Suspense>;
+      case 'tasks': return <Suspense fallback={<LazyFallback />}><TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} initialGroupKey={pendingGroupKey} initialQuickAdd={pendingQuickAdd} defaultTasks={defaultTasks} expenses={expenses} setExpenses={setExpenses} /></Suspense>;
       case 'focus': return <Suspense fallback={<LazyFallback />}><FocusTimer onSaveFocusSession={handleSaveFocusSession} todayFocusSessions={todayFocusSessions} /></Suspense>;
       case 'analytics': return <Suspense fallback={<LazyFallback />}><Analytics tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} totalRecordCount={totalRecordCount} userId={user!.uid} /></Suspense>;
       case 'calendar': return <Suspense fallback={<LazyFallback />}><CalendarView tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} userId={user!.uid} /></Suspense>;
