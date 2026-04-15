@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+import { getAnalytics, logEvent, isSupported, Analytics } from "firebase/analytics";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAvVyJCNS3GPvSeY-RfhoplxaucnG7lHOo",
@@ -29,3 +30,10 @@ export const auth = getAuth(app);
 export const db = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
 });
+
+let analytics: Analytics | null = null;
+isSupported().then(ok => { if (ok) analytics = getAnalytics(app); }).catch(() => {});
+
+export function track(event: string, params?: Record<string, any>) {
+    if (analytics) logEvent(analytics, event, params);
+}

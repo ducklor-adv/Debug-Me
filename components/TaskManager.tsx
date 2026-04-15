@@ -421,14 +421,11 @@ const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks, taskGroups, 
 
   const confirmDelete = async () => {
     if (confirmDeleteId) {
-      console.log('🗑️ Deleting task:', confirmDeleteId);
       const updatedTasks = tasks.filter(t => t.id !== confirmDeleteId);
 
-      // If deleting a default task (id starts with 'd-'), track it
       let updatedDeletedIds = deletedDefaultTaskIds;
       if (confirmDeleteId.startsWith('d-') && !deletedDefaultTaskIds.includes(confirmDeleteId)) {
         updatedDeletedIds = [...deletedDefaultTaskIds, confirmDeleteId];
-        console.log('📝 Updated deletedDefaultTaskIds:', updatedDeletedIds);
       }
 
       setTasks(updatedTasks);

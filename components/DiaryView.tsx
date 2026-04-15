@@ -209,7 +209,6 @@ const DiaryEntryEditor: React.FC<{
 
     try {
       await saveDiaryEntry(userId, diaryEntry as DiaryEntry);
-      console.log('[Diary] Saved:', diaryEntry.id);
     } catch (err) {
       console.error('[Diary] Save error:', err);
       alert('บันทึกไม่สำเร็จ: ' + (err as Error).message);

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react';
 import { onAuthStateChanged, signOut, deleteUser, User } from 'firebase/auth';
-import { auth } from './firebase';
+import { auth, track } from './firebase';
 import {
   Activity,
   CheckSquare,
@@ -929,7 +929,10 @@ const App: React.FC = () => {
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [tasks, taskGroups, milestones, scheduleTemplates, deletedDefaultTaskIds, habits, projects, expenses, balanceItems, user]);
 
-  useEffect(() => { localStorage.setItem(VIEW_KEY, activeView); }, [activeView]);
+  useEffect(() => {
+    localStorage.setItem(VIEW_KEY, activeView);
+    track('page_view', { view: activeView });
+  }, [activeView]);
 
   const handleExportData = () => {
     const data = {
