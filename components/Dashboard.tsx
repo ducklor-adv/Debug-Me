@@ -296,12 +296,15 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
       .map(id => tasks.find(t => t.id === id))
       .filter((t): t is Task => t !== undefined && !excludedIds.has(t.id));
 
-    // Auto-include appointment tasks whose startTime falls in this slot
+    // Auto-include appointment + urgent tasks whose startTime falls in this slot
     const slotStart = toMin(slot.startTime);
     const slotEnd = toMin(slot.endTime);
     const manualIds = new Set(manualTasks.map(t => t.id));
-    const autoTasks = todayAppointments.filter(t => {
-      if (!t.startTime || excludedIds.has(t.id) || manualIds.has(t.id)) return false;
+    const autoTasks = tasks.filter(t => {
+      if (t.category !== 'นัดหมาย' && t.category !== 'งานด่วน') return false;
+      if (t.completed || !t.startTime) return false;
+      if (t.startDate && t.startDate !== todayStr) return false;
+      if (excludedIds.has(t.id) || manualIds.has(t.id)) return false;
       const tMin = toMin(t.startTime);
       if (slotEnd > slotStart) return tMin >= slotStart && tMin < slotEnd;
       return tMin >= slotStart || tMin < slotEnd; // midnight crossing

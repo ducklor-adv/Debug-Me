@@ -841,7 +841,7 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
     const slotEnd = toMin(slot.endTime);
     const manualIds = new Set(manualTasks.map(t => t.id));
     const autoTasks = tasks.filter(t => {
-      if (t.category !== 'นัดหมาย' || !t.startTime) return false;
+      if ((t.category !== 'นัดหมาย' && t.category !== 'งานด่วน') || !t.startTime) return false;
       // Date match: exact match, or (no date set AND viewing today)
       const dateOk = t.startDate ? t.startDate === selectedDateStr : selectedDateStr === todayStr;
       if (!dateOk) return false;
