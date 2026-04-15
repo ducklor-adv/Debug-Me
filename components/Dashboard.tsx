@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Task, SubTask, TaskAttachment, TaskGroup, GROUP_COLORS, getTasksForDate, ScheduleTemplates, TimeSlot, DailyRecord, DEFAULT_CATEGORIES, Category, isTaskRecurring, FocusSession, getScheduleForDay, Expense, EXPENSE_CATEGORIES, resolveSlotTimes, getPriorityMeta } from '../types';
-import { CheckCircle2, Circle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, Trash2, Square, Image, Coffee, Brain, Play, Pause, RotateCcw, Volume2, VolumeX, AlertTriangle, Plus, RefreshCw, ChevronDown, Wallet, ChevronUp } from 'lucide-react';
+import { Task, SubTask, TaskAttachment, TaskGroup, GROUP_COLORS, getTasksForDate, ScheduleTemplates, TimeSlot, DailyRecord, DEFAULT_CATEGORIES, Category, isTaskRecurring, FocusSession, getScheduleForDay, Expense, EXPENSE_CATEGORIES, resolveSlotTimes, getPriorityMeta, Recurrence } from '../types';
+import { CheckCircle2, Circle, Clock, Camera, Mic, Video, Phone, User as UserIcon, MapPin, Edit3, X, Trash2, Square, Image, Coffee, Brain, Play, Pause, RotateCcw, Volume2, VolumeX, AlertTriangle, Plus, RefreshCw, ChevronDown, Wallet, ChevronUp, Pencil } from 'lucide-react';
+import TaskEditModal from './TaskEditModal';
 
 interface DashboardProps {
   tasks: Task[];
@@ -9,6 +10,7 @@ interface DashboardProps {
   todayRecords?: DailyRecord[];
   onSaveDailyRecord?: (record: DailyRecord) => void;
   onTaskComplete?: (taskId: string, completed: boolean) => void;
+  onTaskEdit?: (task: Task) => void;
   onSaveFocusSession?: (session: FocusSession) => void;
   onNavigateToPlanner?: (startTime: string, endTime: string) => void;
   onNavigateToGroup?: (groupKey: string) => void;
@@ -16,7 +18,7 @@ interface DashboardProps {
   expenses?: Expense[];
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTemplates, todayRecords = [], onSaveDailyRecord, onTaskComplete, onSaveFocusSession, onNavigateToPlanner, onNavigateToGroup, onQuickAddTask, expenses = [] }) => {
+const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTemplates, todayRecords = [], onSaveDailyRecord, onTaskComplete, onTaskEdit, onSaveFocusSession, onNavigateToPlanner, onNavigateToGroup, onQuickAddTask, expenses = [] }) => {
   const [showDoneModal, setShowDoneModal] = useState(false);
   const [showEditView, setShowEditView] = useState(false);
   const [notes, setNotes] = useState('');
@@ -947,14 +949,19 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
                         const isDone = checkedTasks.has(task.id);
                         return (
                         <div key={idx} className="py-1.5">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <button onClick={() => toggleCheck(task.id, currentSlot.startTime, currentSlot.endTime)} className="shrink-0 active:scale-90">
                               {isDone
                                 ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                                 : <Circle className="w-4 h-4 text-slate-300" />}
                             </button>
-                            <span className={`text-sm font-medium truncate ${isDone ? 'line-through text-slate-400' : 'text-slate-700'}`}>{task.title}</span>
-                            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                            <span className={`text-sm font-medium truncate min-w-0 flex-1 ${isDone ? 'line-through text-slate-400' : 'text-slate-700'}`}>{task.title}</span>
+                            <div className="flex items-center gap-1.5 ml-auto flex-wrap justify-end">
+                              {onTaskEdit && (
+                                <button onClick={() => onTaskEdit(task)} className="p-0.5 rounded hover:bg-slate-100 text-slate-300 hover:text-slate-600" title="แก้ไข">
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                              )}
                               {task.recurrence && (
                                 <span className="text-[8px] font-black bg-violet-100 text-violet-600 px-1 py-0.5 rounded flex items-center gap-0.5">
                                   <RefreshCw className="w-2.5 h-2.5" />
@@ -1166,6 +1173,11 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, taskGroups, scheduleTempla
                                       </span>
                                     )}
                                     {task.estimatedDuration && <span className="text-[10px] font-mono text-blue-400 shrink-0">{task.estimatedDuration} น.</span>}
+                                    {onTaskEdit && (
+                                      <button onClick={() => onTaskEdit(task)} className="p-0.5 rounded hover:bg-slate-100 text-slate-300 hover:text-slate-600 shrink-0" title="แก้ไข">
+                                        <Pencil className="w-3 h-3" />
+                                      </button>
+                                    )}
                                   </div>
                                   {task.subtasks && task.subtasks.length > 0 && (
                                     <div className="flex items-center gap-2 mt-1 ml-6">

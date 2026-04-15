@@ -29,6 +29,7 @@ import Dashboard from './components/Dashboard';
 import UndoToast from './components/UndoToast';
 import Login from './components/Login';
 import OnboardingWizard from './components/OnboardingWizard';
+import TaskEditModal from './components/TaskEditModal';
 import { getLifestyleTemplate, seedLifestyleSlots } from './data/lifestyleTemplates';
 import { useNotificationScheduler } from './hooks/useNotificationScheduler';
 import { useLocationReminders } from './hooks/useLocationReminders';
@@ -1069,10 +1070,13 @@ const App: React.FC = () => {
     setTimeout(() => setPendingQuickAdd(null), 100);
   };
 
+  // Global task editor (used by Dashboard task rows)
+  const [globalEditTask, setGlobalEditTask] = useState<Task | null>(null);
+
 
   const renderContent = () => {
     switch (activeView) {
-      case 'dashboard': return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} onQuickAddTask={handleQuickAddTask} expenses={expenses} />;
+      case 'dashboard': return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onTaskEdit={setGlobalEditTask} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} onQuickAddTask={handleQuickAddTask} expenses={expenses} />;
       case 'planner': return <Suspense fallback={<LazyFallback />}><DailyPlanner tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} milestones={milestones} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} pendingSlot={pendingSlot} onPendingSlotHandled={() => setPendingSlot(null)} defaultScheduleTemplates={DEFAULT_SCHEDULE_TEMPLATES} /></Suspense>;
       case 'tasks': return <Suspense fallback={<LazyFallback />}><TaskManager tasks={tasks} setTasks={setTasks} taskGroups={taskGroups} setTaskGroups={setTaskGroups} deletedDefaultTaskIds={deletedDefaultTaskIds} setDeletedDefaultTaskIds={setDeletedDefaultTaskIds} onImmediateSave={handleImmediateSave} initialGroupKey={pendingGroupKey} initialQuickAdd={pendingQuickAdd} defaultTasks={defaultTasks} expenses={expenses} setExpenses={setExpenses} /></Suspense>;
       case 'focus': return <Suspense fallback={<LazyFallback />}><FocusTimer onSaveFocusSession={handleSaveFocusSession} todayFocusSessions={todayFocusSessions} /></Suspense>;
@@ -1082,7 +1086,7 @@ const App: React.FC = () => {
       case 'expenses': return <Suspense fallback={<LazyFallback />}><ExpenseTracker expenses={expenses} setExpenses={setExpenses} balanceItems={balanceItems} setBalanceItems={setBalanceItems} /></Suspense>;
       case 'diary': return <Suspense fallback={<LazyFallback />}><DiaryView userId={user!.uid} searchQuery={diarySearch} /></Suspense>;
       case 'templates': return <Suspense fallback={<LazyFallback />}><TemplateSettings taskGroups={taskGroups} tasks={tasks} scheduleTemplates={scheduleTemplates} setScheduleTemplates={setScheduleTemplates} onImmediateSave={handleImmediateSave} /></Suspense>;
-      default: return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} />;
+      default: return <Dashboard tasks={tasks} taskGroups={taskGroups} scheduleTemplates={scheduleTemplates} todayRecords={todayRecords} onSaveDailyRecord={handleSaveDailyRecord} onTaskComplete={handleTaskComplete} onTaskEdit={setGlobalEditTask} onSaveFocusSession={handleSaveFocusSession} onNavigateToPlanner={handleNavigateToPlanner} onNavigateToGroup={handleNavigateToGroup} />;
     }
   };
 
@@ -1282,6 +1286,31 @@ const App: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Global Task Editor (triggered from Dashboard task rows) */}
+        <TaskEditModal
+          isOpen={!!globalEditTask}
+          editId={globalEditTask?.id || null}
+          initialTask={globalEditTask ? {
+            title: globalEditTask.title, description: globalEditTask.description, priority: globalEditTask.priority,
+            completed: globalEditTask.completed, startDate: globalEditTask.startDate, endDate: globalEditTask.endDate,
+            startTime: globalEditTask.startTime, endTime: globalEditTask.endTime,
+            category: globalEditTask.category, notes: globalEditTask.notes || '', attachments: globalEditTask.attachments || [],
+            dayTypes: globalEditTask.dayTypes, estimatedDuration: globalEditTask.estimatedDuration,
+          } : null}
+          initialSubtasks={globalEditTask?.subtasks || []}
+          initialAttachments={globalEditTask?.attachments || []}
+          initialRecurrence={globalEditTask?.recurrence}
+          taskGroups={taskGroups}
+          onClose={() => setGlobalEditTask(null)}
+          onSave={({ form, subtasks, attachments, recurrence }) => {
+            if (!globalEditTask) return;
+            setTasks(prev => prev.map(t => t.id === globalEditTask.id
+              ? { ...t, ...form, attachments, subtasks: subtasks.length > 0 ? subtasks : undefined, recurrence }
+              : t));
+            setGlobalEditTask(null);
+          }}
+        />
 
         {/* Mobile Bottom Nav */}
         <div className="fixed bottom-0 left-0 right-0 z-[60] lg:hidden">
