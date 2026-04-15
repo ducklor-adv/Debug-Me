@@ -1217,9 +1217,14 @@ const DailyPlanner: React.FC<DailyPlannerProps> = ({
                           </div>
                         );
                       }) : null}
-                      <button onClick={() => openTaskPicker(startingSlot)} className={`w-full flex items-center justify-center gap-1 py-1 rounded border border-dashed text-[10px] font-bold ${colors.plannerBorder} ${colors.plannerText}`}>
-                        <Plus className="w-3 h-3" /> + task
-                      </button>
+                      <div className="flex items-center gap-1.5 px-1">
+                        <button onClick={() => openTaskPicker(startingSlot)} className={`flex-1 flex items-center justify-center gap-1 py-1 rounded border border-dashed text-[10px] font-bold ${colors.plannerBorder} ${colors.plannerText}`}>
+                          <Plus className="w-3 h-3" /> + task
+                        </button>
+                        {/* Spacers to keep + task aligned with task title column (mirror edit/delete icon widths) */}
+                        <span className="w-4 shrink-0" />
+                        <span className="w-4 shrink-0" />
+                      </div>
                     </div>
                   </div>
                 </div>
