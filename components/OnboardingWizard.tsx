@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { ChevronRight, ChevronLeft, Sparkles, Sun, Moon, CheckSquare, BookOpen, Wallet, PenLine, FolderKanban } from 'lucide-react';
 import TimePicker from './TimePicker';
+import { LIFESTYLE_TEMPLATES } from '../data/lifestyleTemplates';
 
 interface OnboardingResult {
-  occupation: string;
+  lifestyleTemplateId: string;
   wakeTime: string;
-  sleepTime: string;
+  minSleep: number;
   enabledModules: string[];
 }
 
@@ -13,12 +14,13 @@ interface OnboardingWizardProps {
   onComplete: (result: OnboardingResult) => void;
 }
 
-const OCCUPATIONS = [
-  { key: 'employee', label: 'พนักงานบริษัท', emoji: '💼', desc: 'ทำงานประจำ มีเวลาตายตัว' },
-  { key: 'freelance', label: 'ฟรีแลนซ์', emoji: '💻', desc: 'ทำงานอิสระ จัดเวลาเอง' },
-  { key: 'student', label: 'นักเรียน / นักศึกษา', emoji: '📚', desc: 'เรียนหนังสือ ทำการบ้าน' },
-  { key: 'other', label: 'อื่นๆ', emoji: '🌟', desc: 'แม่บ้าน, เกษียณ, ผู้ประกอบการ' },
-];
+const OCCUPATIONS = LIFESTYLE_TEMPLATES.map(t => ({
+  key: t.id,
+  label: t.name,
+  emoji: t.emoji,
+  desc: t.desc,
+  wake: t.wake,
+}));
 
 const MODULES = [
   { key: 'planner', label: 'Planner', desc: 'วางตารางวัน', icon: BookOpen, default: true },
@@ -32,7 +34,7 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
   const [step, setStep] = useState(0);
   const [occupation, setOccupation] = useState('');
   const [wakeTime, setWakeTime] = useState('06:00');
-  const [sleepTime, setSleepTime] = useState('22:00');
+  const [minSleep, setMinSleep] = useState(7);
   const [enabledModules, setEnabledModules] = useState<Set<string>>(
     new Set(MODULES.filter(m => m.default).map(m => m.key))
   );
@@ -48,11 +50,17 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
 
   const handleComplete = () => {
     onComplete({
-      occupation,
+      lifestyleTemplateId: occupation,
       wakeTime,
-      sleepTime,
+      minSleep,
       enabledModules: Array.from(enabledModules),
     });
+  };
+
+  // Auto-set wake time based on lifestyle choice
+  const handlePickOccupation = (occ: { key: string; wake: string }) => {
+    setOccupation(occ.key);
+    setWakeTime(occ.wake);
   };
 
   const canNext = step === 0 || step === 4 || (step === 1 && occupation) || step === 2 || (step === 3 && enabledModules.size > 0);
@@ -91,14 +99,14 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
           {step === 1 && (
             <div className="space-y-4 py-4">
               <div className="text-center">
-                <h2 className="text-lg font-black text-slate-800">คุณทำอาชีพอะไร?</h2>
-                <p className="text-xs text-slate-400 mt-1">เราจะปรับตารางเริ่มต้นให้เหมาะกับคุณ</p>
+                <h2 className="text-lg font-black text-slate-800">เลือกสไตล์ชีวิตของคุณ</h2>
+                <p className="text-xs text-slate-400 mt-1">เราจะสร้างตารางเริ่มต้นให้เหมาะกับคุณ</p>
               </div>
               <div className="space-y-2">
                 {OCCUPATIONS.map(occ => (
                   <button
                     key={occ.key}
-                    onClick={() => setOccupation(occ.key)}
+                    onClick={() => handlePickOccupation(occ)}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all ${
                       occupation === occ.key
                         ? 'border-emerald-500 bg-emerald-50'
@@ -116,38 +124,50 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
             </div>
           )}
 
-          {/* Step 2: Wake/Sleep time */}
+          {/* Step 2: Wake time + min sleep hours */}
           {step === 2 && (
             <div className="space-y-6 py-4">
               <div className="text-center">
-                <h2 className="text-lg font-black text-slate-800">เวลาตื่นและเวลานอน</h2>
-                <p className="text-xs text-slate-400 mt-1">ใช้สร้างตารางเริ่มต้นของคุณ</p>
+                <h2 className="text-lg font-black text-slate-800">เวลาตื่น และเวลานอนขั้นต่ำ</h2>
+                <p className="text-xs text-slate-400 mt-1">ใช้คำนวณตารางวันถัดไปแบบต่อเนื่อง</p>
               </div>
               <div className="space-y-4">
                 <div className="flex items-center gap-3 bg-amber-50 border border-amber-100 rounded-xl p-4">
                   <Sun className="w-8 h-8 text-amber-500 shrink-0" />
                   <div className="flex-1">
-                    <p className="text-xs font-bold text-amber-700 mb-1">เวลาตื่น</p>
+                    <p className="text-xs font-bold text-amber-700 mb-1">ปกติตื่นกี่โมง?</p>
                     <TimePicker value={wakeTime} onChange={setWakeTime} />
                   </div>
                 </div>
                 <div className="flex items-center gap-3 bg-indigo-50 border border-indigo-100 rounded-xl p-4">
                   <Moon className="w-8 h-8 text-indigo-500 shrink-0" />
                   <div className="flex-1">
-                    <p className="text-xs font-bold text-indigo-700 mb-1">เวลานอน</p>
-                    <TimePicker value={sleepTime} onChange={setSleepTime} />
+                    <p className="text-xs font-bold text-indigo-700 mb-1">ต้องการนอนขั้นต่ำ (ชั่วโมง)</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setMinSleep(Math.max(4, minSleep - 1))}
+                        className="w-8 h-8 rounded-lg bg-white border border-indigo-200 text-indigo-600 font-bold"
+                      >−</button>
+                      <input
+                        type="number"
+                        min={4}
+                        max={12}
+                        value={minSleep}
+                        onChange={(e) => setMinSleep(Math.max(4, Math.min(12, parseInt(e.target.value) || 7)))}
+                        className="w-16 text-center text-lg font-black text-indigo-700 bg-white border border-indigo-200 rounded-lg py-1"
+                      />
+                      <button
+                        onClick={() => setMinSleep(Math.min(12, minSleep + 1))}
+                        className="w-8 h-8 rounded-lg bg-white border border-indigo-200 text-indigo-600 font-bold"
+                      >+</button>
+                      <span className="text-xs text-indigo-500 font-bold">ชม.</span>
+                    </div>
                   </div>
                 </div>
               </div>
               <div className="text-center">
                 <p className="text-[10px] text-slate-400">
-                  เวลาตื่น {wakeTime} — นอน {sleepTime} = {(() => {
-                    const w = parseInt(wakeTime.split(':')[0]) * 60 + parseInt(wakeTime.split(':')[1]);
-                    const s = parseInt(sleepTime.split(':')[0]) * 60 + parseInt(sleepTime.split(':')[1]);
-                    const active = ((s - w) + 1440) % 1440;
-                    const h = Math.floor(active / 60);
-                    return `${h} ชั่วโมงที่ใช้ได้`;
-                  })()}
+                  ตื่น {wakeTime} — นอนขั้นต่ำ {minSleep} ชม. ({24 - minSleep} ชั่วโมงต่อวันใช้ได้)
                 </p>
               </div>
             </div>
@@ -201,8 +221,8 @@ const OnboardingWizard: React.FC<OnboardingWizardProps> = ({ onComplete }) => {
               </div>
               <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 text-left space-y-1">
                 <p className="text-[10px] text-emerald-600 font-bold">สรุปการตั้งค่า:</p>
-                <p className="text-xs text-slate-600">อาชีพ: {OCCUPATIONS.find(o => o.key === occupation)?.emoji} {OCCUPATIONS.find(o => o.key === occupation)?.label}</p>
-                <p className="text-xs text-slate-600">ตื่น {wakeTime} — นอน {sleepTime}</p>
+                <p className="text-xs text-slate-600">สไตล์ชีวิต: {OCCUPATIONS.find(o => o.key === occupation)?.emoji} {OCCUPATIONS.find(o => o.key === occupation)?.label}</p>
+                <p className="text-xs text-slate-600">ตื่น {wakeTime} — นอนขั้นต่ำ {minSleep} ชม.</p>
                 <p className="text-xs text-slate-600">เปิดใช้: {Array.from(enabledModules).map(k => MODULES.find(m => m.key === k)?.label).join(', ')}</p>
               </div>
             </div>

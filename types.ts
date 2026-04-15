@@ -126,6 +126,9 @@ export interface ScheduleTemplates {
   sunday: TimeSlot[];
   wakeTime?: string;   // HH:MM, default '05:00'
   sleepTime?: string;  // HH:MM, default '22:00'
+  defaultWake?: string;  // HH:MM — baseline wake time for day-chain scheduling
+  minSleep?: number;     // hours — minimum sleep gap between days (e.g. 7)
+  lifestyleTemplateId?: string; // 'employee' | 'freelance' | 'housewife' | 'retiree' | 'student' | 'entrepreneur'
   scheduleVersion?: number;  // 2 = duration-based (v2)
   customTemplates?: CustomScheduleTemplate[];
   dayPlans?: { [dayOfWeek: string]: TimeSlot[] };  // "0"-"6" → per-day customized schedule

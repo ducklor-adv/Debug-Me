@@ -589,6 +589,42 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({
         <span className="text-xs text-slate-400 font-bold">{sortedSchedule.length} slots · {formatDuration(totalMins)}</span>
       </div>
 
+      {/* 3.5 Defaults (Day-Chain Scheduling) */}
+      <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl px-3 py-2 space-y-1.5">
+        <div className="text-[10px] font-bold text-emerald-600 mb-1">⚙️ ค่าเริ่มต้น (ใช้คำนวณวันถัดไป)</div>
+        <div className="flex items-center justify-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px]">☀️</span>
+            <span className="text-[10px] font-bold text-emerald-500">ตื่นปกติ</span>
+            <TimePicker
+              value={scheduleTemplates.defaultWake || scheduleTemplates.wakeTime || '06:00'}
+              onChange={(v) => {
+                setScheduleTemplates(prev => ({ ...prev, defaultWake: v }));
+                setScheduleDirty(true);
+              }}
+              compact
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px]">😴</span>
+            <span className="text-[10px] font-bold text-emerald-500">นอนขั้นต่ำ</span>
+            <input
+              type="number"
+              min={4}
+              max={12}
+              value={scheduleTemplates.minSleep ?? 7}
+              onChange={(e) => {
+                const n = Math.max(4, Math.min(12, parseInt(e.target.value) || 7));
+                setScheduleTemplates(prev => ({ ...prev, minSleep: n }));
+                setScheduleDirty(true);
+              }}
+              className="w-12 text-center text-xs font-black text-emerald-700 bg-white border border-emerald-200 rounded-lg py-1"
+            />
+            <span className="text-[10px] text-emerald-500 font-bold">ชม.</span>
+          </div>
+        </div>
+      </div>
+
       {/* 4. Wake/Sleep Time */}
       {(() => {
         const wMins = parseInt(currentWakeTime.split(':')[0]) * 60 + parseInt(currentWakeTime.split(':')[1]);

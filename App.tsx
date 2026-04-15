@@ -29,6 +29,7 @@ import Dashboard from './components/Dashboard';
 import UndoToast from './components/UndoToast';
 import Login from './components/Login';
 import OnboardingWizard from './components/OnboardingWizard';
+import { getLifestyleTemplate, seedLifestyleSlots } from './data/lifestyleTemplates';
 import { useNotificationScheduler } from './hooks/useNotificationScheduler';
 import { useLocationReminders } from './hooks/useLocationReminders';
 import { analyzeBehaviorPatterns, BehaviorPattern } from './services/behaviorAnalysis';
@@ -1106,12 +1107,22 @@ const App: React.FC = () => {
         onComplete={async (result) => {
           setOnboardingCompleted(true);
           setEnabledModules(result.enabledModules);
-          setScheduleTemplates(prev => ({ ...prev, wakeTime: result.wakeTime, sleepTime: result.sleepTime }));
+          const lt = getLifestyleTemplate(result.lifestyleTemplateId);
+          const seeded = lt ? seedLifestyleSlots(lt) : [];
+          const nextTemplates = {
+            ...scheduleTemplates,
+            wakeTime: result.wakeTime,
+            defaultWake: result.wakeTime,
+            minSleep: result.minSleep,
+            lifestyleTemplateId: result.lifestyleTemplateId,
+            ...(lt ? { workday: seeded, saturday: seeded, sunday: seeded } : {}),
+          };
+          setScheduleTemplates(nextTemplates);
           if (user) {
             await saveAppData(user.uid, {
               onboardingCompleted: true,
               enabledModules: result.enabledModules,
-              scheduleTemplates: { ...scheduleTemplates, wakeTime: result.wakeTime, sleepTime: result.sleepTime },
+              scheduleTemplates: nextTemplates,
             });
           }
         }}
