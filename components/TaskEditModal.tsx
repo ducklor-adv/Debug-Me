@@ -215,20 +215,20 @@ const TaskEditModal: React.FC<TaskEditModalProps> = ({
           </button>
         </div>
 
-        {/* Sticky Title + Description */}
-        <div className="px-5 pt-4 pb-3 border-b border-slate-100 shrink-0 bg-white space-y-2">
-          <div>
-            <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ชื่อ Task</label>
-            <input type="text" autoFocus value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="What needs to be done?" />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">คำอธิบาย</label>
-            <textarea value={form.description || ''} onChange={e => setForm({...form, description: e.target.value})} placeholder="รายละเอียดของงาน..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 h-20 resize-none" />
-          </div>
+        {/* Sticky Title only */}
+        <div className="px-5 pt-4 pb-3 border-b border-slate-100 shrink-0 bg-white">
+          <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ชื่อ Task</label>
+          <input type="text" autoFocus value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="What needs to be done?" />
         </div>
 
         {/* Scrollable body */}
         <div className="p-5 overflow-y-auto flex-1 space-y-4">
+          {/* Description (moved into scrollable area) */}
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">คำอธิบาย</label>
+            <textarea value={form.description || ''} onChange={e => setForm({...form, description: e.target.value})} placeholder="รายละเอียดของงาน..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 h-20 resize-none" />
+          </div>
+
           {/* ประเภท — popup picker */}
           <div className="relative">
             <label className="text-xs font-bold uppercase tracking-widest text-blue-500 mb-1.5 block">ประเภท</label>
