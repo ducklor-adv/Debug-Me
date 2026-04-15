@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Task, TaskGroup, ScheduleTemplates, GROUP_COLORS, getTasksForDate, getDayType, DailyRecord } from '../types';
+import { Task, TaskGroup, ScheduleTemplates, GROUP_COLORS, getTasksForDate, getDayType, DailyRecord, Expense } from '../types';
 import { getDailyRecordsInRange } from '../lib/firestoreDB';
-import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle2, Circle, Clock, ShoppingBag } from 'lucide-react';
 
 const WEEKDAY_LABELS = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
 const MONTH_NAMES = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
@@ -11,6 +11,7 @@ interface CalendarViewProps {
   taskGroups: TaskGroup[];
   scheduleTemplates: ScheduleTemplates;
   userId: string;
+  expenses: Expense[];
 }
 
 function getCalendarDays(year: number, month: number): (number | null)[] {
@@ -27,7 +28,7 @@ function dateStr(y: number, m: number, d: number): string {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
-const CalendarView: React.FC<CalendarViewProps> = ({ tasks, taskGroups, scheduleTemplates, userId }) => {
+const CalendarView: React.FC<CalendarViewProps> = ({ tasks, taskGroups, scheduleTemplates, userId, expenses = [] }) => {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -55,6 +56,25 @@ const CalendarView: React.FC<CalendarViewProps> = ({ tasks, taskGroups, schedule
   }, [monthRecords]);
 
   const calendarDays = useMemo(() => getCalendarDays(viewYear, viewMonth), [viewYear, viewMonth]);
+
+  // Dates that have at least one expense (flow='expense') for the visible month
+  const expenseDates = useMemo(() => {
+    const set = new Set<string>();
+    expenses.forEach(e => {
+      if (e.flow === 'expense' && e.date) set.add(e.date);
+    });
+    return set;
+  }, [expenses]);
+
+  const expensesByDate = useMemo(() => {
+    const map: Record<string, Expense[]> = {};
+    expenses.forEach(e => {
+      if (e.flow !== 'expense' || !e.date) return;
+      if (!map[e.date]) map[e.date] = [];
+      map[e.date].push(e);
+    });
+    return map;
+  }, [expenses]);
 
   const goToToday = () => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); setSelectedDate(todayStr); };
 
@@ -144,29 +164,22 @@ const CalendarView: React.FC<CalendarViewProps> = ({ tasks, taskGroups, schedule
             const isToday = d === todayStr;
             const isSelected = d === selectedDate;
             const status = getDayStatus(day);
-            const dots = getCategoryDots(day);
             const isPast = d < todayStr;
+            const hasExpense = expenseDates.has(d);
 
             return (
               <button
                 key={idx}
                 onClick={() => setSelectedDate(d === selectedDate ? null : d)}
-                className={`h-14 md:h-18 border-b border-r border-slate-50 flex flex-col items-center justify-center gap-0.5 transition-all relative
-                  ${isSelected ? 'bg-emerald-50' : 'hover:bg-slate-50'}
+                className={`h-14 md:h-18 border-b border-r border-slate-50 flex flex-col items-center justify-center transition-all relative
+                  ${isSelected ? 'bg-emerald-50' : hasExpense ? 'bg-rose-50 hover:bg-rose-100' : 'hover:bg-slate-50'}
                   ${isToday ? 'ring-2 ring-emerald-500 ring-inset rounded-lg z-10' : ''}
-                  ${status === 'complete' ? 'bg-emerald-50/50' : status === 'partial' ? 'bg-amber-50/50' : ''}
+                  ${!hasExpense && status === 'complete' ? 'bg-emerald-50/50' : !hasExpense && status === 'partial' ? 'bg-amber-50/50' : ''}
                 `}
               >
-                <span className={`text-sm font-bold ${isToday ? 'text-emerald-600' : isPast ? 'text-slate-400' : 'text-slate-700'}`}>
+                <span className={`text-sm font-bold ${isToday ? 'text-emerald-600' : hasExpense ? 'text-rose-600' : isPast ? 'text-slate-400' : 'text-slate-700'}`}>
                   {day}
                 </span>
-                {dots.length > 0 && (
-                  <div className="flex gap-0.5">
-                    {dots.map((dot, i) => (
-                      <span key={i} className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-                    ))}
-                  </div>
-                )}
               </button>
             );
           })}
@@ -184,6 +197,31 @@ const CalendarView: React.FC<CalendarViewProps> = ({ tasks, taskGroups, schedule
               <span className="text-[9px] font-bold bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded">วันนี้</span>
             )}
           </div>
+
+          {(() => {
+            const dayExpenses = expensesByDate[selectedDate] || [];
+            if (dayExpenses.length === 0) return null;
+            const total = dayExpenses.reduce((s, e) => s + (e.amount || 0), 0);
+            return (
+              <div className="mb-3 p-2.5 rounded-xl bg-rose-50 border border-rose-200">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <ShoppingBag className="w-3.5 h-3.5 text-rose-600" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-rose-700">รายการซื้อ</span>
+                  </div>
+                  <span className="text-xs font-black text-rose-700">{total.toLocaleString()} ฿</span>
+                </div>
+                <div className="space-y-0.5">
+                  {dayExpenses.map(e => (
+                    <div key={e.id} className="flex items-center justify-between text-xs">
+                      <span className="text-slate-700 truncate">{e.title}</span>
+                      <span className="text-slate-500 font-mono shrink-0 ml-2">{e.amount.toLocaleString()} ฿</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {selectedDayTasks.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-4">ไม่มี task ในวันนี้</p>
