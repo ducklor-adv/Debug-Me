@@ -858,6 +858,9 @@ const App: React.FC = () => {
             const tasksIdx = modules.indexOf('tasks');
             modules.splice(tasksIdx >= 0 ? tasksIdx + 1 : modules.length, 0, 'templates');
           }
+          if (!modules.includes('diary')) {
+            modules.push('diary');
+          }
           setEnabledModules(modules);
         }
 

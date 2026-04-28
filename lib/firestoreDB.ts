@@ -4,7 +4,7 @@ import {
   waitForPendingWrites, limit as firestoreLimit, startAfter, DocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Task, TaskGroup, DailyRecord, Milestone, TimeSlot, ScheduleTemplates, Habit, FocusSession, Project, Expense, BalanceItem, DiaryEntry } from '../types';
+import { Task, TaskGroup, DailyRecord, Milestone, TimeSlot, ScheduleTemplates, Habit, FocusSession, Project, Expense, BalanceItem, DiaryEntry, DiaryFileEntry } from '../types';
 
 // ===== App Data (tasks, groups, milestones, schedule) =====
 
@@ -178,4 +178,40 @@ export async function getDiaryEntriesByHashtag(
   );
   const snap = await getDocs(q);
   return snap.docs.map(d => ({ ...d.data(), id: d.id }) as DiaryEntry);
+}
+
+// ===== Diary Files (uploaded .md) =====
+
+function diaryFilesCollection(uid: string) {
+  return collection(db, 'users', uid, 'diaryFiles');
+}
+
+/** Save (or replace) an uploaded .md diary file */
+export async function saveDiaryFile(uid: string, file: DiaryFileEntry) {
+  const ref = doc(db, 'users', uid, 'diaryFiles', file.id);
+  await setDoc(ref, stripUndefined(file) as DiaryFileEntry, { merge: true });
+}
+
+/** Delete an uploaded .md diary file */
+export async function deleteDiaryFile(uid: string, fileId: string) {
+  await deleteDoc(doc(db, 'users', uid, 'diaryFiles', fileId));
+}
+
+/** Subscribe to all uploaded .md diary files (sorted by date desc) */
+export function subscribeDiaryFiles(
+  uid: string,
+  callback: (files: DiaryFileEntry[]) => void,
+  maxFiles = 200,
+): Unsubscribe {
+  const q = query(
+    diaryFilesCollection(uid),
+    orderBy('date', 'desc'),
+    firestoreLimit(maxFiles),
+  );
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map(d => ({ ...d.data(), id: d.id }) as DiaryFileEntry));
+  }, (err) => {
+    console.error('[DiaryFiles] Subscribe error:', err);
+    callback([]);
+  });
 }

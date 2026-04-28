@@ -1,6 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { DiaryEntry, DiaryAttachment } from '../types';
-import { saveDiaryEntry, deleteDiaryEntry, subscribeDiaryEntries } from '../lib/firestoreDB';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { DiaryEntry, DiaryAttachment, DiaryFileEntry } from '../types';
+import {
+  saveDiaryEntry, deleteDiaryEntry, subscribeDiaryEntries,
+  saveDiaryFile, deleteDiaryFile, subscribeDiaryFiles,
+} from '../lib/firestoreDB';
+import { parseMarkdown, renderMarkdownToHtml, extractDateFromFilename } from '../lib/diaryFiles';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -8,7 +12,7 @@ import {
   Plus, X, ArrowLeft, Bold, Italic, Heading1, Heading2, List, ListOrdered,
   Quote, Undo2, Redo2, Hash, Pin, PinOff, Trash2, Edit3, Calendar,
   ImageIcon, Search, Check, Camera, Video, Music, Link2, Play, Pause,
-  FileImage, Film, Headphones,
+  FileImage, Film, Headphones, FileText, Upload, UploadCloud,
 } from 'lucide-react';
 
 interface DiaryViewProps {
@@ -550,6 +554,165 @@ const DiaryEntryCard: React.FC<{
   );
 };
 
+// ===== File-based Diary (.md uploaded → Firestore) =====
+const DiaryFileCard: React.FC<{
+  file: DiaryFileEntry;
+  onView: () => void;
+  onDelete: () => void;
+}> = ({ file, onView, onDelete }) => {
+  const author = file.frontmatter?.author;
+  const sessionType = file.frontmatter?.session_type;
+  return (
+    <div className="w-full bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden hover:shadow-md hover:border-indigo-200 transition-all group flex items-stretch">
+      <button
+        onClick={onView}
+        className="flex-1 text-left p-4 min-w-0"
+      >
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+            <FileText className="w-5 h-5 text-indigo-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-black text-slate-800 truncate">{file.title}</h3>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-[10px] text-slate-400 font-bold">{file.date}</span>
+              {author && (
+                <span className="text-[10px] font-bold text-violet-500 bg-violet-50 px-1.5 py-0.5 rounded-full truncate max-w-[140px]">
+                  {author}
+                </span>
+              )}
+              {sessionType && (
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
+                  {sessionType}
+                </span>
+              )}
+              <span className="text-[9px] font-bold text-slate-300 bg-slate-50 px-1.5 py-0.5 rounded-full">.md</span>
+            </div>
+          </div>
+        </div>
+      </button>
+      <button
+        onClick={() => {
+          if (confirm(`ลบ "${file.fileName}"?`)) onDelete();
+        }}
+        className="px-3 flex items-center justify-center text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+        title="ลบไฟล์"
+      >
+        <Trash2 className="w-4 h-4" />
+      </button>
+    </div>
+  );
+};
+
+const DiaryFilePreview: React.FC<{
+  file: DiaryFileEntry;
+  onClose: () => void;
+}> = ({ file, onClose }) => {
+  const author = file.frontmatter?.author;
+  const sessionType = file.frontmatter?.session_type;
+  const html = useMemo(() => renderMarkdownToHtml(file.body), [file.body]);
+  return (
+    <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm flex items-start justify-center px-0 sm:px-4 pt-14 lg:pt-20 pb-4" onClick={onClose}>
+      <div className="bg-white w-full sm:max-w-2xl sm:rounded-2xl rounded-t-3xl max-h-[calc(100vh-4rem)] lg:max-h-[calc(100vh-6rem)] flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="px-5 pt-5 pb-3 border-b border-slate-100 shrink-0 bg-gradient-to-r from-indigo-50 via-violet-50 to-fuchsia-50">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center shrink-0">
+              <FileText className="w-5 h-5 text-indigo-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg font-black text-slate-800 leading-tight">{file.title}</h2>
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                <span className="text-xs text-slate-500 font-bold">{file.date}</span>
+                {author && (
+                  <span className="text-[10px] font-bold text-violet-600 bg-white px-2 py-0.5 rounded-full shadow-sm">
+                    {author}
+                  </span>
+                )}
+                {sessionType && (
+                  <span className="text-[10px] font-bold text-emerald-600 bg-white px-2 py-0.5 rounded-full shadow-sm">
+                    {sessionType}
+                  </span>
+                )}
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-white/60 rounded-xl shrink-0">
+              <X className="w-5 h-5 text-slate-500" />
+            </button>
+          </div>
+        </div>
+
+        {/* Markdown body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <div className="markdown-preview" dangerouslySetInnerHTML={{ __html: html }} />
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-2.5 border-t border-slate-100 bg-slate-50 shrink-0 flex items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 truncate">
+            {file.fileName}
+          </span>
+          <button onClick={onClose} className="text-[11px] font-bold text-slate-500 hover:text-slate-700 px-3 py-1 rounded-lg hover:bg-white shrink-0 ml-2">
+            ปิด
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ===== Upload Zone =====
+const DiaryUploadZone: React.FC<{
+  onUpload: (files: FileList) => void;
+  uploading: boolean;
+}> = ({ onUpload, uploading }) => {
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      onUpload(e.dataTransfer.files);
+    }
+  };
+
+  return (
+    <div
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
+      className={`rounded-2xl border-2 border-dashed transition-all p-4 ${
+        dragOver
+          ? 'border-indigo-400 bg-indigo-50'
+          : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/30'
+      }`}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".md,text/markdown,.markdown"
+        multiple
+        onChange={(e) => {
+          if (e.target.files) onUpload(e.target.files);
+          e.target.value = '';
+        }}
+        className="hidden"
+      />
+      <button
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        className="w-full flex items-center justify-center gap-2 py-2 disabled:opacity-50"
+      >
+        <UploadCloud className={`w-5 h-5 ${dragOver ? 'text-indigo-500' : 'text-slate-400'}`} />
+        <span className={`text-xs font-bold ${dragOver ? 'text-indigo-600' : 'text-slate-500'}`}>
+          {uploading ? 'กำลังอัพโหลด...' : dragOver ? 'วางไฟล์ที่นี่' : 'อัพโหลด .md (คลิกหรือลากวาง)'}
+        </span>
+      </button>
+    </div>
+  );
+};
+
 // ===== Main View =====
 const DiaryView: React.FC<DiaryViewProps> = ({ userId, searchQuery = '' }) => {
   const [entries, setEntries] = useState<DiaryEntry[]>([]);
@@ -557,11 +720,73 @@ const DiaryView: React.FC<DiaryViewProps> = ({ userId, searchQuery = '' }) => {
   const [editEntry, setEditEntry] = useState<DiaryEntry | undefined>();
   const [viewEntry, setViewEntry] = useState<DiaryEntry | null>(null);
   const [filterTag, setFilterTag] = useState<string | null>(null);
+  const [diaryFiles, setDiaryFiles] = useState<DiaryFileEntry[]>([]);
+  const [viewFile, setViewFile] = useState<DiaryFileEntry | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   // Subscribe to diary entries
   useEffect(() => {
     const unsub = subscribeDiaryEntries(userId, setEntries, 100);
     return unsub;
+  }, [userId]);
+
+  // Subscribe to uploaded .md diary files
+  useEffect(() => {
+    const unsub = subscribeDiaryFiles(userId, setDiaryFiles, 200);
+    return unsub;
+  }, [userId]);
+
+  // Filter files by search query
+  const filteredFiles = useMemo(() => {
+    if (!searchQuery) return diaryFiles;
+    const q = searchQuery.toLowerCase();
+    return diaryFiles.filter(f =>
+      f.title.toLowerCase().includes(q) ||
+      f.body.toLowerCase().includes(q) ||
+      f.date.includes(q) ||
+      f.fileName.toLowerCase().includes(q)
+    );
+  }, [diaryFiles, searchQuery]);
+
+  // Upload .md files via FileReader → save to Firestore
+  const handleFileUpload = useCallback(async (files: FileList) => {
+    setUploading(true);
+    const errors: string[] = [];
+    for (const file of Array.from(files)) {
+      if (!/\.(md|markdown)$/i.test(file.name)) {
+        errors.push(`${file.name}: ต้องเป็นไฟล์ .md`);
+        continue;
+      }
+      if (file.size > 900_000) {
+        errors.push(`${file.name}: ใหญ่เกิน 900KB (Firestore limit)`);
+        continue;
+      }
+      try {
+        const raw = await file.text();
+        const parsed = parseMarkdown(raw);
+        const dateFromName = extractDateFromFilename(file.name);
+        const slug = file.name.replace(/\.(md|markdown)$/i, '');
+        const entry: DiaryFileEntry = {
+          id: `mdfile-${slug}-${Date.now()}`,
+          fileName: file.name,
+          title: parsed.title || slug,
+          date: parsed.date || dateFromName || new Date().toISOString().slice(0, 10),
+          body: parsed.body,
+          frontmatter: parsed.frontmatter,
+          sizeBytes: file.size,
+          uploadedAt: new Date().toISOString(),
+        };
+        await saveDiaryFile(userId, entry);
+      } catch (err) {
+        errors.push(`${file.name}: ${(err as Error).message}`);
+      }
+    }
+    setUploading(false);
+    if (errors.length > 0) alert('Upload errors:\n' + errors.join('\n'));
+  }, [userId]);
+
+  const handleDeleteFile = useCallback(async (fileId: string) => {
+    await deleteDiaryFile(userId, fileId);
   }, [userId]);
 
   // All unique hashtags
@@ -626,19 +851,48 @@ const DiaryView: React.FC<DiaryViewProps> = ({ userId, searchQuery = '' }) => {
         </div>
       )}
 
+      {/* File-based diary (.md uploaded) */}
+      <div className="px-4 max-w-lg mx-auto pt-3">
+        <div className="flex items-center gap-2 mb-2">
+          <FileText className="w-3.5 h-3.5 text-indigo-400" />
+          <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">
+            Diary Files {filteredFiles.length > 0 && `· ${filteredFiles.length}`}
+          </span>
+          <div className="flex-1 h-px bg-gradient-to-r from-indigo-100 to-transparent" />
+        </div>
+        <div className="space-y-2.5">
+          <DiaryUploadZone onUpload={handleFileUpload} uploading={uploading} />
+          {filteredFiles.map(file => (
+            <DiaryFileCard
+              key={file.id}
+              file={file}
+              onView={() => setViewFile(file)}
+              onDelete={() => handleDeleteFile(file.id)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* File preview popup */}
+      {viewFile && <DiaryFilePreview file={viewFile} onClose={() => setViewFile(null)} />}
+
       {/* Content */}
       <div className="px-4 max-w-lg mx-auto">
-        {sorted.length === 0 ? (
-          <div className="text-center py-16">
-            <span className="text-5xl mb-4 block">📝</span>
-            <p className="text-slate-400 font-bold text-base">ยังไม่มี Diary</p>
-            <p className="text-sm text-slate-300 mt-1">กดปุ่ม + เพื่อเริ่มเขียน</p>
+        {sorted.length === 0 && filteredFiles.length === 0 ? (
+          <div className="text-center py-10">
+            <p className="text-slate-400 font-bold text-sm">ยังไม่มี Diary</p>
+            <p className="text-xs text-slate-300 mt-1">อัพโหลด .md ด้านบน หรือเขียนใหม่</p>
             <button onClick={() => openEditor()} className="mt-4 px-6 py-2.5 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-xl text-sm font-bold shadow-lg active:scale-95 transition-all">
               เขียน Diary แรก
             </button>
           </div>
-        ) : (
+        ) : sorted.length > 0 ? (
           <div className="space-y-4 pt-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Edit3 className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Saved Entries</span>
+              <div className="flex-1 h-px bg-slate-200" />
+            </div>
             {Object.entries(grouped).map(([date, dateEntries]) => (
               <div key={date}>
                 <div className="flex items-center gap-2 mb-2">
@@ -660,7 +914,7 @@ const DiaryView: React.FC<DiaryViewProps> = ({ userId, searchQuery = '' }) => {
               </div>
             ))}
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Detail View Popup */}

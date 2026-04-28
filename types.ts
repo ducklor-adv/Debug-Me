@@ -355,6 +355,18 @@ export interface DiaryEntry {
   updatedAt: string;
 }
 
+/** Uploaded .md file stored in Firestore (alternative to in-app TipTap editor) */
+export interface DiaryFileEntry {
+  id: string;
+  fileName: string;               // original filename, e.g. "2026-04-27.md"
+  title: string;                  // from frontmatter, first H1, or filename
+  date: string;                   // YYYY-MM-DD (from frontmatter or filename)
+  body: string;                   // raw markdown body (frontmatter stripped)
+  frontmatter: Record<string, string>;
+  sizeBytes: number;
+  uploadedAt: string;             // ISO timestamp
+}
+
 // ===== Expense Tracker =====
 
 export interface Expense {
